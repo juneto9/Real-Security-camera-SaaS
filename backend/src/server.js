@@ -1,4 +1,4 @@
-﻿const express = require('express');
+const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const compression = require('compression');
@@ -61,6 +61,9 @@ app.use(errorHandler);
 const startServer = async () => {
   try {
     const dbConnected = await db.testConnection();
+    const { testConnection: testSpaces } = require('./utils/spacesClient');
+    const spacesConnected = await testSpaces();
+    if (!spacesConnected) logger.warn('Spaces storage not connected - video uploads will fail');
     if (!dbConnected) throw new Error('Failed to connect to database');
 
     const server = app.listen(config.PORT, () => {

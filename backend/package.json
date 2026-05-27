@@ -11,6 +11,8 @@
     "seed": "node database/seeds/seedData.js"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1055.0",
+    "@aws-sdk/s3-request-presigner": "^3.1055.0",
     "aws-sdk": "^2.1693.0",
     "axios": "^1.6.0",
     "bcrypt": "^6.0.0",
@@ -22,6 +24,8 @@
     "express-validator": "^7.3.2",
     "helmet": "^7.2.0",
     "jsonwebtoken": "^9.0.3",
+    "multer": "^2.1.1",
+    "multer-s3": "^3.0.1",
     "node-turn": "^0.0.6",
     "pg": "^8.21.0",
     "redis": "^4.6.11",
