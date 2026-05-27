@@ -1,46 +1,117 @@
-const User = require('../models/User');
+﻿const bcrypt = require('bcrypt');
+const { v4: uuidv4 } = require('uuid');
+const db = require('../utils/database');
 const jwt = require('../utils/jwt');
 const logger = require('../utils/logger');
+const config = require('../config');
 
 exports.register = async (req, res, next) => {
   try {
-    const { email, password, first_name, last_name } = req.body;
-    const existing = await User.findByEmail(email);
-    if (existing) return res.status(409).json({ success: false, message: 'Email already registered' });
+    const { email, password, first_name, last_name, org_name, phone } = req.body;
 
-    const user = await User.create(email, password, first_name, last_name);
+    // Check if email already exists
+    const existing = await db.query(
+      'SELECT id FROM users WHERE email = $1 AND deleted_at IS NULL',
+      [email.toLowerCase()]
+    );
+    if (existing.rows.length > 0) {
+      return res.status(409).json({ success: false, message: 'Email already registered' });
+    }
+
+    // Create slug from org name or email
+    const orgName = org_name || `${first_name} ${last_name}`;
+    const slug = orgName.toLowerCase().replace(/[^a-z0-9]/g, '-') + '-' + Date.now();
+
+    // Create organization first
+    const orgResult = await db.query(
+      `INSERT INTO organizations (name, slug, max_devices, max_users, storage_limit_gb, is_active, created_at, updated_at)
+       VALUES ($1, $2, 20, 4, 100, true, NOW(), NOW())
+       RETURNING id, name, slug`,
+      [orgName, slug]
+    );
+    const org = orgResult.rows[0];
+
+    // Hash password
+    const password_hash = await bcrypt.hash(password, config.SECURITY.bcryptRounds);
+
+    // Create user linked to organization as admin
+    const userResult = await db.query(
+      `INSERT INTO users (organization_id, email, password_hash, first_name, last_name, phone, role, is_active, email_verified, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, 'admin', true, false, NOW(), NOW())
+       RETURNING id, organization_id, email, first_name, last_name, role, is_active, created_at`,
+      [org.id, email.toLowerCase(), password_hash, first_name, last_name, phone || null]
+    );
+    const user = userResult.rows[0];
+
+    // Generate tokens
     const { accessToken, refreshToken } = jwt.generateTokenPair(user.id, user.email);
 
-    res.status(201).json({ success: true, data: { user, accessToken, refreshToken } });
-  } catch (err) { next(err); }
+    logger.info('User registered', { userId: user.id, orgId: org.id, email: user.email });
+
+    res.status(201).json({
+      success: true,
+      data: { user, organization: org, accessToken, refreshToken }
+    });
+  } catch (err) {
+    logger.error('Register error', { error: err.message });
+    next(err);
+  }
 };
 
 exports.login = async (req, res, next) => {
   try {
     const { email, password } = req.body;
-    const user = await User.findByEmail(email);
-    if (!user) return res.status(401).json({ success: false, message: 'Invalid credentials' });
 
-    const valid = await User.verifyPassword(password, user.password_hash);
-    if (!valid) return res.status(401).json({ success: false, message: 'Invalid credentials' });
+    const result = await db.query(
+      `SELECT u.*, o.name as org_name, o.slug as org_slug
+       FROM users u
+       JOIN organizations o ON u.organization_id = o.id
+       WHERE u.email = $1 AND u.deleted_at IS NULL`,
+      [email.toLowerCase()]
+    );
 
-    if (!user.is_active) return res.status(401).json({ success: false, message: 'Account inactive' });
+    if (result.rows.length === 0) {
+      return res.status(401).json({ success: false, message: 'Invalid credentials' });
+    }
+
+    const user = result.rows[0];
+
+    if (!user.is_active) {
+      return res.status(401).json({ success: false, message: 'Account inactive' });
+    }
+
+    const valid = await bcrypt.compare(password, user.password_hash);
+    if (!valid) {
+      return res.status(401).json({ success: false, message: 'Invalid credentials' });
+    }
+
+    // Update last login
+    await db.query(
+      'UPDATE users SET last_login_at = NOW(), last_login_ip = $1 WHERE id = $2',
+      [req.ip, user.id]
+    );
 
     const { accessToken, refreshToken } = jwt.generateTokenPair(user.id, user.email);
-    const { password_hash, ...safeUser } = user;
 
-    res.json({ success: true, data: { user: safeUser, accessToken, refreshToken } });
-  } catch (err) { next(err); }
+    const { password_hash, two_factor_secret, password_reset_token, ...safeUser } = user;
+
+    res.json({
+      success: true,
+      data: { user: safeUser, accessToken, refreshToken }
+    });
+  } catch (err) {
+    logger.error('Login error', { error: err.message });
+    next(err);
+  }
 };
 
 exports.refresh = async (req, res, next) => {
   try {
     const { refreshToken } = req.body;
-    if (!refreshToken) return res.status(400).json({ success: false, message: 'Refresh token required' });
-
+    if (!refreshToken) {
+      return res.status(400).json({ success: false, message: 'Refresh token required' });
+    }
     const decoded = jwt.verifyToken(refreshToken);
-    if (decoded.type !== 'refresh') return res.status(401).json({ success: false, message: 'Invalid token type' });
-
     const { accessToken, refreshToken: newRefresh } = jwt.generateTokenPair(decoded.userId, decoded.email);
     res.json({ success: true, data: { accessToken, refreshToken: newRefresh } });
   } catch (err) { next(err); }
