@@ -1,192 +1,43 @@
-// backend/controllers/RecordingController.js
-const RecordingService = require('../services/RecordingService');
-const logger = require('../utils/logger');
+const db = require('../utils/database');
 
-class RecordingController {
-  async createRecording(req, res, next) {
-    try {
-      const organizationId = req.user.organization_id;
-      const recordingData = req.body;
+exports.getRecordings = async (req, res, next) => {
+  try {
+    const { device_id, page = 1, limit = 50 } = req.query;
+    const offset = (page - 1) * limit;
+    let query = `SELECT r.* FROM recordings r
+      JOIN devices d ON r.device_id = d.id
+      WHERE d.user_id = $1`;
+    const params = [req.user.id];
 
-      const recording = await RecordingService.createRecording(recordingData, organizationId);
+    if (device_id) { query += ` AND r.device_id = $2`; params.push(device_id); }
+    query += ` ORDER BY r.created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+    params.push(parseInt(limit), parseInt(offset));
 
-      res.status(201).json({
-        success: true,
-        message: 'Recording created successfully',
-        data: recording
-      });
-    } catch (error) {
-      next(error);
-    }
-  }
+    const result = await db.query(query, params);
+    res.json({ success: true, data: result.rows });
+  } catch (err) { next(err); }
+};
 
-  async getRecording(req, res, next) {
-    try {
-      const { recordingId } = req.params;
-      const organizationId = req.user.organization_id;
+exports.getRecording = async (req, res, next) => {
+  try {
+    const result = await db.query(
+      `SELECT r.* FROM recordings r JOIN devices d ON r.device_id = d.id
+       WHERE r.id = $1 AND d.user_id = $2`,
+      [req.params.recordingId, req.user.id]
+    );
+    if (!result.rows[0]) return res.status(404).json({ success: false, message: 'Recording not found' });
+    res.json({ success: true, data: result.rows[0] });
+  } catch (err) { next(err); }
+};
 
-      const recording = await RecordingService.getRecordingById(recordingId, organizationId);
-
-      res.status(200).json({
-        success: true,
-        data: recording
-      });
-    } catch (error) {
-      next(error);
-    }
-  }
-
-  async getDeviceRecordings(req, res, next) {
-    try {
-      const { deviceId } = req.params;
-      const organizationId = req.user.organization_id;
-      const { limit = 50, offset = 0 } = req.query;
-
-      const recordings = await RecordingService.getDeviceRecordings(
-        deviceId,
-        organizationId,
-        parseInt(limit),
-        parseInt(offset)
-      );
-
-      res.status(200).json({
-        success: true,
-        data: recordings
-      });
-    } catch (error) {
-      next(error);
-    }
-  }
-
-  async getOrganizationRecordings(req, res, next) {
-    try {
-      const organizationId = req.user.organization_id;
-      const { limit = 100, offset = 0 } = req.query;
-
-      const recordings = await RecordingService.getOrganizationRecordings(
-        organizationId,
-        parseInt(limit),
-        parseInt(offset)
-      );
-
-      res.status(200).json({
-        success: true,
-        data: recordings
-      });
-    } catch (error) {
-      next(error);
-    }
-  }
-
-  async getRecordingsByDateRange(req, res, next) {
-    try {
-      const { deviceId } = req.params;
-      const organizationId = req.user.organization_id;
-      const { startDate, endDate } = req.query;
-
-      const recordings = await RecordingService.getRecordingsByDateRange(
-        deviceId,
-        startDate,
-        endDate,
-        organizationId
-      );
-
-      res.status(200).json({
-        success: true,
-        data: recordings
-      });
-    } catch (error) {
-      next(error);
-    }
-  }
-
-  async getRecordingsByType(req, res, next) {
-    try {
-      const { deviceId } = req.params;
-      const organizationId = req.user.organization_id;
-      const { type } = req.query;
-
-      const recordings = await RecordingService.getRecordingsByType(
-        deviceId,
-        type,
-        organizationId
-      );
-
-      res.status(200).json({
-        success: true,
-        data: recordings
-      });
-    } catch (error) {
-      next(error);
-    }
-  }
-
-  async deleteRecording(req, res, next) {
-    try {
-      const { recordingId } = req.params;
-      const organizationId = req.user.organization_id;
-
-      await RecordingService.deleteRecording(recordingId, organizationId);
-
-      res.status(200).json({
-        success: true,
-        message: 'Recording deleted successfully'
-      });
-    } catch (error) {
-      next(error);
-    }
-  }
-
-  async getRecordingUrl(req, res, next) {
-    try {
-      const { recordingId } = req.params;
-      const organizationId = req.user.organization_id;
-      const { expiresIn = 3600 } = req.query;
-
-      const urlData = await RecordingService.getRecordingUrl(
-        recordingId,
-        organizationId,
-        parseInt(expiresIn)
-      );
-
-      res.status(200).json({
-        success: true,
-        data: urlData
-      });
-    } catch (error) {
-      next(error);
-    }
-  }
-
-  async cleanupOldRecordings(req, res, next) {
-    try {
-      const organizationId = req.user.organization_id;
-      const { daysOld = 30 } = req.body;
-
-      await RecordingService.cleanupOldRecordings(organizationId, daysOld);
-
-      res.status(200).json({
-        success: true,
-        message: 'Old recordings cleaned up'
-      });
-    } catch (error) {
-      next(error);
-    }
-  }
-
-  async getRecordingStats(req, res, next) {
-    try {
-      const organizationId = req.user.organization_id;
-      const stats = await RecordingService.getRecordingStats(organizationId);
-
-      res.status(200).json({
-        success: true,
-        data: stats
-      });
-    } catch (error) {
-      next(error);
-    }
-  }
-}
-
-module.exports = new RecordingController();
+exports.deleteRecording = async (req, res, next) => {
+  try {
+    const result = await db.query(
+      `DELETE FROM recordings r USING devices d
+       WHERE r.device_id = d.id AND r.id = $1 AND d.user_id = $2 RETURNING r.id`,
+      [req.params.recordingId, req.user.id]
+    );
+    if (!result.rows[0]) return res.status(404).json({ success: false, message: 'Recording not found' });
+    res.json({ success: true, message: 'Recording deleted' });
+  } catch (err) { next(err); }
+};
