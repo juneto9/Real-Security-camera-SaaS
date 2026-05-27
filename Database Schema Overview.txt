@@ -1,0 +1,42 @@
+users
+├── id (UUID, PK)
+├── email (unique)
+├── password_hash
+├── first_name
+├── last_name
+├── organization_id
+├── role (admin, user)
+├── created_at
+└── updated_at
+
+devices
+├── id (UUID, PK)
+├── user_id (FK)
+├── name
+├── location
+├── rtsp_url
+├── status (online, offline)
+├── resolution
+├── fps
+├── created_at
+└── updated_at
+
+recordings
+├── id (UUID, PK)
+├── device_id (FK)
+├── start_time
+├── end_time
+├── duration
+├── file_size
+├── s3_url
+├── motion_detected
+├── created_at
+└── expires_at
+
+motion_events
+├── id (UUID, PK)
+├── device_id (FK)
+├── timestamp
+├── confidence
+├── thumbnail_url
+└── recording_id (FK)
