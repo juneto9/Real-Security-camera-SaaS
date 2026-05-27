@@ -12,9 +12,9 @@ const authMiddleware = require('./middleware/auth');
 
 // Import routes
 const authRoutes = require('./routes/auth');
-const userRoutes = require('./routes/userRoutes');
-const deviceRoutes = require('./routes/deviceRoutes');
-const recordingRoutes = require('./routes/recordingRoutes');
+const userRoutes = require('./routes/users');
+const deviceRoutes = require('./routes/devices');
+const recordingRoutes = require('./routes/recordings');
 const motionEventRoutes = require('./routes/motionEventRoutes');
 const streamRoutes = require('./routes/streams');
 
