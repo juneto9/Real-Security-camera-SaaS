@@ -24,7 +24,7 @@
     "redis": "^4.6.11",
     "socket.io": "^4.7.1",
     "wrtc": "^0.4.7",
-    "node-turn": "^0.0.7"
+    "node-turn": "^0.0.6"
   },
   "devDependencies": {
     "nodemon": "^3.0.1",
