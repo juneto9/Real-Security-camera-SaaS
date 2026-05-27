@@ -79,8 +79,11 @@ const getSnapshotKey = (organizationId, deviceId, eventId) => {
 // Test the connection
 const testConnection = async () => {
   try {
-    const { ListBucketsCommand } = require('@aws-sdk/client-s3');
-    await s3Client.send(new ListBucketsCommand({}));
+    const { ListObjectsV2Command } = require('@aws-sdk/client-s3');
+    await s3Client.send(new ListObjectsV2Command({
+      Bucket: config.STORAGE.bucket,
+      MaxKeys: 1,
+    }));
     logger.info('Spaces connection successful');
     return true;
   } catch (err) {
