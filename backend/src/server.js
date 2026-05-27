@@ -8,7 +8,7 @@ const logger = require('./utils/logger');
 const db = require('./utils/database');
 const errorHandler = require('./middleware/errorHandler');
 const authMiddleware = require('./middleware/auth');
-const { initializeDatabase } = require('./database/init');
+
 
 // Import routes
 const authRoutes = require('./routes/auth');
