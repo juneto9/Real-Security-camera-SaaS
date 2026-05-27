@@ -1,13 +1,22 @@
+# Dependencies
+node_modules/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
 # Environment variables
 .env
 .env.local
 .env.*.local
+.env.production.local
 
-# Node
-node_modules/
+# Logs
+logs/
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+lerna-debug.log*
 
 # IDE
 .vscode/
@@ -16,41 +25,49 @@ yarn-error.log*
 *.swo
 *~
 .DS_Store
+*.sublime-project
+*.sublime-workspace
 
-# Build outputs
-build/
+# Testing
+coverage/
+.nyc_output/
+
+# Build
 dist/
+build/
 .next/
 out/
 
-# Android
-android/.gradle/
-android/local.properties
-android/.idea/
-android/*.iml
-android/build/
-
-# iOS
-ios/Pods/
-ios/Podfile.lock
-ios/.xcworkspace/
-ios/build/
-ios/*.xcodeproj/xcuserdata/
-
-# Database
-*.db
-*.sqlite
-*.sqlite3
-
-# Logs
-logs/
-*.log
+# OS
+Thumbs.db
+.DS_Store
 
 # Temporary files
 tmp/
 temp/
 *.tmp
 
-# OS
-.DS_Store
-Thumbs.db
+# Cache
+.cache/
+.eslintcache
+
+# Local development
+.venv/
+venv/
+env/
+
+# Docker
+.dockerignore
+
+# Database backups
+*.sql.backup
+*.dump
+
+# Uploads
+uploads/
+public/uploads/
+
+# Security
+*.pem
+*.key
+*.crt

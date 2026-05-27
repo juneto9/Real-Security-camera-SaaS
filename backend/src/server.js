@@ -1,3 +1,4 @@
+// backend/server.js
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -7,13 +8,15 @@ const logger = require('./utils/logger');
 const db = require('./utils/database');
 const errorHandler = require('./middleware/errorHandler');
 const authMiddleware = require('./middleware/auth');
+const { initializeDatabase } = require('./database/init');
 
 // Import routes
 const authRoutes = require('./routes/auth');
-const deviceRoutes = require('./routes/devices');
-const recordingRoutes = require('./routes/recordings');
+const userRoutes = require('./routes/userRoutes');
+const deviceRoutes = require('./routes/deviceRoutes');
+const recordingRoutes = require('./routes/recordingRoutes');
+const motionEventRoutes = require('./routes/motionEventRoutes');
 const streamRoutes = require('./routes/streams');
-const userRoutes = require('./routes/users');
 
 const app = express();
 
@@ -26,7 +29,7 @@ app.use(compression());
 
 // CORS configuration
 app.use(cors({
-  origin: config.SECURITY.corsOrigin,
+  origin: config.SECURITY?.corsOrigin || '*',
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
@@ -61,10 +64,11 @@ app.get('/health', (req, res) => {
 
 // API Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/users', userRoutes);
 app.use('/api/devices', authMiddleware, deviceRoutes);
 app.use('/api/recordings', authMiddleware, recordingRoutes);
+app.use('/api/motion-events', authMiddleware, motionEventRoutes);
 app.use('/api/streams', authMiddleware, streamRoutes);
-app.use('/api/users', authMiddleware, userRoutes);
 
 // 404 handler
 app.use((req, res) => {
@@ -81,17 +85,21 @@ app.use(errorHandler);
 // Start server
 const startServer = async () => {
   try {
+    // Initialize database
+    await initializeDatabase();
+
     // Test database connection
     const dbConnected = await db.testConnection();
     if (!dbConnected) {
       throw new Error('Failed to connect to database');
     }
 
-    const server = app.listen(config.PORT, () => {
+    const PORT = config.PORT || 5000;
+    const server = app.listen(PORT, () => {
       logger.info(`Server started successfully`, {
-        port: config.PORT,
+        port: PORT,
         env: config.NODE_ENV,
-        url: `http://localhost:${config.PORT}`,
+        url: `http://localhost:${PORT}`,
       });
     });
 
