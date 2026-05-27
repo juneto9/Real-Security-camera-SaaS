@@ -1,0 +1,49 @@
+Copybackend/
+├── src/
+│   ├── server.js                 # Main server entry point
+│   ├── streamServer.js           # WebRTC/RTSP stream handling
+│   ├── config.js                 # Configuration management
+│   ├── middleware/
+│   │   ├── auth.js               # JWT authentication
+│   │   ├── errorHandler.js       # Error handling
+│   │   └── validation.js         # Request validation
+│   ├── routes/
+│   │   ├── auth.js               # Authentication endpoints
+│   │   ├── devices.js            # Device management
+│   │   ├── recordings.js         # Recording management
+│   │   ├── users.js              # User management
+│   │   └── streams.js            # Stream endpoints
+│   ├── controllers/
+│   │   ├── authController.js     # Auth logic
+│   │   ├── deviceController.js   # Device logic
+│   │   ├── recordingController.js# Recording logic
+│   │   └── streamController.js   # Stream logic
+│   ├── models/
+│   │   ├── User.js               # User model
+│   │   ├── Device.js             # Device model
+│   │   ├── Recording.js          # Recording model
+│   │   └── MotionEvent.js        # Motion event model
+│   ├── utils/
+│   │   ├── database.js           # Database connection
+│   │   ├── s3Client.js           # AWS S3/DO Spaces client
+│   │   ├── jwt.js                # JWT utilities
+│   │   ├── logger.js             # Logging utility
+│   │   └── validators.js         # Input validators
+│   ├── services/
+│   │   ├── streamService.js      # Stream management
+│   │   ├── recordingService.js   # Recording management
+│   │   ├── motionService.js      # Motion detection
+│   │   └── emailService.js       # Email notifications
+│   └── webrtc/
+│       ├── turnServer.js         # TURN server setup
+│       ├── signalingServer.js    # WebRTC signaling
+│       └── peerManager.js        # Peer connection management
+├── database/
+│   ├── migrations/
+│   │   └── 001_init.sql          # Database schema
+│   └── seeds/
+│       └── seedData.sql          # Sample data
+├── .env.example                  # Environment template
+├── .dockerignore                 # Docker ignore file
+├── Dockerfile                    # Docker configuration
+└── package.json                  # Dependencies
