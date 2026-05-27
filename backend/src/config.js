@@ -2,7 +2,7 @@ const dotenv = require('dotenv');
 const path = require('path');
 
 // Load environment variables
-dotenv.config({ path: path.join(__dirname, '../../.env') });
+dotenv.config({ path: path.join(__dirname, '../.env') });
 
 const config = {
   // Server
@@ -21,7 +21,8 @@ const config = {
     max: parseInt(process.env.DB_POOL_SIZE || '20', 10),
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 2000,
-  },
+    ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
+    },
 
   // JWT
   JWT: {
