@@ -32,5 +32,12 @@
   },
   "engines": {
     "node": ">=16.0.0"
-  }
+  },
+  "directories": {
+    "test": "tests"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs"
 }
