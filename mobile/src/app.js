@@ -153,70 +153,67 @@ function DashboardScreen({ navigation, route, logout }) {
   };
 
   const addDevice = () => {
-    Alert.prompt('Add Camera', 'Device name:', async (name) => {
-      if (!name) return;
-      Alert.prompt('Location', 'Location:', async (loc) => {
-        try {
-          await api.post('/api/devices', { name, location: loc || 'Unknown', rtsp_url: '' });
-          loadDevices();
-        } catch (e) { Alert.alert('Error', 'Failed to add device'); }
-      });
-    });
-  };
-
-  return (
-    <View style={s.container}>
-      <View style={s.header}>
-        <Text style={s.title}>🔒 Real Security Camera</Text>
-        <TouchableOpacity style={s.logoutBtn} onPress={logout}>
-          <Text style={s.logout}>Logout</Text>
-        </TouchableOpacity>
-      </View>
-      <View style={s.modeRow}>
-        <TouchableOpacity style={[s.modeBtn, mode==='camera' && s.modeBtnOn]} onPress={() => setMode('camera')}>
-          <Text style={[s.modeTxt, mode==='camera' && s.modeTxtOn]}>📷 Camera</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[s.modeBtn, mode==='viewer' && s.modeBtnOn]} onPress={() => setMode('viewer')}>
-          <Text style={[s.modeTxt, mode==='viewer' && s.modeTxtOn]}>👁 Viewer</Text>
-        </TouchableOpacity>
-      </View>
-      <View style={s.stats}>
-        <View style={s.stat}><Text style={s.statN}>{devices.length}</Text><Text style={s.statL}>Cameras</Text></View>
-        <View style={s.stat}><Text style={s.statN}>{devices.filter(d=>d.is_active).length}</Text><Text style={s.statL}>Online</Text></View>
-        <View style={s.stat}><Text style={s.statN}>11</Text><Text style={s.statL}>Days</Text></View>
-      </View>
-      {error && (
-        <View style={{backgroundColor:'#ff444440', padding:12, margin:16, borderRadius:8, borderWidth:1, borderColor:'#ff4444'}}>
-          <Text style={{color:'#ff4444', fontSize:14}}>⚠️ {error}</Text>
-        </View>
-      )}
-      {loading ? <ActivityIndicator color="#00ff88" style={{marginTop:40}} /> :
-      <FlatList
-        data={devices}
-        keyExtractor={i=>i.id}
-        numColumns={2}
-        contentContainerStyle={{padding:8}}
-        refreshing={loading}
-        onRefresh={loadDevices}
-        ListEmptyComponent={<View style={{alignItems:'center',marginTop:60}}><Text style={{fontSize:48}}>📷</Text><Text style={{color:'#fff',fontSize:18,marginTop:16}}>No cameras yet</Text><Text style={{color:'#666',marginTop:8}}>Tap + to add one</Text></View>}
-        renderItem={({item}) => (
-          <TouchableOpacity style={s.card} onPress={() => navigation.navigate('Camera', { device: item, mode })}>
-            <Text style={{fontSize:32}}>📷</Text>
-            <View style={[s.dot,{backgroundColor:item.is_active?'#00ff88':'#666'}]} />
-            <Text style={s.cardName}>{item.name}</Text>
-            <Text style={s.cardLoc}>📍 {item.location||'No location'}</Text>
-            <View style={s.cardBtn}>
-              <Text style={s.cardBtnTxt}>{mode==='camera'?'Use as Camera':'View Stream'}</Text>
-            </View>
-          </TouchableOpacity>
-        )}
-      />}
-      <TouchableOpacity style={s.fab} onPress={addDevice}>
-        <Text style={{color:'#000',fontSize:32,fontWeight:'bold'}}>+</Text>
-      </TouchableOpacity>
-    </View>
+  console.log('Add device button pressed');
+  
+  Alert.prompt(
+    'Add Camera',
+    'Enter device name:',
+    [
+      {
+        text: 'Cancel',
+        onPress: () => console.log('Cancelled'),
+        style: 'cancel',
+      },
+      {
+        text: 'Next',
+        onPress: (name) => {
+          if (!name || name.trim() === '') {
+            Alert.alert('Error', 'Device name cannot be empty');
+            return;
+          }
+          
+          console.log('Device name entered:', name);
+          
+          Alert.prompt(
+            'Enter Location',
+            'Where is this camera located?',
+            [
+              {
+                text: 'Cancel',
+                onPress: () => console.log('Location cancelled'),
+                style: 'cancel',
+              },
+              {
+                text: 'Add',
+                onPress: async (location) => {
+                  try {
+                    const loc = location || 'Unknown';
+                    console.log('Creating device:', { name, location: loc });
+                    
+                    const res = await api.post('/api/devices', {
+                      name,
+                      location: loc,
+                      rtsp_url: ''
+                    });
+                    
+                    console.log('Device created:', res.data);
+                    Alert.alert('Success', 'Camera added!');
+                    loadDevices();
+                  } catch (e) {
+                    console.error('Add device error:', e.response?.data || e.message);
+                    Alert.alert('Error', e.response?.data?.message || 'Failed to add device');
+                  }
+                },
+              },
+            ],
+            'plain-text'
+          );
+        },
+      },
+    ],
+    'plain-text'
   );
-}
+};
 
 function CameraScreen({ navigation, route }) {
   const { device, mode } = route.params || {};
