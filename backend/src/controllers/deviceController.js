@@ -29,6 +29,12 @@ exports.createDevice = async (req, res, next) => {
     const userId = req.user.userId;
     const organizationId = req.user.organizationId;
 
+    // TEMPORARY DEBUG
+    console.log('req.user:', req.user);
+    console.log('req.body:', req.body);
+    console.log('resolved userId:', userId);
+    console.log('resolved organizationId:', organizationId);
+
     // Validate
     if (!name || !organizationId) {
       return res.status(400).json({ success: false, message: 'Missing required fields' });
@@ -36,11 +42,11 @@ exports.createDevice = async (req, res, next) => {
 
     // Call Device.create with correct parameter order
     const device = await Device.create(
-      userId,           // 1st parameter
-      organizationId,   // 2nd parameter
-      name,             // 3rd parameter
-      location,         // 4th parameter
-      rtspUrl || ''     // 5th parameter
+      userId,
+      organizationId,
+      name,
+      location,
+      rtspUrl || ''
     );
 
     res.status(201).json({
