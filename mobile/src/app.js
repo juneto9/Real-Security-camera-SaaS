@@ -264,6 +264,56 @@ function DashboardScreen({ navigation, route, logout }) {
   );
 }
 
+function CameraScreen({ navigation, route }) {
+  const { device, mode } = route.params || {};
+  const [torch, setTorch] = useState(false);
+  const [motionCount, setMotionCount] = useState(0);
+  const [status, setStatus] = useState('Monitoring...');
+  const [recording, setRecording] = useState(false);
+
+  const testMotion = async () => {
+    setStatus('⚠️ Motion detected!');
+    setMotionCount(c => c + 1);
+    setRecording(true);
+    try {
+      await api.post('/api/motion/detect', { device_id: device?.id, confidence: 85 });
+    } catch (e) { console.log('Motion error:', e.message); }
+    setTimeout(() => { setRecording(false); setStatus('Monitoring...'); }, 30000);
+  };
+
+  return (
+    <View style={s.container}>
+      <View style={s.camHeader}>
+        <TouchableOpacity onPress={() => navigation.goBack()}>
+          <Text style={{color:'#00ff88',fontSize:16}}>← Back</Text>
+        </TouchableOpacity>
+        <Text style={s.camTitle}>{device?.name || 'Camera'}</Text>
+        <View style={[s.recDot, recording && s.recDotOn]} />
+      </View>
+      <View style={s.camBody}>
+        <Text style={{fontSize:80}}>📷</Text>
+        <Text style={{color:'#00ff88',fontSize:18,marginTop:16}}>{status}</Text>
+        <Text style={{color:'#666',marginTop:8}}>Motion events: {motionCount}</Text>
+        <Text style={{color:'#444',marginTop:4,fontSize:12}}>{device?.location || ''}</Text>
+      </View>
+      <View style={s.camControls}>
+        <TouchableOpacity style={[s.ctrlBtn, torch && s.ctrlBtnOn]} onPress={() => setTorch(!torch)}>
+          <Text style={{fontSize:24}}>{torch ? '🔦' : '💡'}</Text>
+          <Text style={s.ctrlTxt}>{torch ? 'Torch ON' : 'Torch OFF'}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={s.ctrlBtn} onPress={testMotion}>
+          <Text style={{fontSize:24}}>⚡</Text>
+          <Text style={s.ctrlTxt}>Test Motion</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={s.ctrlBtn}>
+          <Text style={{fontSize:24}}>🌙</Text>
+          <Text style={s.ctrlTxt}>Night Auto</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
 function App() {
   const [ready, setReady] = useState(false);
   const [token, setToken] = useState(null);
