@@ -1,4 +1,4 @@
-﻿import axios from 'axios';
+import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export const API_URL = 'https://whale-app-hxokg.ondigitalocean.app';
