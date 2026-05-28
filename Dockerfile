@@ -3,12 +3,12 @@
 # ============================================================================
 
 # Stage 1: Build
-FROM node:18-alpine AS builder
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
 # Install build dependencies
-RUN apk add --no-cache python3 make g++ ffmpeg
+RUN apk add --no-cache python3 make g++ cairo-dev jpeg-dev pango-dev giflib-dev ffmpeg
 
 # Copy package files
 COPY package*.json ./
@@ -21,7 +21,7 @@ COPY . .
 
 # ============================================================================
 # Stage 2: Runtime
-FROM node:18-alpine
+FROM node:20-alpine
 
 WORKDIR /app
 
@@ -33,7 +33,7 @@ RUN addgroup -g 1001 -S nodejs && adduser -S nodejs -u 1001
 
 # Copy from builder
 COPY --from=builder --chown=nodejs:nodejs /app/node_modules ./node_modules
-COPY --from=builder --chown=nodejs:nodejs /app ..
+COPY --from=builder --chown=nodejs:nodejs /app . .
 
 # Switch to non-root user
 USER nodejs
