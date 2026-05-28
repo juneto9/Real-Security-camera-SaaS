@@ -121,11 +121,14 @@ exports.refresh = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Refresh token required' });
     }
     const decoded = jwt.verifyToken(refreshToken);
-    const { accessToken, refreshToken: newRefresh } = jwt.generateTokenPair(decoded.userId, decoded.email);
+    const { accessToken, refreshToken: newRefresh } = jwt.generateTokenPair(
+      decoded.userId, 
+      decoded.email,
+      decoded.organizationId  // ← ADD THIS
+    );
     res.json({ success: true, data: { accessToken, refreshToken: newRefresh } });
   } catch (err) { next(err); }
 };
-
 exports.logout = (req, res) => {
   res.json({ success: true, message: 'Logged out successfully' });
 };
