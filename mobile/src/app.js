@@ -24,11 +24,20 @@ function LoginScreen({ navigation, setToken }) {
     if (!email || !password) return Alert.alert('Error', 'Enter email and password');
     setLoading(true);
     try {
+      console.log('Attempting login with:', email);
       const res = await api.post('/api/auth/login', { email, password });
-      await AsyncStorage.setItem('accessToken', res.data.data.accessToken);
-      await setToken(res.data.data.accessToken);
+      console.log('Login response:', res.data);
+      
+      const token = res.data.data.accessToken;
+      if (!token) {
+        return Alert.alert('Error', 'No token received from server');
+      }
+      
+      await AsyncStorage.setItem('accessToken', token);
+      await setToken(token);
     } catch (e) {
-      Alert.alert('Login Failed', e.response?.data?.message || 'Check credentials');
+      console.log('Login error:', e.response?.data || e.message);
+      Alert.alert('Login Failed', e.response?.data?.message || e.response?.data?.errors?.[0]?.message || 'Check credentials');
     }
     setLoading(false);
   };
