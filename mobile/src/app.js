@@ -1,4 +1,4 @@
-import jwtDecode from 'jwt-decode';
+import { jwtDecode } from 'jwt-decode';
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator, Alert, FlatList, KeyboardAvoidingView, Platform, Modal } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
@@ -153,36 +153,48 @@ function DashboardScreen({ navigation, route, logout }) {
   };
 
   const handleAddDevice = async () => {
-    if (!deviceLocation.trim()) {
-      Alert.alert('Error', 'Please enter a location');
+  if (!deviceLocation.trim()) {
+    Alert.alert('Error', 'Please enter a location');
+    return;
+  }
+
+  setIsCreating(true);
+  try {
+    const token = await AsyncStorage.getItem('accessToken');
+    if (!token) {
+      Alert.alert('Error', 'No token found. Please login again.');
+      setIsCreating(false);
       return;
     }
 
-    setIsCreating(true);
-    try {
-      const token = await AsyncStorage.getItem('accessToken');
-      const decoded = jwtDecode(token);
-      const userId = decoded.id || decoded.user_id || decoded.sub;
+    const decoded = jwtDecode(token);
+    const userId = decoded.id || decoded.user_id || decoded.sub;
 
-      console.log('Creating device with userId:', userId);
-      console.log('Device data:', { name: deviceName, location: deviceLocation, user_id: userId });
-
-      const res = await api.post('/api/devices', {
-        name: deviceName,
-        location: deviceLocation,
-        rtsp_url: '',
-        user_id: userId
-      });
-      console.log('Device created:', res.data);
-      Alert.alert('Success', 'Camera added!');
-      closeAddModal();
-      loadDevices();
-    } catch (e) {
-      console.error('Add device error:', e.response?.data || e.message);
-      Alert.alert('Error', e.response?.data?.message || 'Failed to add device');
+    if (!userId) {
+      Alert.alert('Error', 'Cannot extract user ID from token');
+      setIsCreating(false);
+      return;
     }
-    setIsCreating(false);
-  };
+
+    console.log('Creating device with userId:', userId);
+    console.log('Device data:', { name: deviceName, location: deviceLocation, user_id: userId });
+
+    const res = await api.post('/api/devices', {
+      name: deviceName,
+      location: deviceLocation,
+      rtsp_url: '',
+      user_id: userId
+    });
+    console.log('Device created:', res.data);
+    Alert.alert('Success', 'Camera added!');
+    closeAddModal();
+    loadDevices();
+  } catch (e) {
+    console.error('Add device error:', e.response?.data || e.message);
+    Alert.alert('Error', e.response?.data?.message || 'Failed to add device');
+  }
+  setIsCreating(false);
+};
 
   return (
     <View style={s.container}>
