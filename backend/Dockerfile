@@ -42,7 +42,7 @@ RUN addgroup -g 1001 -S nodejs && adduser -S nodejs -u 1001
 
 # Copy from builder
 COPY --from=builder --chown=nodejs:nodejs /app/node_modules ./node_modules
-COPY --from=builder --chown=nodejs:nodejs /app . .
+COPY --from=builder --chown=nodejs:nodejs /app . 
 
 # Switch to non-root user
 USER nodejs
