@@ -17,10 +17,11 @@ const generateToken = (payload, expiresIn = config.JWT.expiresIn) => {
 };
 
 // Generate access and refresh token pair
-const generateTokenPair = (userId, email) => {
+const generateTokenPair = (userId, email, organizationId) => {
   const payload = {
     userId,
     email,
+    organizationId,  // ✅ ADD THIS
     type: 'access',
   };
 
