@@ -1,4 +1,4 @@
-﻿Copyconst Device = require('../models/Device');
+﻿const Device = require('../models/Device');
 const logger = require('../utils/logger');
 
 exports.getDevices = async (req, res, next) => {
