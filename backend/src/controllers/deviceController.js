@@ -25,24 +25,30 @@ exports.getDevice = async (req, res, next) => {
 
 exports.createDevice = async (req, res, next) => {
   try {
-    const { name, location, rtsp_url } = req.body;
-    
-    if (!name || !location) {
-      return res.status(400).json({ success: false, message: 'Name and location are required' });
+    const { name, location, cameraUrl, rtspUrl, resolution } = req.body;
+    const userId = req.user.userId;  // From JWT token
+    const organizationId = req.user.organizationId;  // ← FROM JWT TOKEN
+
+    // Validate
+    if (!name || !organizationId) {
+      return res.status(400).json({ success: false, message: 'Missing required fields' });
     }
-    
-    const device = await Device.create(
-      req.user.userId,
-      req.user.organization_id,
-      name,
-      location,
-      rtsp_url || ''
+
+    // Create device
+    const result = await db.query(
+      `INSERT INTO devices (organization_id, user_id, name, location, camera_url, rtsp_url, resolution, is_active, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, true, NOW(), NOW())
+       RETURNING *`,
+      [organizationId, userId, name, location, cameraUrl || null, rtspUrl || null, resolution || '1080p']
     );
-    
-    res.status(201).json({ success: true, data: device });
-  } catch (err) { 
-    logger.error('Error creating device', { error: err.message });
-    next(err); 
+
+    res.status(201).json({
+      success: true,
+      data: result.rows[0]
+    });
+  } catch (err) {
+    logger.error('Create device error', { error: err.message });
+    next(err);
   }
 };
 
