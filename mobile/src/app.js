@@ -132,15 +132,23 @@ function DashboardScreen({ navigation, route, logout }) {
   const [devices, setDevices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [mode, setMode] = useState('viewer');
+  const [error, setError] = useState(null);
   const user = route.params?.user;
 
   useEffect(() => { loadDevices(); }, []);
 
   const loadDevices = async () => {
     try {
+      console.log('Loading devices...');
       const res = await api.get('/api/devices');
+      console.log('Devices response:', res.data);
       setDevices(res.data.data || []);
-    } catch (e) { console.log('Error:', e.message); }
+      setError(null);
+    } catch (e) { 
+      console.log('Devices error:', e.response?.data || e.message);
+      setError(e.response?.data?.message || 'Failed to load devices');
+      setDevices([]);
+    }
     setLoading(false);
   };
 
@@ -175,6 +183,11 @@ function DashboardScreen({ navigation, route, logout }) {
         <View style={s.stat}><Text style={s.statN}>{devices.filter(d=>d.is_active).length}</Text><Text style={s.statL}>Online</Text></View>
         <View style={s.stat}><Text style={s.statN}>11</Text><Text style={s.statL}>Days</Text></View>
       </View>
+      {error && (
+        <View style={{backgroundColor:'#ff444440', padding:12, margin:16, borderRadius:8, borderWidth:1, borderColor:'#ff4444'}}>
+          <Text style={{color:'#ff4444', fontSize:14}}>⚠️ {error}</Text>
+        </View>
+      )}
       {loading ? <ActivityIndicator color="#00ff88" style={{marginTop:40}} /> :
       <FlatList
         data={devices}
