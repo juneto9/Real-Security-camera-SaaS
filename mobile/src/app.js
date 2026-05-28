@@ -157,7 +157,7 @@ function DashboardScreen({ navigation, route, logout }) {
       if (!name) return;
       Alert.prompt('Location', 'Location:', async (loc) => {
         try {
-          await api.post('/api/devices', { device_name: name, location: loc || 'Unknown', device_type: 'camera' });
+          await api.post('/api/devices', { name, location: loc || 'Unknown', rtsp_url: '' });
           loadDevices();
         } catch (e) { Alert.alert('Error', 'Failed to add device'); }
       });
@@ -168,7 +168,9 @@ function DashboardScreen({ navigation, route, logout }) {
     <View style={s.container}>
       <View style={s.header}>
         <Text style={s.title}>🔒 Real Security Camera</Text>
-        <TouchableOpacity onPress={logout}><Text style={s.logout}>Logout</Text></TouchableOpacity>
+        <TouchableOpacity style={s.logoutBtn} onPress={logout}>
+          <Text style={s.logout}>Logout</Text>
+        </TouchableOpacity>
       </View>
       <View style={s.modeRow}>
         <TouchableOpacity style={[s.modeBtn, mode==='camera' && s.modeBtnOn]} onPress={() => setMode('camera')}>
@@ -201,7 +203,7 @@ function DashboardScreen({ navigation, route, logout }) {
           <TouchableOpacity style={s.card} onPress={() => navigation.navigate('Camera', { device: item, mode })}>
             <Text style={{fontSize:32}}>📷</Text>
             <View style={[s.dot,{backgroundColor:item.is_active?'#00ff88':'#666'}]} />
-            <Text style={s.cardName}>{item.device_name}</Text>
+            <Text style={s.cardName}>{item.name}</Text>
             <Text style={s.cardLoc}>📍 {item.location||'No location'}</Text>
             <View style={s.cardBtn}>
               <Text style={s.cardBtnTxt}>{mode==='camera'?'Use as Camera':'View Stream'}</Text>
@@ -239,7 +241,7 @@ function CameraScreen({ navigation, route }) {
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Text style={{color:'#00ff88',fontSize:16}}>← Back</Text>
         </TouchableOpacity>
-        <Text style={s.camTitle}>{device?.device_name || 'Camera'}</Text>
+        <Text style={s.camTitle}>{device?.name || 'Camera'}</Text>
         <View style={[s.recDot, recording && s.recDotOn]} />
       </View>
       <View style={s.camBody}>
@@ -314,35 +316,241 @@ function App() {
 }
 
 const s = StyleSheet.create({
+  c: {
+    flex: 1,
+    backgroundColor: '#000',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   container: {
     flex: 1,
     backgroundColor: '#000',
   },
   header: {
     backgroundColor: '#111',
-    padding: 16,
-    paddingTop: 20,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 16,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
   title: {
     color: '#00ff88',
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: 'bold',
     flex: 1,
   },
+  logoutBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: '#1a1a1a',
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#ff4444',
+  },
   logout: {
     color: '#ff4444',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  sub: {
+    color: '#666',
+    fontSize: 14,
+    marginBottom: 24,
+    textAlign: 'center',
+  },
+  input: {
+    backgroundColor: '#1a1a1a',
+    borderWidth: 1,
+    borderColor: '#333',
+    borderRadius: 6,
+    color: '#fff',
+    padding: 12,
+    marginBottom: 12,
+    fontSize: 14,
+  },
+  btn: {
+    backgroundColor: '#00ff88',
+    borderRadius: 6,
+    padding: 14,
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  btxt: {
+    color: '#000',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  link: {
+    color: '#00ff88',
+    fontSize: 14,
+    textAlign: 'center',
+  },
+  modeRow: {
+    flexDirection: 'row',
+    paddingHorizontal: 8,
+    paddingVertical: 12,
+    gap: 8,
+  },
+  modeBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#333',
+    alignItems: 'center',
+  },
+  modeBtnOn: {
+    backgroundColor: '#00ff88',
+    borderColor: '#00ff88',
+  },
+  modeTxt: {
+    color: '#666',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  modeTxtOn: {
+    color: '#000',
+  },
+  stats: {
+    flexDirection: 'row',
+    paddingHorizontal: 8,
+    paddingVertical: 12,
+    gap: 8,
+  },
+  stat: {
+    flex: 1,
+    backgroundColor: '#111',
+    borderRadius: 6,
+    padding: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#333',
+  },
+  statN: {
+    color: '#00ff88',
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  statL: {
+    color: '#666',
+    fontSize: 11,
+    marginTop: 4,
+  },
+  card: {
+    flex: 1,
+    backgroundColor: '#111',
+    borderRadius: 8,
+    padding: 12,
+    margin: 4,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#333',
+  },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginTop: 8,
+  },
+  cardName: {
+    color: '#fff',
     fontSize: 14,
     fontWeight: 'bold',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: '#1a1a1a',
-    borderRadius: 6,
-    overflow: 'hidden',
+    marginTop: 8,
   },
-  // ... rest of styles
+  cardLoc: {
+    color: '#666',
+    fontSize: 11,
+    marginTop: 4,
+  },
+  cardBtn: {
+    backgroundColor: '#00ff88',
+    borderRadius: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginTop: 8,
+  },
+  cardBtnTxt: {
+    color: '#000',
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+  fab: {
+    position: 'absolute',
+    bottom: 20,
+    right: 20,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#00ff88',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#00ff88',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  camHeader: {
+    backgroundColor: '#111',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#333',
+  },
+  camTitle: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 'bold',
+    flex: 1,
+    textAlign: 'center',
+  },
+  recDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#333',
+  },
+  recDotOn: {
+    backgroundColor: '#ff4444',
+  },
+  camBody: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  camControls: {
+    flexDirection: 'row',
+    paddingHorizontal: 8,
+    paddingVertical: 12,
+    gap: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#333',
+  },
+  ctrlBtn: {
+    flex: 1,
+    backgroundColor: '#111',
+    borderRadius: 6,
+    padding: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#333',
+  },
+  ctrlBtnOn: {
+    backgroundColor: '#00ff88',
+    borderColor: '#00ff88',
+  },
+  ctrlTxt: {
+    color: '#666',
+    fontSize: 11,
+    marginTop: 4,
+    fontWeight: 'bold',
+  },
 });
 
 export default App;
