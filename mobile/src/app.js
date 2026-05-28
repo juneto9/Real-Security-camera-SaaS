@@ -50,17 +50,35 @@ function LoginScreen({ navigation, setToken }) {
 }
 
 function RegisterScreen({ navigation, setToken }) {
-  const [form, setForm] = useState({ email: '', password: '', first_name: '', last_name: '', org_name: '' });
+  const [form, setForm] = useState({ 
+    email: '', 
+    password: '', 
+    first_name: '', 
+    last_name: '', 
+    org_name: '' 
+  });
   const [loading, setLoading] = useState(false);
 
   const register = async () => {
-    if (!form.email || !form.password || !form.first_name || !form.last_name) return Alert.alert('Error', 'Fill all fields');
+    if (!form.email || !form.password || !form.first_name || !form.last_name || !form.org_name) {
+      return Alert.alert('Error', 'Fill all fields');
+    }
     setLoading(true);
     try {
-      const res = await api.post('/api/auth/register', form);
+      const res = await api.post('/api/auth/register', {
+        first_name: form.first_name,
+        last_name: form.last_name,
+        email: form.email,
+        password: form.password,
+        org_name: form.org_name
+      });
+      
+      console.log('Registration response:', res.data);
+      
       await AsyncStorage.setItem('accessToken', res.data.data.accessToken);
       await setToken(res.data.data.accessToken);
     } catch (e) {
+      console.log('Registration error:', e.response?.data);
       Alert.alert('Failed', e.response?.data?.message || 'Try again');
     }
     setLoading(false);
@@ -71,9 +89,26 @@ function RegisterScreen({ navigation, setToken }) {
       <Text style={s.title}>🔒 Real Security Camera</Text>
       <Text style={s.sub}>Create Account</Text>
       {['first_name','last_name','email','org_name'].map(f => (
-        <TextInput key={f} style={s.input} placeholder={f.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase())} placeholderTextColor="#666" value={form[f]} onChangeText={v=>setForm(p=>({...p,[f]:v}))} autoCapitalize={f==='email'?'none':'words'} editable={!loading} />
+        <TextInput 
+          key={f} 
+          style={s.input} 
+          placeholder={f.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase())} 
+          placeholderTextColor="#666" 
+          value={form[f]} 
+          onChangeText={v=>setForm(p=>({...p,[f]:v}))} 
+          autoCapitalize={f==='email'?'none':'words'} 
+          editable={!loading} 
+        />
       ))}
-      <TextInput style={s.input} placeholder="Password" placeholderTextColor="#666" value={form.password} onChangeText={v=>setForm(p=>({...p,password:v}))} secureTextEntry editable={!loading} />
+      <TextInput 
+        style={s.input} 
+        placeholder="Password" 
+        placeholderTextColor="#666" 
+        value={form.password} 
+        onChangeText={v=>setForm(p=>({...p,password:v}))} 
+        secureTextEntry 
+        editable={!loading} 
+      />
       <TouchableOpacity style={s.btn} onPress={register} disabled={loading}>
         {loading ? <ActivityIndicator color="#000" /> : <Text style={s.btxt}>Create Account</Text>}
       </TouchableOpacity>
