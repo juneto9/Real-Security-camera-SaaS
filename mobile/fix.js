@@ -1,4 +1,4 @@
-const fs = require('fs');
+Copyconst fs = require('fs');
 const content = `import { registerRootComponent } from 'expo';
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator, Alert, FlatList, KeyboardAvoidingView, Platform } from 'react-native';
@@ -40,7 +40,7 @@ function LoginScreen({ navigation }) {
 
   return (
     <KeyboardAvoidingView style={s.c} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-      <Text style={s.title}>🔒 SecureCamera</Text>
+      <Text style={s.title}>🔒 Real Security Camera</Text>
       <Text style={s.sub}>Enterprise Security System</Text>
       <TextInput style={s.input} placeholder="Email" placeholderTextColor="#666" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
       <TextInput style={s.input} placeholder="Password" placeholderTextColor="#666" value={password} onChangeText={setPassword} secureTextEntry />
@@ -73,7 +73,7 @@ function RegisterScreen({ navigation }) {
 
   return (
     <KeyboardAvoidingView style={s.c} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-      <Text style={s.title}>🔒 SecureCamera</Text>
+      <Text style={s.title}>🔒 Real Security Camera</Text>
       <Text style={s.sub}>Create Account</Text>
       {['first_name','last_name','email','org_name'].map(f => (
         <TextInput key={f} style={s.input} placeholder={f.replace(/_/g,' ').replace(/\\b\\w/g,c=>c.toUpperCase())} placeholderTextColor="#666" value={form[f]} onChangeText={v=>setForm(p=>({...p,[f]:v}))} autoCapitalize={f==='email'?'none':'words'} />
@@ -125,7 +125,7 @@ function DashboardScreen({ navigation, route }) {
   return (
     <View style={s.container}>
       <View style={s.header}>
-        <Text style={s.title}>🔒 SecureCamera</Text>
+        <Text style={s.title}>🔒 Real Security Camera</Text>
         <TouchableOpacity onPress={logout}><Text style={s.logout}>Logout</Text></TouchableOpacity>
       </View>
       <View style={s.modeRow}>
@@ -227,7 +227,7 @@ function App() {
     AsyncStorage.getItem('accessToken').then(t => { setToken(t); setReady(true); });
   }, []);
 
-  if (!ready) return <View style={s.c}><Text style={s.title}>🔒 SecureCamera</Text></View>;
+  if (!ready) return <View style={s.c}><Text style={s.title}>🔒 Real Security Camera</Text></View>;
 
   return (
     <NavigationContainer>
