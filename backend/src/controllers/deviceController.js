@@ -25,26 +25,27 @@ exports.getDevice = async (req, res, next) => {
 
 exports.createDevice = async (req, res, next) => {
   try {
-    const { name, location, cameraUrl, rtspUrl, resolution } = req.body;
-    const userId = req.user.userId;  // From JWT token
-    const organizationId = req.user.organizationId;  // ← FROM JWT TOKEN
+    const { name, location, rtspUrl } = req.body;
+    const userId = req.user.userId;
+    const organizationId = req.user.organizationId;
 
     // Validate
     if (!name || !organizationId) {
       return res.status(400).json({ success: false, message: 'Missing required fields' });
     }
 
-    // Create device
-    const result = await db.query(
-      `INSERT INTO devices (organization_id, user_id, name, location, camera_url, rtsp_url, resolution, is_active, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, true, NOW(), NOW())
-       RETURNING *`,
-      [organizationId, userId, name, location, cameraUrl || null, rtspUrl || null, resolution || '1080p']
+    // Call Device.create with correct parameter order
+    const device = await Device.create(
+      userId,           // 1st parameter
+      organizationId,   // 2nd parameter
+      name,             // 3rd parameter
+      location,         // 4th parameter
+      rtspUrl || ''     // 5th parameter
     );
 
     res.status(201).json({
       success: true,
-      data: result.rows[0]
+      data: device
     });
   } catch (err) {
     logger.error('Create device error', { error: err.message });
