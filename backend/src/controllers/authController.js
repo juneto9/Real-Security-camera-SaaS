@@ -43,8 +43,12 @@ exports.register = async (req, res, next) => {
     );
     const user = userResult.rows[0];
 
-    // Generate tokens
-    const { accessToken, refreshToken } = jwt.generateTokenPair(user.id, user.email);
+    // ✅ PASS organizationId to generateTokenPair
+    const { accessToken, refreshToken } = jwt.generateTokenPair(
+      user.id, 
+      user.email,
+      user.organization_id  // ← ADD THIS
+    );
 
     logger.info('User registered', { userId: user.id, orgId: org.id, email: user.email });
 
@@ -63,7 +67,7 @@ exports.login = async (req, res, next) => {
     const { email, password } = req.body;
 
     const result = await db.query(
-      `SELECT u.*, o.name as org_name, o.slug as org_slug
+      `SELECT u.*, o.name as org_name, o.slug as org_slug, o.id as org_id
        FROM users u
        JOIN organizations o ON u.organization_id = o.id
        WHERE u.email = $1 AND u.deleted_at IS NULL`,
@@ -91,7 +95,12 @@ exports.login = async (req, res, next) => {
       [req.ip, user.id]
     );
 
-    const { accessToken, refreshToken } = jwt.generateTokenPair(user.id, user.email);
+    // ✅ PASS organizationId to generateTokenPair
+    const { accessToken, refreshToken } = jwt.generateTokenPair(
+      user.id, 
+      user.email,
+      user.org_id  // ← ADD THIS
+    );
 
     const { password_hash, two_factor_secret, password_reset_token, ...safeUser } = user;
 
