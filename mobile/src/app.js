@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator, Alert, FlatList, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator, Alert, FlatList, KeyboardAvoidingView, Platform, Modal } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -104,6 +104,11 @@ function DashboardScreen({ navigation, route, logout }) {
   const [loading, setLoading] = useState(true);
   const [mode, setMode] = useState('viewer');
   const [error, setError] = useState(null);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [deviceName, setDeviceName] = useState('');
+  const [deviceLocation, setDeviceLocation] = useState('');
+  const [step, setStep] = useState(1);
+  const [isCreating, setIsCreating] = useState(false);
 
   useEffect(() => { loadDevices(); }, []);
 
@@ -122,40 +127,53 @@ function DashboardScreen({ navigation, route, logout }) {
     setLoading(false);
   };
 
-  const addDevice = () => {
-    console.log('Add device button pressed');
-    Alert.prompt('Add Camera', 'Enter device name:', [
-      { text: 'Cancel', onPress: () => console.log('Cancelled'), style: 'cancel' },
-      {
-        text: 'Next',
-        onPress: (name) => {
-          if (!name || name.trim() === '') {
-            Alert.alert('Error', 'Device name cannot be empty');
-            return;
-          }
-          console.log('Device name entered:', name);
-          Alert.prompt('Enter Location', 'Where is this camera located?', [
-            { text: 'Cancel', onPress: () => console.log('Location cancelled'), style: 'cancel' },
-            {
-              text: 'Add',
-              onPress: async (location) => {
-                try {
-                  const loc = location || 'Unknown';
-                  console.log('Creating device:', { name, location: loc });
-                  const res = await api.post('/api/devices', { name, location: loc, rtsp_url: '' });
-                  console.log('Device created:', res.data);
-                  Alert.alert('Success', 'Camera added!');
-                  loadDevices();
-                } catch (e) {
-                  console.error('Add device error:', e.response?.data || e.message);
-                  Alert.alert('Error', e.response?.data?.message || 'Failed to add device');
-                }
-              },
-            },
-          ], 'plain-text');
-        },
-      },
-    ], 'plain-text');
+  const openAddModal = () => {
+    setDeviceName('');
+    setDeviceLocation('');
+    setStep(1);
+    setShowAddModal(true);
+  };
+
+  const closeAddModal = () => {
+    setShowAddModal(false);
+    setDeviceName('');
+    setDeviceLocation('');
+    setStep(1);
+  };
+
+  const handleNextStep = () => {
+    if (step === 1) {
+      if (!deviceName.trim()) {
+        Alert.alert('Error', 'Please enter a device name');
+        return;
+      }
+      setStep(2);
+    }
+  };
+
+  const handleAddDevice = async () => {
+    if (!deviceLocation.trim()) {
+      Alert.alert('Error', 'Please enter a location');
+      return;
+    }
+
+    setIsCreating(true);
+    try {
+      console.log('Creating device:', { name: deviceName, location: deviceLocation });
+      const res = await api.post('/api/devices', {
+        name: deviceName,
+        location: deviceLocation,
+        rtsp_url: ''
+      });
+      console.log('Device created:', res.data);
+      Alert.alert('Success', 'Camera added!');
+      closeAddModal();
+      loadDevices();
+    } catch (e) {
+      console.error('Add device error:', e.response?.data || e.message);
+      Alert.alert('Error', e.response?.data?.message || 'Failed to add device');
+    }
+    setIsCreating(false);
   };
 
   return (
@@ -181,13 +199,62 @@ function DashboardScreen({ navigation, route, logout }) {
       </View>
       {error && <View style={{backgroundColor:'#ff444440', padding:12, margin:16, borderRadius:8, borderWidth:1, borderColor:'#ff4444'}}><Text style={{color:'#ff4444', fontSize:14}}>⚠️ {error}</Text></View>}
       {loading ? <ActivityIndicator color="#00ff88" style={{marginTop:40}} /> : <FlatList data={devices} keyExtractor={i=>i.id} numColumns={2} contentContainerStyle={{padding:8}} refreshing={loading} onRefresh={loadDevices} ListEmptyComponent={<View style={{alignItems:'center',marginTop:60}}><Text style={{fontSize:48}}>📷</Text><Text style={{color:'#fff',fontSize:18,marginTop:16}}>No cameras yet</Text><Text style={{color:'#666',marginTop:8}}>Tap + to add one</Text></View>} renderItem={({item}) => (<TouchableOpacity style={s.card} onPress={() => navigation.navigate('Camera', { device: item, mode })}><Text style={{fontSize:32}}>📷</Text><View style={[s.dot,{backgroundColor:item.is_active?'#00ff88':'#666'}]} /><Text style={s.cardName}>{item.name}</Text><Text style={s.cardLoc}>📍 {item.location||'No location'}</Text><View style={s.cardBtn}><Text style={s.cardBtnTxt}>{mode==='camera'?'Use as Camera':'View Stream'}</Text></View></TouchableOpacity>)} />}
-      <TouchableOpacity style={s.fab} onPress={addDevice}>
+      <TouchableOpacity style={s.fab} onPress={openAddModal}>
         <Text style={{color:'#000',fontSize:32,fontWeight:'bold'}}>+</Text>
       </TouchableOpacity>
+
+      <Modal visible={showAddModal} transparent animationType="slide" onRequestClose={closeAddModal}>
+        <View style={s.modalOverlay}>
+          <View style={s.modalContent}>
+            {step === 1 ? (
+              <>
+                <Text style={s.modalTitle}>Add Camera</Text>
+                <Text style={s.modalSubtitle}>Enter device name</Text>
+                <TextInput
+                  style={s.modalInput}
+                  placeholder="Device Name"
+                  placeholderTextColor="#666"
+                  value={deviceName}
+                  onChangeText={setDeviceName}
+                  editable={!isCreating}
+                />
+                <View style={s.modalButtonRow}>
+                  <TouchableOpacity style={[s.modalBtn, s.modalBtnCancel]} onPress={closeAddModal} disabled={isCreating}>
+                    <Text style={s.modalBtnTxt}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[s.modalBtn, s.modalBtnPrimary]} onPress={handleNextStep} disabled={isCreating}>
+                    <Text style={s.modalBtnTxt}>Next</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            ) : (
+              <>
+                <Text style={s.modalTitle}>Enter Location</Text>
+                <Text style={s.modalSubtitle}>Where is this camera located?</Text>
+                <TextInput
+                  style={s.modalInput}
+                  placeholder="Location"
+                  placeholderTextColor="#666"
+                  value={deviceLocation}
+                  onChangeText={setDeviceLocation}
+                  editable={!isCreating}
+                />
+                <View style={s.modalButtonRow}>
+                  <TouchableOpacity style={[s.modalBtn, s.modalBtnCancel]} onPress={() => setStep(1)} disabled={isCreating}>
+                    <Text style={s.modalBtnTxt}>Back</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[s.modalBtn, s.modalBtnPrimary]} onPress={handleAddDevice} disabled={isCreating}>
+                    {isCreating ? <ActivityIndicator color="#000" /> : <Text style={s.modalBtnTxt}>Add Device</Text>}
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
-
 function CameraScreen({ navigation, route }) {
   const { device, mode } = route.params || {};
   const [torch, setTorch] = useState(false);
@@ -319,6 +386,16 @@ const s = StyleSheet.create({
   ctrlBtn: { flex: 1, backgroundColor: '#111', borderRadius: 6, padding: 12, alignItems: 'center', borderWidth: 1, borderColor: '#333' },
   ctrlBtnOn: { backgroundColor: '#00ff88', borderColor: '#00ff88' },
   ctrlTxt: { color: '#666', fontSize: 11, marginTop: 4, fontWeight: 'bold' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center' },
+  modalContent: { backgroundColor: '#111', borderRadius: 12, padding: 24, width: '85%', borderWidth: 1, borderColor: '#333' },
+  modalTitle: { color: '#00ff88', fontSize: 20, fontWeight: 'bold', marginBottom: 8, textAlign: 'center' },
+  modalSubtitle: { color: '#666', fontSize: 14, marginBottom: 16, textAlign: 'center' },
+  modalInput: { backgroundColor: '#1a1a1a', borderWidth: 1, borderColor: '#333', borderRadius: 6, color: '#fff', padding: 12, marginBottom: 20, fontSize: 14 },
+  modalButtonRow: { flexDirection: 'row', gap: 12 },
+  modalBtn: { flex: 1, paddingVertical: 12, borderRadius: 6, alignItems: 'center' },
+  modalBtnCancel: { backgroundColor: '#1a1a1a', borderWidth: 1, borderColor: '#666' },
+  modalBtnPrimary: { backgroundColor: '#00ff88' },
+  modalBtnTxt: { color: '#000', fontSize: 14, fontWeight: 'bold' },
 });
 
 export default App;
