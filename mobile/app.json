@@ -1,4 +1,4 @@
-﻿
+{
   "expo": {
     "name": "SecureCamera",
     "slug": "secure-camera",
@@ -36,13 +36,7 @@
     },
     "plugins": [
       "expo-camera",
-      "expo-media-library",
-      [
-        "expo-brightness",
-        {
-          "locationWhenInUsePermission": "Allow SecureCamera to check light levels for night vision"
-        }
-      ]
+      "expo-media-library"
     ]
   }
 }
