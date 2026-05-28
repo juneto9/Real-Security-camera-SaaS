@@ -1,0 +1,7 @@
+{
+  "dependencies": {
+    "date-format": "^4.0.14",
+    "streamroller": "^3.1.5",
+    "uuid": "^14.0.0"
+  }
+}
