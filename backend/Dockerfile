@@ -1,4 +1,4 @@
-﻿# ============================================================================
+﻿Copy# ============================================================================
 # Multi-stage build for Security Camera SaaS
 # ============================================================================
 
@@ -8,15 +8,15 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 # Install build dependencies for native modules (including wrtc)
-RUN apk add --no-cache \\
-    python3 \\
-    make \\
-    g++ \\
-    cairo-dev \\
-    jpeg-dev \\
-    pango-dev \\
-    giflib-dev \\
-    pixman-dev \\
+RUN apk add --no-cache \
+    python3 \
+    make \
+    g++ \
+    cairo-dev \
+    jpeg-dev \
+    pango-dev \
+    giflib-dev \
+    pixman-dev \
     ffmpeg
 
 # Copy package files
@@ -51,7 +51,7 @@ USER nodejs
 EXPOSE 3000
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \\
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD node -e "require('http').get('http://localhost:3000/health', (r) => {if (r.statusCode !== 200) throw new Error(r.statusCode)})"
 
 # Use dumb-init to handle signals properly
