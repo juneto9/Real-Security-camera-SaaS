@@ -42,8 +42,13 @@ app.use((req, res, next) => {
   next();
 });
 
+// Health check - simple and always responsive
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString(), uptime: process.uptime() });
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+  });
 });
 
 app.use('/api/auth', authRoutes);
@@ -58,14 +63,44 @@ app.use((req, res) => {
 
 app.use(errorHandler);
 
+let dbConnected = false;
+let spacesConnected = false;
+
+const connectDatabase = async () => {
+  try {
+    const connected = await db.testConnection();
+    if (connected) {
+      dbConnected = true;
+      logger.info('Database connected successfully');
+    }
+  } catch (error) {
+    logger.warn('Database connection failed', { error: error.message });
+    dbConnected = false;
+    // Retry in 5 seconds
+    setTimeout(connectDatabase, 5000);
+  }
+};
+
+const connectSpaces = async () => {
+  try {
+    const { testConnection: testSpaces } = require('./utils/spacesClient');
+    spacesConnected = await testSpaces();
+    if (spacesConnected) {
+      logger.info('Spaces storage connected successfully');
+    } else {
+      logger.warn('Spaces storage not connected - video uploads will fail');
+      setTimeout(connectSpaces, 5000);
+    }
+  } catch (error) {
+    logger.warn('Spaces connection failed', { error: error.message });
+    spacesConnected = false;
+    setTimeout(connectSpaces, 5000);
+  }
+};
+
 const startServer = async () => {
   try {
-    const dbConnected = await db.testConnection();
-    const { testConnection: testSpaces } = require('./utils/spacesClient');
-    const spacesConnected = await testSpaces();
-    if (!spacesConnected) logger.warn('Spaces storage not connected - video uploads will fail');
-    if (!dbConnected) throw new Error('Failed to connect to database');
-
+    // Start server immediately
     const server = app.listen(config.PORT, () => {
       logger.info(`Server started`, {
         port: config.PORT,
@@ -74,11 +109,26 @@ const startServer = async () => {
       });
     });
 
+    // Connect to services in background (non-blocking)
+    connectDatabase();
+    connectSpaces();
+
     process.on('SIGTERM', async () => {
-      server.close(async () => { await db.close(); process.exit(0); });
+      logger.info('SIGTERM signal received: closing HTTP server');
+      server.close(async () => {
+        await db.close();
+        logger.info('HTTP server closed');
+        process.exit(0);
+      });
     });
+
     process.on('SIGINT', async () => {
-      server.close(async () => { await db.close(); process.exit(0); });
+      logger.info('SIGINT signal received: closing HTTP server');
+      server.close(async () => {
+        await db.close();
+        logger.info('HTTP server closed');
+        process.exit(0);
+      });
     });
   } catch (error) {
     logger.error('Failed to start server', { error: error.message });
