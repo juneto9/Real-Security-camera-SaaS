@@ -27,17 +27,13 @@ function LoginScreen({ navigation, setToken }) {
       console.log('Attempting login with:', email);
       const res = await api.post('/api/auth/login', { email, password });
       console.log('Login response:', res.data);
-      
       const token = res.data.data.accessToken;
-      if (!token) {
-        return Alert.alert('Error', 'No token received from server');
-      }
-      
+      if (!token) return Alert.alert('Error', 'No token received');
       await AsyncStorage.setItem('accessToken', token);
       await setToken(token);
     } catch (e) {
       console.log('Login error:', e.response?.data || e.message);
-      Alert.alert('Login Failed', e.response?.data?.message || e.response?.data?.errors?.[0]?.message || 'Check credentials');
+      Alert.alert('Login Failed', e.response?.data?.message || 'Check credentials');
     }
     setLoading(false);
   };
@@ -59,13 +55,7 @@ function LoginScreen({ navigation, setToken }) {
 }
 
 function RegisterScreen({ navigation, setToken }) {
-  const [form, setForm] = useState({ 
-    email: '', 
-    password: '', 
-    first_name: '', 
-    last_name: '', 
-    org_name: '' 
-  });
+  const [form, setForm] = useState({ email: '', password: '', first_name: '', last_name: '', org_name: '' });
   const [loading, setLoading] = useState(false);
 
   const register = async () => {
@@ -81,9 +71,7 @@ function RegisterScreen({ navigation, setToken }) {
         password: form.password,
         org_name: form.org_name
       });
-      
       console.log('Registration response:', res.data);
-      
       await AsyncStorage.setItem('accessToken', res.data.data.accessToken);
       await setToken(res.data.data.accessToken);
     } catch (e) {
@@ -98,26 +86,9 @@ function RegisterScreen({ navigation, setToken }) {
       <Text style={s.title}>🔒 Real Security Camera</Text>
       <Text style={s.sub}>Create Account</Text>
       {['first_name','last_name','email','org_name'].map(f => (
-        <TextInput 
-          key={f} 
-          style={s.input} 
-          placeholder={f.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase())} 
-          placeholderTextColor="#666" 
-          value={form[f]} 
-          onChangeText={v=>setForm(p=>({...p,[f]:v}))} 
-          autoCapitalize={f==='email'?'none':'words'} 
-          editable={!loading} 
-        />
+        <TextInput key={f} style={s.input} placeholder={f.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase())} placeholderTextColor="#666" value={form[f]} onChangeText={v=>setForm(p=>({...p,[f]:v}))} autoCapitalize={f==='email'?'none':'words'} editable={!loading} />
       ))}
-      <TextInput 
-        style={s.input} 
-        placeholder="Password" 
-        placeholderTextColor="#666" 
-        value={form.password} 
-        onChangeText={v=>setForm(p=>({...p,password:v}))} 
-        secureTextEntry 
-        editable={!loading} 
-      />
+      <TextInput style={s.input} placeholder="Password" placeholderTextColor="#666" value={form.password} onChangeText={v=>setForm(p=>({...p,password:v}))} secureTextEntry editable={!loading} />
       <TouchableOpacity style={s.btn} onPress={register} disabled={loading}>
         {loading ? <ActivityIndicator color="#000" /> : <Text style={s.btxt}>Create Account</Text>}
       </TouchableOpacity>
@@ -133,7 +104,6 @@ function DashboardScreen({ navigation, route, logout }) {
   const [loading, setLoading] = useState(true);
   const [mode, setMode] = useState('viewer');
   const [error, setError] = useState(null);
-  const user = route.params?.user;
 
   useEffect(() => { loadDevices(); }, []);
 
@@ -153,70 +123,70 @@ function DashboardScreen({ navigation, route, logout }) {
   };
 
   const addDevice = () => {
-  console.log('Add device button pressed');
-  
-  Alert.prompt(
-    'Add Camera',
-    'Enter device name:',
-    [
-      {
-        text: 'Cancel',
-        onPress: () => {
-          console.log('Cancelled');
-        },
-        style: 'cancel',
-      },
+    console.log('Add device button pressed');
+    Alert.prompt('Add Camera', 'Enter device name:', [
+      { text: 'Cancel', onPress: () => console.log('Cancelled'), style: 'cancel' },
       {
         text: 'Next',
         onPress: (name) => {
-          console.log('Name entered:', name);
           if (!name || name.trim() === '') {
             Alert.alert('Error', 'Device name cannot be empty');
             return;
           }
-          
-          Alert.prompt(
-            'Enter Location',
-            'Where is this camera located?',
-            [
-              {
-                text: 'Cancel',
-                onPress: () => {
-                  console.log('Location cancelled');
-                },
-                style: 'cancel',
+          console.log('Device name entered:', name);
+          Alert.prompt('Enter Location', 'Where is this camera located?', [
+            { text: 'Cancel', onPress: () => console.log('Location cancelled'), style: 'cancel' },
+            {
+              text: 'Add',
+              onPress: async (location) => {
+                try {
+                  const loc = location || 'Unknown';
+                  console.log('Creating device:', { name, location: loc });
+                  const res = await api.post('/api/devices', { name, location: loc, rtsp_url: '' });
+                  console.log('Device created:', res.data);
+                  Alert.alert('Success', 'Camera added!');
+                  loadDevices();
+                } catch (e) {
+                  console.error('Add device error:', e.response?.data || e.message);
+                  Alert.alert('Error', e.response?.data?.message || 'Failed to add device');
+                }
               },
-              {
-                text: 'Add',
-                onPress: async (location) => {
-                  try {
-                    const loc = location || 'Unknown';
-                    console.log('Creating device:', { name, location: loc });
-                    
-                    const res = await api.post('/api/devices', {
-                      name,
-                      location: loc,
-                      rtsp_url: ''
-                    });
-                    
-                    console.log('Device created successfully:', res.data);
-                    Alert.alert('Success', 'Camera added!');
-                    loadDevices();
-                  } catch (e) {
-                    console.error('Add device error:', e.response?.data || e.message);
-                    Alert.alert('Error', e.response?.data?.message || 'Failed to add device');
-                  }
-                },
-              },
-            ],
-            'plain-text'
-          );
+            },
+          ], 'plain-text');
         },
       },
-    ],
-    'plain-text'
+    ], 'plain-text');
+  };
+
+  return (
+    <View style={s.container}>
+      <View style={s.header}>
+        <Text style={s.title}>🔒 Real Security Camera</Text>
+        <TouchableOpacity style={s.logoutBtn} onPress={logout}>
+          <Text style={s.logout}>Logout</Text>
+        </TouchableOpacity>
+      </View>
+      <View style={s.modeRow}>
+        <TouchableOpacity style={[s.modeBtn, mode==='camera' && s.modeBtnOn]} onPress={() => setMode('camera')}>
+          <Text style={[s.modeTxt, mode==='camera' && s.modeTxtOn]}>📷 Camera</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[s.modeBtn, mode==='viewer' && s.modeBtnOn]} onPress={() => setMode('viewer')}>
+          <Text style={[s.modeTxt, mode==='viewer' && s.modeTxtOn]}>👁 Viewer</Text>
+        </TouchableOpacity>
+      </View>
+      <View style={s.stats}>
+        <View style={s.stat}><Text style={s.statN}>{devices.length}</Text><Text style={s.statL}>Cameras</Text></View>
+        <View style={s.stat}><Text style={s.statN}>{devices.filter(d=>d.is_active).length}</Text><Text style={s.statL}>Online</Text></View>
+        <View style={s.stat}><Text style={s.statN}>11</Text><Text style={s.statL}>Days</Text></View>
+      </View>
+      {error && <View style={{backgroundColor:'#ff444440', padding:12, margin:16, borderRadius:8, borderWidth:1, borderColor:'#ff4444'}}><Text style={{color:'#ff4444', fontSize:14}}>⚠️ {error}</Text></View>}
+      {loading ? <ActivityIndicator color="#00ff88" style={{marginTop:40}} /> : <FlatList data={devices} keyExtractor={i=>i.id} numColumns={2} contentContainerStyle={{padding:8}} refreshing={loading} onRefresh={loadDevices} ListEmptyComponent={<View style={{alignItems:'center',marginTop:60}}><Text style={{fontSize:48}}>📷</Text><Text style={{color:'#fff',fontSize:18,marginTop:16}}>No cameras yet</Text><Text style={{color:'#666',marginTop:8}}>Tap + to add one</Text></View>} renderItem={({item}) => (<TouchableOpacity style={s.card} onPress={() => navigation.navigate('Camera', { device: item, mode })}><Text style={{fontSize:32}}>📷</Text><View style={[s.dot,{backgroundColor:item.is_active?'#00ff88':'#666'}]} /><Text style={s.cardName}>{item.name}</Text><Text style={s.cardLoc}>📍 {item.location||'No location'}</Text><View style={s.cardBtn}><Text style={s.cardBtnTxt}>{mode==='camera'?'Use as Camera':'View Stream'}</Text></View></TouchableOpacity>)} />}
+      <TouchableOpacity style={s.fab} onPress={addDevice}>
+        <Text style={{color:'#000',fontSize:32,fontWeight:'bold'}}>+</Text>
+      </TouchableOpacity>
+    </View>
   );
-};
+}
 
 function CameraScreen({ navigation, route }) {
   const { device, mode } = route.params || {};
@@ -273,10 +243,7 @@ function App() {
   const [token, setToken] = useState(null);
 
   useEffect(() => {
-    AsyncStorage.getItem('accessToken').then(t => { 
-      setToken(t); 
-      setReady(true); 
-    });
+    AsyncStorage.getItem('accessToken').then(t => { setToken(t); setReady(true); });
   }, []);
 
   const logout = async () => {
@@ -316,241 +283,42 @@ function App() {
 }
 
 const s = StyleSheet.create({
-  c: {
-    flex: 1,
-    backgroundColor: '#000',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  container: {
-    flex: 1,
-    backgroundColor: '#000',
-  },
-  header: {
-    backgroundColor: '#111',
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 16,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  title: {
-    color: '#00ff88',
-    fontSize: 22,
-    fontWeight: 'bold',
-    flex: 1,
-  },
-  logoutBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    backgroundColor: '#1a1a1a',
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: '#ff4444',
-  },
-  logout: {
-    color: '#ff4444',
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  sub: {
-    color: '#666',
-    fontSize: 14,
-    marginBottom: 24,
-    textAlign: 'center',
-  },
-  input: {
-    backgroundColor: '#1a1a1a',
-    borderWidth: 1,
-    borderColor: '#333',
-    borderRadius: 6,
-    color: '#fff',
-    padding: 12,
-    marginBottom: 12,
-    fontSize: 14,
-  },
-  btn: {
-    backgroundColor: '#00ff88',
-    borderRadius: 6,
-    padding: 14,
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  btxt: {
-    color: '#000',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  link: {
-    color: '#00ff88',
-    fontSize: 14,
-    textAlign: 'center',
-  },
-  modeRow: {
-    flexDirection: 'row',
-    paddingHorizontal: 8,
-    paddingVertical: 12,
-    gap: 8,
-  },
-  modeBtn: {
-    flex: 1,
-    paddingVertical: 10,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: '#333',
-    alignItems: 'center',
-  },
-  modeBtnOn: {
-    backgroundColor: '#00ff88',
-    borderColor: '#00ff88',
-  },
-  modeTxt: {
-    color: '#666',
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  modeTxtOn: {
-    color: '#000',
-  },
-  stats: {
-    flexDirection: 'row',
-    paddingHorizontal: 8,
-    paddingVertical: 12,
-    gap: 8,
-  },
-  stat: {
-    flex: 1,
-    backgroundColor: '#111',
-    borderRadius: 6,
-    padding: 12,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#333',
-  },
-  statN: {
-    color: '#00ff88',
-    fontSize: 20,
-    fontWeight: 'bold',
-  },
-  statL: {
-    color: '#666',
-    fontSize: 11,
-    marginTop: 4,
-  },
-  card: {
-    flex: 1,
-    backgroundColor: '#111',
-    borderRadius: 8,
-    padding: 12,
-    margin: 4,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#333',
-  },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginTop: 8,
-  },
-  cardName: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: 'bold',
-    marginTop: 8,
-  },
-  cardLoc: {
-    color: '#666',
-    fontSize: 11,
-    marginTop: 4,
-  },
-  cardBtn: {
-    backgroundColor: '#00ff88',
-    borderRadius: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    marginTop: 8,
-  },
-  cardBtnTxt: {
-    color: '#000',
-    fontSize: 10,
-    fontWeight: 'bold',
-  },
-  fab: {
-    position: 'absolute',
-    bottom: 20,
-    right: 20,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#00ff88',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#00ff88',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 5,
-  },
-  camHeader: {
-    backgroundColor: '#111',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderBottomWidth: 1,
-    borderBottomColor: '#333',
-  },
-  camTitle: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold',
-    flex: 1,
-    textAlign: 'center',
-  },
-  recDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#333',
-  },
-  recDotOn: {
-    backgroundColor: '#ff4444',
-  },
-  camBody: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  camControls: {
-    flexDirection: 'row',
-    paddingHorizontal: 8,
-    paddingVertical: 12,
-    gap: 8,
-    borderTopWidth: 1,
-    borderTopColor: '#333',
-  },
-  ctrlBtn: {
-    flex: 1,
-    backgroundColor: '#111',
-    borderRadius: 6,
-    padding: 12,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#333',
-  },
-  ctrlBtnOn: {
-    backgroundColor: '#00ff88',
-    borderColor: '#00ff88',
-  },
-  ctrlTxt: {
-    color: '#666',
-    fontSize: 11,
-    marginTop: 4,
-    fontWeight: 'bold',
-  },
+  c: { flex: 1, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' },
+  container: { flex: 1, backgroundColor: '#000' },
+  header: { backgroundColor: '#111', paddingHorizontal: 16, paddingTop: 12, paddingBottom: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  title: { color: '#00ff88', fontSize: 22, fontWeight: 'bold', flex: 1 },
+  logoutBtn: { paddingHorizontal: 12, paddingVertical: 6, backgroundColor: '#1a1a1a', borderRadius: 4, borderWidth: 1, borderColor: '#ff4444' },
+  logout: { color: '#ff4444', fontSize: 12, fontWeight: 'bold' },
+  sub: { color: '#666', fontSize: 14, marginBottom: 24, textAlign: 'center' },
+  input: { backgroundColor: '#1a1a1a', borderWidth: 1, borderColor: '#333', borderRadius: 6, color: '#fff', padding: 12, marginBottom: 12, fontSize: 14 },
+  btn: { backgroundColor: '#00ff88', borderRadius: 6, padding: 14, alignItems: 'center', marginBottom: 16 },
+  btxt: { color: '#000', fontSize: 16, fontWeight: 'bold' },
+  link: { color: '#00ff88', fontSize: 14, textAlign: 'center' },
+  modeRow: { flexDirection: 'row', paddingHorizontal: 8, paddingVertical: 12, gap: 8 },
+  modeBtn: { flex: 1, paddingVertical: 10, borderRadius: 6, borderWidth: 1, borderColor: '#333', alignItems: 'center' },
+  modeBtnOn: { backgroundColor: '#00ff88', borderColor: '#00ff88' },
+  modeTxt: { color: '#666', fontSize: 12, fontWeight: 'bold' },
+  modeTxtOn: { color: '#000' },
+  stats: { flexDirection: 'row', paddingHorizontal: 8, paddingVertical: 12, gap: 8 },
+  stat: { flex: 1, backgroundColor: '#111', borderRadius: 6, padding: 12, alignItems: 'center', borderWidth: 1, borderColor: '#333' },
+  statN: { color: '#00ff88', fontSize: 20, fontWeight: 'bold' },
+  statL: { color: '#666', fontSize: 11, marginTop: 4 },
+  card: { flex: 1, backgroundColor: '#111', borderRadius: 8, padding: 12, margin: 4, alignItems: 'center', borderWidth: 1, borderColor: '#333' },
+  dot: { width: 8, height: 8, borderRadius: 4, marginTop: 8 },
+  cardName: { color: '#fff', fontSize: 14, fontWeight: 'bold', marginTop: 8 },
+  cardLoc: { color: '#666', fontSize: 11, marginTop: 4 },
+  cardBtn: { backgroundColor: '#00ff88', borderRadius: 4, paddingHorizontal: 8, paddingVertical: 4, marginTop: 8 },
+  cardBtnTxt: { color: '#000', fontSize: 10, fontWeight: 'bold' },
+  fab: { position: 'absolute', bottom: 20, right: 20, width: 56, height: 56, borderRadius: 28, backgroundColor: '#00ff88', justifyContent: 'center', alignItems: 'center', shadowColor: '#00ff88', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 4, elevation: 5 },
+  camHeader: { backgroundColor: '#111', paddingHorizontal: 16, paddingVertical: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#333' },
+  camTitle: { color: '#fff', fontSize: 18, fontWeight: 'bold', flex: 1, textAlign: 'center' },
+  recDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#333' },
+  recDotOn: { backgroundColor: '#ff4444' },
+  camBody: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  camControls: { flexDirection: 'row', paddingHorizontal: 8, paddingVertical: 12, gap: 8, borderTopWidth: 1, borderTopColor: '#333' },
+  ctrlBtn: { flex: 1, backgroundColor: '#111', borderRadius: 6, padding: 12, alignItems: 'center', borderWidth: 1, borderColor: '#333' },
+  ctrlBtnOn: { backgroundColor: '#00ff88', borderColor: '#00ff88' },
+  ctrlTxt: { color: '#666', fontSize: 11, marginTop: 4, fontWeight: 'bold' },
 });
 
 export default App;
