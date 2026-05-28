@@ -1,8 +1,7 @@
 const dotenv = require('dotenv');
 const path = require('path');
-
+dotenv.config({ path: path.join(__dirname, '../.env') });
 // Load environment variables
-dotenv.config({ path: path.join(__dirname, '../../.env') });
 
 const config = {
   // Server
@@ -13,15 +12,16 @@ const config = {
 
   // Database
   DB: {
-    host: process.env.DB_HOST || 'localhost',
-    port: parseInt(process.env.DB_PORT || '5432', 10),
-    database: process.env.DB_NAME || 'security_camera',
-    user: process.env.DB_USER || 'postgres',
-    password: process.env.DB_PASSWORD || 'postgres',
-    max: parseInt(process.env.DB_POOL_SIZE || '20', 10),
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 2000,
-  },
+  host: process.env.DB_HOST || 'localhost',
+  port: parseInt(process.env.DB_PORT || '5432', 10),
+  database: process.env.DB_NAME || 'security_camera',
+  user: process.env.DB_USER || 'postgres',
+  password: process.env.DB_PASSWORD || 'postgres',
+  max: parseInt(process.env.DB_POOL_SIZE || '20', 10),
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 10000,
+  ssl: { rejectUnauthorized: false },
+},
 
   // JWT
   JWT: {

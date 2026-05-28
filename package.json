@@ -1,0 +1,26 @@
+{
+  "dependencies": {
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "@react-navigation/bottom-tabs": "^7.16.2",
+    "@react-navigation/native": "^7.2.5",
+    "@react-navigation/stack": "^7.9.3",
+    "axios": "^1.16.1",
+    "date-format": "^4.0.14",
+    "expo-av": "^16.0.8",
+    "expo-brightness": "^56.0.5",
+    "expo-camera": "^56.0.7",
+    "expo-file-system": "^56.0.7",
+    "expo-keep-awake": "^56.0.3",
+    "expo-media-library": "^56.0.6",
+    "expo-notifications": "^56.0.14",
+    "expo-sensors": "^56.0.5",
+    "react-native-gesture-handler": "~2.31.1",
+    "react-native-reanimated": "4.3.1",
+    "react-native-safe-area-context": "^5.8.0",
+    "react-native-screens": "^4.25.2",
+    "react-native-webrtc": "^124.0.7",
+    "streamroller": "^3.1.5",
+    "uuid": "^14.0.0",
+    "zustand": "^5.0.13"
+  }
+}

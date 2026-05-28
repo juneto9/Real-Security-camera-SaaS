@@ -1,7 +1,7 @@
 // backend/services/MotionEventService.js
 const MotionEventRepository = require('../repositories/MotionEventRepository');
 const logger = require('../utils/logger');
-const AppError = require('../utils/errorHandler');
+const AppError = require('../utils/AppError');
 
 class MotionEventService {
   async createMotionEvent(eventData, organizationId) {

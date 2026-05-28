@@ -12,8 +12,8 @@ const pool = new Pool({
   max: config.DB.max,
   idleTimeoutMillis: config.DB.idleTimeoutMillis,
   connectionTimeoutMillis: config.DB.connectionTimeoutMillis,
+  ssl: { rejectUnauthorized: false },
 });
-
 // Handle pool errors
 pool.on('error', (err) => {
   logger.error('Unexpected error on idle client', { error: err.message });

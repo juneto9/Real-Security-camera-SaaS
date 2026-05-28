@@ -1,0 +1,42 @@
+{
+  "expo": {
+    "name": "SecureCamera",
+    "slug": "secure-camera",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0a0a0a"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.securecamera.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Required to use your phone as a security camera",
+        "NSMicrophoneUsageDescription": "Required for video recording with audio",
+        "NSPhotoLibraryUsageDescription": "Required to save recordings"
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0a0a0a"
+      },
+      "package": "com.securecamera.app",
+      "permissions": [
+        "CAMERA",
+        "RECORD_AUDIO",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "FLASHLIGHT"
+      ]
+    },
+    "plugins": [
+      "expo-camera",
+      "expo-media-library"
+    ]
+  }
+}
