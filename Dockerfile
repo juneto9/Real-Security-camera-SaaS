@@ -7,13 +7,22 @@ FROM node:18-alpine AS builder
 
 WORKDIR /app
 
-# Install build dependencies
-RUN apk add --no-cache python3 make g++ cairo-dev jpeg-dev pango-dev giflib-dev ffmpeg
+# Install build dependencies for native modules (including wrtc)
+RUN apk add --no-cache \
+    python3 \
+    make \
+    g++ \
+    cairo-dev \
+    jpeg-dev \
+    pango-dev \
+    giflib-dev \
+    pixman-dev \
+    ffmpeg
 
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
+# Install dependencies (including wrtc)
 RUN npm ci --only=production
 
 # Copy application code
@@ -25,7 +34,7 @@ FROM node:18-alpine
 
 WORKDIR /app
 
-# Install runtime dependencies
+# Install only runtime dependencies (not build tools)
 RUN apk add --no-cache ffmpeg dumb-init
 
 # Create app user
