@@ -33,7 +33,7 @@ const authMiddleware = async (req, res, next) => {
 
     // Verify user still exists
     const result = await db.query(
-      'SELECT id, email, is_active FROM users WHERE id = $1',
+      'SELECT id, email, is_active, organization_id FROM users WHERE id = $1',
       [resolvedUserId]
     );
 
@@ -55,7 +55,9 @@ const authMiddleware = async (req, res, next) => {
     // Attach user to request
     req.user = {
       id: user.id,
+      userId: user.id,
       email: user.email,
+      organizationId: user.organization_id,
     };
 
     next();
