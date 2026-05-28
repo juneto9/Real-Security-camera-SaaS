@@ -1,3 +1,4 @@
+import jwtDecode from 'jwt-decode';
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator, Alert, FlatList, KeyboardAvoidingView, Platform, Modal } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
@@ -152,109 +153,37 @@ function DashboardScreen({ navigation, route, logout }) {
   };
 
   const handleAddDevice = async () => {
-    if (!deviceLocation.trim()) {
-      Alert.alert('Error', 'Please enter a location');
-      return;
-    }
+  if (!deviceLocation.trim()) {
+    Alert.alert('Error', 'Please enter a location');
+    return;
+  }
 
-    setIsCreating(true);
-    try {
-      console.log('Creating device:', { name: deviceName, location: deviceLocation });
-      const res = await api.post('/api/devices', {
-        name: deviceName,
-        location: deviceLocation,
-        rtsp_url: ''
-      });
-      console.log('Device created:', res.data);
-      Alert.alert('Success', 'Camera added!');
-      closeAddModal();
-      loadDevices();
-    } catch (e) {
-      console.error('Add device error:', e.response?.data || e.message);
-      Alert.alert('Error', e.response?.data?.message || 'Failed to add device');
-    }
-    setIsCreating(false);
-  };
-
-  return (
-    <View style={s.container}>
-      <View style={s.header}>
-        <Text style={s.title}>🔒 Real Security Camera</Text>
-        <TouchableOpacity style={s.logoutBtn} onPress={logout}>
-          <Text style={s.logout}>Logout</Text>
-        </TouchableOpacity>
-      </View>
-      <View style={s.modeRow}>
-        <TouchableOpacity style={[s.modeBtn, mode==='camera' && s.modeBtnOn]} onPress={() => setMode('camera')}>
-          <Text style={[s.modeTxt, mode==='camera' && s.modeTxtOn]}>📷 Camera</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[s.modeBtn, mode==='viewer' && s.modeBtnOn]} onPress={() => setMode('viewer')}>
-          <Text style={[s.modeTxt, mode==='viewer' && s.modeTxtOn]}>👁 Viewer</Text>
-        </TouchableOpacity>
-      </View>
-      <View style={s.stats}>
-        <View style={s.stat}><Text style={s.statN}>{devices.length}</Text><Text style={s.statL}>Cameras</Text></View>
-        <View style={s.stat}><Text style={s.statN}>{devices.filter(d=>d.is_active).length}</Text><Text style={s.statL}>Online</Text></View>
-        <View style={s.stat}><Text style={s.statN}>11</Text><Text style={s.statL}>Days</Text></View>
-      </View>
-      {error && <View style={{backgroundColor:'#ff444440', padding:12, margin:16, borderRadius:8, borderWidth:1, borderColor:'#ff4444'}}><Text style={{color:'#ff4444', fontSize:14}}>⚠️ {error}</Text></View>}
-      {loading ? <ActivityIndicator color="#00ff88" style={{marginTop:40}} /> : <FlatList data={devices} keyExtractor={i=>i.id} numColumns={2} contentContainerStyle={{padding:8}} refreshing={loading} onRefresh={loadDevices} ListEmptyComponent={<View style={{alignItems:'center',marginTop:60}}><Text style={{fontSize:48}}>📷</Text><Text style={{color:'#fff',fontSize:18,marginTop:16}}>No cameras yet</Text><Text style={{color:'#666',marginTop:8}}>Tap + to add one</Text></View>} renderItem={({item}) => (<TouchableOpacity style={s.card} onPress={() => navigation.navigate('Camera', { device: item, mode })}><Text style={{fontSize:32}}>📷</Text><View style={[s.dot,{backgroundColor:item.is_active?'#00ff88':'#666'}]} /><Text style={s.cardName}>{item.name}</Text><Text style={s.cardLoc}>📍 {item.location||'No location'}</Text><View style={s.cardBtn}><Text style={s.cardBtnTxt}>{mode==='camera'?'Use as Camera':'View Stream'}</Text></View></TouchableOpacity>)} />}
-      <TouchableOpacity style={s.fab} onPress={openAddModal}>
-        <Text style={{color:'#000',fontSize:32,fontWeight:'bold'}}>+</Text>
-      </TouchableOpacity>
-
-      <Modal visible={showAddModal} transparent animationType="slide" onRequestClose={closeAddModal}>
-        <View style={s.modalOverlay}>
-          <View style={s.modalContent}>
-            {step === 1 ? (
-              <>
-                <Text style={s.modalTitle}>Add Camera</Text>
-                <Text style={s.modalSubtitle}>Enter device name</Text>
-                <TextInput
-                  style={s.modalInput}
-                  placeholder="Device Name"
-                  placeholderTextColor="#666"
-                  value={deviceName}
-                  onChangeText={setDeviceName}
-                  editable={!isCreating}
-                />
-                <View style={s.modalButtonRow}>
-                  <TouchableOpacity style={[s.modalBtn, s.modalBtnCancel]} onPress={closeAddModal} disabled={isCreating}>
-                    <Text style={s.modalBtnTxt}>Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={[s.modalBtn, s.modalBtnPrimary]} onPress={handleNextStep} disabled={isCreating}>
-                    <Text style={s.modalBtnTxt}>Next</Text>
-                  </TouchableOpacity>
-                </View>
-              </>
-            ) : (
-              <>
-                <Text style={s.modalTitle}>Enter Location</Text>
-                <Text style={s.modalSubtitle}>Where is this camera located?</Text>
-                <TextInput
-                  style={s.modalInput}
-                  placeholder="Location"
-                  placeholderTextColor="#666"
-                  value={deviceLocation}
-                  onChangeText={setDeviceLocation}
-                  editable={!isCreating}
-                />
-                <View style={s.modalButtonRow}>
-                  <TouchableOpacity style={[s.modalBtn, s.modalBtnCancel]} onPress={() => setStep(1)} disabled={isCreating}>
-                    <Text style={s.modalBtnTxt}>Back</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={[s.modalBtn, s.modalBtnPrimary]} onPress={handleAddDevice} disabled={isCreating}>
-                    {isCreating ? <ActivityIndicator color="#000" /> : <Text style={s.modalBtnTxt}>Add Device</Text>}
-                  </TouchableOpacity>
-                </View>
-              </>
-            )}
-          </View>
-        </View>
-      </Modal>
-    </View>
-  );
-}
+  setIsCreating(true);
+  try {
+    // Get token and decode it
+    const token = await AsyncStorage.getItem('accessToken');
+    const decoded = jwtDecode(token);
+    const userId = decoded.id || decoded.user_id || decoded.sub;
+    
+    console.log('Creating device with userId:', userId);
+    console.log('Device data:', { name: deviceName, location: deviceLocation, user_id: userId });
+    
+    const res = await api.post('/api/devices', {
+      name: deviceName,
+      location: deviceLocation,
+      rtsp_url: '',
+      user_id: userId
+    });
+    console.log('Device created:', res.data);
+    Alert.alert('Success', 'Camera added!');
+    closeAddModal();
+    loadDevices();
+  } catch (e) {
+    console.error('Add device error:', e.response?.data || e.message);
+    Alert.alert('Error', e.response?.data?.message || 'Failed to add device');
+  }
+  setIsCreating(false);
+};
 function CameraScreen({ navigation, route }) {
   const { device, mode } = route.params || {};
   const [torch, setTorch] = useState(false);
