@@ -1,8 +1,11 @@
 import { registerRootComponent } from 'expo';
-import React, { useState } from 'react';
+import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { enableScreens } from 'react-native-screens';
+
+enableScreens();
 
 const Stack = createNativeStackNavigator();
 
@@ -10,10 +13,7 @@ function LoginScreen({ navigation }) {
   return (
     <View style={s.c}>
       <Text style={s.t}>🔒 SecureCamera</Text>
-      <TouchableOpacity style={s.btn} onPress={() => {
-        Alert.alert('Tapped!', 'Navigation working?');
-        navigation.navigate('Dashboard');
-      }}>
+      <TouchableOpacity style={s.btn} onPress={() => navigation.navigate('Dashboard')}>
         <Text style={s.btxt}>Open App</Text>
       </TouchableOpacity>
     </View>
@@ -24,7 +24,7 @@ function DashboardScreen() {
   return (
     <View style={s.c}>
       <Text style={s.t}>📷 Dashboard</Text>
-      <Text style={{color:'#666'}}>Navigation works!</Text>
+      <Text style={{color:'#00ff88',marginTop:20}}>Navigation works!</Text>
     </View>
   );
 }
