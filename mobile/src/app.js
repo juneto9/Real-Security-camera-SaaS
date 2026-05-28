@@ -313,42 +313,36 @@ function App() {
   );
 }
 
-const s = StyleSheet.create({
-  c: { flex:1, backgroundColor:'#0a0a0a', justifyContent:'center', alignItems:'center', padding:24 },
-  container: { flex:1, backgroundColor:'#0a0a0a' },
-  title: { color:'#00ff88', fontSize:28, fontWeight:'bold', textAlign:'center' },
-  sub: { color:'#666', fontSize:14, marginBottom:32, textAlign:'center' },
-  input: { backgroundColor:'#1a1a1a', color:'#fff', padding:14, borderRadius:8, marginBottom:12, fontSize:16, borderWidth:1, borderColor:'#333', width:'100%' },
-  btn: { backgroundColor:'#00ff88', padding:16, borderRadius:8, alignItems:'center', width:'100%', marginBottom:12 },
-  btxt: { color:'#000', fontSize:16, fontWeight:'bold' },
-  link: { color:'#00ff88', textAlign:'center', marginTop:8 },
-  header: { flexDirection:'row', justifyContent:'space-between', alignItems:'center', padding:20, paddingTop:50, backgroundColor:'#111' },
-  logout: { color:'#ff4444' },
-  modeRow: { flexDirection:'row', margin:16, backgroundColor:'#1a1a1a', borderRadius:10, padding:4 },
-  modeBtn: { flex:1, padding:10, borderRadius:8, alignItems:'center' },
-  modeBtnOn: { backgroundColor:'#00ff88' },
-  modeTxt: { color:'#666', fontWeight:'600' },
-  modeTxtOn: { color:'#000' },
-  stats: { flexDirection:'row', justifyContent:'space-around', backgroundColor:'#111', marginHorizontal:16, borderRadius:10, padding:16, marginBottom:16 },
-  stat: { alignItems:'center' },
-  statN: { color:'#00ff88', fontSize:24, fontWeight:'bold' },
-  statL: { color:'#666', fontSize:11 },
-  card: { flex:1, margin:6, backgroundColor:'#1a1a1a', borderRadius:12, padding:16, borderWidth:1, borderColor:'#222' },
-  dot: { width:10, height:10, borderRadius:5, position:'absolute', top:16, right:16 },
-  cardName: { color:'#fff', fontSize:14, fontWeight:'bold', marginTop:8 },
-  cardLoc: { color:'#666', fontSize:11, marginTop:4 },
-  cardBtn: { backgroundColor:'#00ff8820', padding:8, borderRadius:6, alignItems:'center', marginTop:8, borderWidth:1, borderColor:'#00ff8840' },
-  cardBtnTxt: { color:'#00ff88', fontSize:11, fontWeight:'600' },
-  fab: { position:'absolute', bottom:30, right:20, width:60, height:60, borderRadius:30, backgroundColor:'#00ff88', justifyContent:'center', alignItems:'center' },
-  camHeader: { flexDirection:'row', justifyContent:'space-between', alignItems:'center', padding:20, paddingTop:50, backgroundColor:'#111' },
-  camTitle: { color:'#fff', fontSize:16, fontWeight:'bold' },
-  recDot: { width:12, height:12, borderRadius:6, backgroundColor:'#666' },
-  recDotOn: { backgroundColor:'#ff0000' },
-  camBody: { flex:1, justifyContent:'center', alignItems:'center', backgroundColor:'#000' },
-  camControls: { flexDirection:'row', justifyContent:'space-around', padding:20, backgroundColor:'#111' },
-  ctrlBtn: { alignItems:'center', backgroundColor:'#1a1a1a', padding:12, borderRadius:8, minWidth:80 },
-  ctrlBtnOn: { backgroundColor:'rgba(0,255,136,0.2)', borderWidth:1, borderColor:'#00ff88' },
-  ctrlTxt: { color:'#fff', fontSize:10, marginTop:4 },
+Copyconst s = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  header: {
+    backgroundColor: '#111',
+    padding: 16,
+    paddingTop: 20,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  title: {
+    color: '#00ff88',
+    fontSize: 24,
+    fontWeight: 'bold',
+    flex: 1,
+  },
+  logout: {
+    color: '#ff4444',
+    fontSize: 14,
+    fontWeight: 'bold',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: '#1a1a1a',
+    borderRadius: 6,
+    overflow: 'hidden',
+  },
+  // ... rest of styles
 });
 
 export default App;
