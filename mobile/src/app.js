@@ -152,7 +152,7 @@ function DashboardScreen({ navigation, route, logout }) {
     }
   };
 
-  Copyconst handleAddDevice = async () => {
+  const handleAddDevice = async () => {
   if (!deviceLocation.trim()) {
     Alert.alert('Error', 'Please enter a location');
     return;
