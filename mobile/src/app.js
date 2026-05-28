@@ -313,7 +313,7 @@ function App() {
   );
 }
 
-Copyconst s = StyleSheet.create({
+const s = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#000',
