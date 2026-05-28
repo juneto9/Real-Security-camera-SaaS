@@ -1,4 +1,4 @@
-Copyconst fs = require('fs');
+const fs = require('fs');
 const content = `import { registerRootComponent } from 'expo';
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator, Alert, FlatList, KeyboardAvoidingView, Platform } from 'react-native';
