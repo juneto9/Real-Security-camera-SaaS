@@ -152,7 +152,7 @@ function DashboardScreen({ navigation, route, logout }) {
     }
   };
 
-  const handleAddDevice = async () => {
+  Copyconst handleAddDevice = async () => {
   if (!deviceLocation.trim()) {
     Alert.alert('Error', 'Please enter a location');
     return;
@@ -168,10 +168,10 @@ function DashboardScreen({ navigation, route, logout }) {
     }
 
     const decoded = jwtDecode(token);
-    const userId = decoded.id || decoded.user_id || decoded.sub;
+    const userId = decoded.userId; // Use userId from token
 
     if (!userId) {
-      Alert.alert('Error', 'Cannot extract user ID from token');
+      Alert.alert('Error', 'Cannot extract user ID from token.');
       setIsCreating(false);
       return;
     }
@@ -183,7 +183,7 @@ function DashboardScreen({ navigation, route, logout }) {
       name: deviceName,
       location: deviceLocation,
       rtsp_url: '',
-      user_id: userId
+      user_id: userId  // Send as user_id to backend
     });
     console.log('Device created:', res.data);
     Alert.alert('Success', 'Camera added!');
