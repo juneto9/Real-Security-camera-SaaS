@@ -55,33 +55,33 @@ class Device {
   }
 
   static async getByUserId(userId, limit = 50, offset = 0) {
-    try {
-      const result = await db.query(
-        `SELECT id, user_id, device_name, location, device_type, is_active, last_seen, created_at, updated_at
-         FROM devices
-         WHERE user_id = $1
-         ORDER BY created_at DESC
-         LIMIT $2 OFFSET $3`,
-        [userId, limit, offset]
-      );
+  try {
+    const result = await db.query(
+      `SELECT id, user_id, name, location, type, is_active, created_at, updated_at
+       FROM devices
+       WHERE user_id = $1
+       ORDER BY created_at DESC
+       LIMIT $2 OFFSET $3`,
+      [userId, limit, offset]
+    );
 
-      const countResult = await db.query(
-        'SELECT COUNT(*) FROM devices WHERE user_id = $1',
-        [userId]
-      );
-      const total = parseInt(countResult.rows[0].count, 10);
+    const countResult = await db.query(
+      'SELECT COUNT(*) FROM devices WHERE user_id = $1',
+      [userId]
+    );
+    const total = parseInt(countResult.rows[0].count, 10);
 
-      return {
-        data: result.rows,
-        total,
-        limit,
-        offset,
-      };
-    } catch (error) {
-      logger.error('Error getting user devices', { error: error.message, userId });
-      throw error;
-    }
+    return {
+      data: result.rows,
+      total,
+      limit,
+      offset,
+    };
+  } catch (error) {
+    logger.error('Error getting user devices', { error: error.message, userId });
+    throw error;
   }
+}
 
   static async update(deviceId, userId, updates) {
     try {
