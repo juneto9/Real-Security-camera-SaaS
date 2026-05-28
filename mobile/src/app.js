@@ -168,7 +168,13 @@ function DashboardScreen({ navigation, route, logout }) {
     }
 
     const decoded = jwtDecode(token);
-    const userId = decoded.userId; // Use userId from token
+    
+    // Debug: Log the full token to see all fields
+    console.log('FULL TOKEN:', JSON.stringify(decoded, null, 2));
+    console.log('TOKEN KEYS:', Object.keys(decoded));
+    
+    const userId = decoded.userId;
+    const organizationId = decoded.organizationId || decoded.org_id || decoded.organization_id || decoded.orgId;
 
     if (!userId) {
       Alert.alert('Error', 'Cannot extract user ID from token.');
@@ -176,15 +182,24 @@ function DashboardScreen({ navigation, route, logout }) {
       return;
     }
 
+    if (!organizationId) {
+      Alert.alert('Error', 'Cannot extract organization ID from token.\nToken has: ' + Object.keys(decoded).join(', '));
+      setIsCreating(false);
+      return;
+    }
+
     console.log('Creating device with userId:', userId);
-    console.log('Device data:', { name: deviceName, location: deviceLocation, user_id: userId });
+    console.log('Organization ID:', organizationId);
+    console.log('Device data:', { name: deviceName, location: deviceLocation, userId, organizationId });
 
     const res = await api.post('/api/devices', {
       name: deviceName,
       location: deviceLocation,
       rtsp_url: '',
-      user_id: userId  // Send as user_id to backend
+      userId: userId,
+      organizationId: organizationId
     });
+    
     console.log('Device created:', res.data);
     Alert.alert('Success', 'Camera added!');
     closeAddModal();
