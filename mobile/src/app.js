@@ -13,7 +13,7 @@ import axios from 'axios';
 import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
 import * as MediaLibrary from 'expo-media-library';
 import * as FileSystem from 'expo-file-system';
-import { Audio } from 'expo-av';
+import { useAudioRecorder, AudioModule, RecordingPresets } from 'expo-audio';
 import { registerRootComponent } from 'expo';
 
 enableScreens();
@@ -754,5 +754,3 @@ const cs = StyleSheet.create({
   modalClose:     { marginTop:24, backgroundColor:'#00ff88', borderRadius:10, padding:14, alignItems:'center' },
   modalCloseTxt:  { color:'#000', fontSize:16, fontWeight:'bold' },
 });
-
-registerRootComponent(App);
