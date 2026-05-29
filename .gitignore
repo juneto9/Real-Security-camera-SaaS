@@ -36,6 +36,7 @@ dist/
 build/
 .next/
 out/
+.expo/
 
 # OS
 Thumbs.db
