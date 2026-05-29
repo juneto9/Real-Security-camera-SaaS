@@ -579,23 +579,29 @@ function CameraScreen({ navigation, route }) {
   const stopMotionPolling = () => clearInterval(motionPoll.current);
 
   // ── Sound monitor ────────────────────────────────────────────
-  const startSoundMonitor = async () => {
-    if (!soundEnabledRef.current) return;
-    try {
-      const perm = await AudioModule.requestRecordingPermissionsAsync();
-      if (!perm.granted) return;
-      const recorder = new AudioModule.AudioRecorder();
-      recorderRef.current = recorder;
-      await recorder.prepareToRecordAsync({ android:{ extension:'.m4a' }, ios:{ extension:'.m4a' } });
-      await recorder.record();
-      soundMeter.current = setInterval(async ()=>{
-        try {
-          const level = recorder.currentMeteringLevel ?? -160;
-          if (level > -40) triggerAlert('sound');
-        } catch {}
-      }, 600);
-    } catch(e) { console.log('Sound monitor error:',e.message); }
-  };
+ const startSoundMonitor = async () => {
+  if (!soundEnabledRef.current) return;
+  try {
+    const perm = await AudioModule.requestRecordingPermissionsAsync();
+    if (!perm.granted) return;
+
+    const recorder = new AudioModule.AudioRecorder({
+      android: { extension: '.m4a', outputFormat: 'mpeg4', audioEncoder: 'aac' },
+      ios: { extension: '.m4a', outputFormat: 'mpeg4', audioQuality: 'medium' },
+      web: {},
+    });
+    recorderRef.current = recorder;
+    await recorder.prepareToRecordAsync();
+    await recorder.record();
+
+    soundMeter.current = setInterval(async () => {
+      try {
+        const level = recorder.currentMeteringLevel ?? -160;
+        if (level > -40) triggerAlert('sound');
+      } catch {}
+    }, 600);
+  } catch (e) { console.log('Sound monitor error:', e.message); }
+};
 
   const stopSoundMonitor = async () => {
     clearInterval(soundMeter.current);
@@ -631,50 +637,45 @@ function CameraScreen({ navigation, route }) {
 
   // ── Start recording ──────────────────────────────────────────
   const startRecording = async (triggered=false) => {
-    if (!cameraRef.current || isRecordingRef.current) return;
-    if (!camPerm?.granted || !micPerm?.granted) {
-      // Permissions should already be granted — don't show dialog again
-      console.log('Permissions not granted, skipping record');
-      return;
+  if (!cameraRef.current || isRecordingRef.current) return;
+  if (!camPerm?.granted || !micPerm?.granted) {
+    console.log('Permissions not granted, skipping record');
+    return;
+  }
+  try {
+    isRecordingRef.current = true;
+    setIsRecording(true);
+    setStatusMsg(triggered ? '🔴 Recording (triggered)' : '🔴 Recording...');
+    startTimer();
+
+    // Loop rotation for timed dashcam
+    if (camModeRef.current === 'dashcam' && !loopForeverRef.current && loopDurationRef.current > 0) {
+      clearInterval(loopRef.current);
+      loopRef.current = setInterval(() => rotateClip(), loopDurationRef.current * 1000);
     }
-    try {
-      isRecordingRef.current = true;
-      setIsRecording(true);
-      setStatusMsg(triggered ? '🔴 Recording (triggered)' : '🔴 Recording...');
-      startTimer();
 
-      // Set up loop rotation for timed dashcam
-      if (camModeRef.current==='dashcam' && !loopForeverRef.current && loopDurationRef.current>0) {
-        clearInterval(loopRef.current);
-        loopRef.current = setInterval(()=>rotateClip(), loopDurationRef.current * 1000);
-      }
-
-      const recordOptions = { mute: false };
-      if (triggered) {
-        // Security triggered: 60s clips, will rotate on next trigger
-        recordOptions.maxDuration = 60;
-      } else if (!loopForeverRef.current && loopDurationRef.current > 0) {
-        recordOptions.maxDuration = loopDurationRef.current;
-      }
-      // loopForever: no maxDuration → records until manually stopped
-
-      cameraRef.current.recordAsync(recordOptions)
-        .then(async (video) => {
-          if (video?.uri) await saveClip(video.uri);
-        })
-        .catch((e)=>{
-          if (!e.message?.includes('cancelled') && !e.message?.includes('stopped')) {
-            console.log('Record error:', e.message);
-          }
-        });
-
-    } catch(e) {
-      console.log('Start recording error:', e.message);
-      isRecordingRef.current = false;
-      setIsRecording(false);
-      setStatusMsg('Error — tap to retry');
+    const recordOptions = { mute: false };
+    if (triggered) {
+      recordOptions.maxDuration = 60; // 60s per triggered clip
+    } else if (!loopForeverRef.current && loopDurationRef.current > 0) {
+      recordOptions.maxDuration = loopDurationRef.current;
     }
-  };
+
+    cameraRef.current.recordAsync(recordOptions)
+      .then(async (video) => { if (video?.uri) await saveClip(video.uri); })
+      .catch((e) => {
+        if (!e.message?.includes('cancelled') && !e.message?.includes('stopped')) {
+          console.log('Record error:', e.message);
+        }
+      });
+
+  } catch(e) {
+    console.log('Start recording error:', e.message);
+    isRecordingRef.current = false;
+    setIsRecording(false);
+    setStatusMsg('Error — tap to retry');
+  }
+};
 
   const stopRecording = async () => {
     clearInterval(loopRef.current);
