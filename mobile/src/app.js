@@ -1,4 +1,3 @@
-import WifiManager from 'react-native-wifi-reborn';
 import NetworkInfo from 'react-native-network-info';
 import { jwtDecode } from 'jwt-decode';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -170,22 +169,24 @@ function DashboardScreen({ navigation, route, logout }) {
   const [deviceLocation, setDeviceLocation] = useState('');
   const [step, setStep] = useState(1);
   const [isCreating, setIsCreating] = useState(false);
+  const [networkSSID, setNetworkSSID] = useState('WiFi');
 
-  const getNetworkInfo = async () => {
-    try {
-      const ssid = await WifiManager.getCurrentSSID();
-      console.log('Current SSID:', ssid);
-      if (ssid && ssid !== '<unknown ssid>') {
-        setNetworkSSID(ssid.replace(/"/g, ''));
-      }
-    } catch (e) {
-      console.log('Wifi error:', e);
-    }
-  };
+
+  useEffect(() => { loadDevices(); }, []);
   useEffect(() => {
-  loadDevices();
   getNetworkInfo();
 }, []);
+
+const getNetworkInfo = async () => {
+  try {
+    const ssid = await NetworkInfo.getSSID();
+    if (ssid && ssid !== '<unknown ssid>') {
+      setNetworkSSID(ssid);
+    }
+  } catch (e) {
+    console.log('Network info error:', e);
+  }
+};
 
   const loadDevices = async () => {
     try {
@@ -276,7 +277,7 @@ const saveDeviceChanges = async () => {
         <View style={s.stat}><Text style={s.statN}>{devices.length}</Text><Text style={s.statL}>Cameras</Text></View>
         <View style={s.stat}><Text style={s.statN}>{devices.filter(d=>d.is_active).length}</Text><Text style={s.statL}>Online</Text></View>
         <View style={s.stat}>
-  <Text style={s.statN}>WiFi</Text>
+  <Text style={s.statN} numberOfLines={1}>{networkSSID.length > 10 ? networkSSID.substring(0, 10) + '...' : networkSSID}</Text>
   <Text style={s.statL}>Network</Text>
 </View>
       </View>
@@ -789,7 +790,7 @@ const s = StyleSheet.create({
   btxt:       { color:'#000', fontSize:16, fontWeight:'bold' },
   link:       { color:'#00ff88', textAlign:'center', marginTop:8 },
   header:     { flexDirection:'row', justifyContent:'space-between', alignItems:'center', paddingHorizontal:12, paddingVertical:12, paddingTop:50, backgroundColor:'#111' },
-  logout:     { color:'#ff4444', fontSize:13, fontWeight:'bold' },
+  logout:     { color:'#fff', fontSize:12, fontWeight:'bold', backgroundColor:'#ff4444', paddingHorizontal:12, paddingVertical:6, borderRadius:4 },
   modeRow:    { flexDirection:'row', margin:16, backgroundColor:'#1a1a1a', borderRadius:10, padding:4 },
   modeBtn:    { flex:1, padding:10, borderRadius:8, alignItems:'center' },
   modeBtnOn:  { backgroundColor:'#00ff88' },
