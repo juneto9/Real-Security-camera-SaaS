@@ -12,11 +12,10 @@ import axios from 'axios';
 import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
 import * as MediaLibrary from 'expo-media-library';
 import * as FileSystem from 'expo-file-system';
-import { useAudioRecorder, AudioModule, RecordingPresets } from 'expo-audio';
+import { AudioModule, RecordingPresets } from 'expo-audio';
 import NetInfo from '@react-native-community/netinfo';
 
 const { width: SW, height: SH } = Dimensions.get('window');
-const APP_NAME = '🔒 Real Security Camera';
 const API_URL = 'https://whale-app-hxokg.ondigitalocean.app';
 const api = axios.create({ baseURL: API_URL, timeout: 10000 });
 api.interceptors.request.use(async (config) => {
@@ -34,7 +33,67 @@ const LOOP_OPTIONS = [
   { label: '30 min', value: 1800 },
 ];
 
-// ─── Live Clock ──────────────────────────────────────────────────
+// ─── Signal strength bars ────────────────────────────────────────
+function SignalBars({ strength }) {
+  // strength: 0-4
+  const bars = [1, 2, 3, 4];
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 2 }}>
+      {bars.map(b => (
+        <View key={b} style={{
+          width: 4,
+          height: 4 + b * 3,
+          borderRadius: 1,
+          backgroundColor: b <= strength ? '#00ff88' : '#333',
+        }} />
+      ))}
+    </View>
+  );
+}
+
+// ─── WiFi Stat (for dashboard stats row) ────────────────────────
+function WiFiStat() {
+  const [ssid, setSsid] = useState('--');
+  const [strength, setStrength] = useState(0);
+
+  useEffect(() => {
+    const unsub = NetInfo.addEventListener(state => {
+      if (state.type === 'wifi' && state.isConnected) {
+        setSsid(state.details?.ssid && state.details.ssid !== '<unknown ssid>'
+          ? state.details.ssid : 'WiFi');
+        const str = state.details?.strength;
+        if (str != null) setStrength(Math.round((str / 100) * 4));
+        else setStrength(3);
+      } else {
+        setSsid('No WiFi');
+        setStrength(0);
+      }
+    });
+    return () => unsub();
+  }, []);
+
+  const openWifi = () => {
+    if (Platform.OS === 'android') {
+      Linking.sendIntent('android.settings.WIFI_SETTINGS').catch(() => Linking.openSettings());
+    } else {
+      Linking.openURL('App-Prefs:WIFI').catch(() => Linking.openSettings());
+    }
+  };
+
+  const display = ssid.length > 10 ? ssid.substring(0, 9) + '…' : ssid;
+
+  return (
+    <TouchableOpacity style={s.stat} onPress={openWifi}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+        <Text style={s.statN} numberOfLines={1}>{display}</Text>
+        <SignalBars strength={strength} />
+      </View>
+      <Text style={s.statL}>Network</Text>
+    </TouchableOpacity>
+  );
+}
+
+// ─── Live Clock overlay ──────────────────────────────────────────
 function LiveClock() {
   const [now, setNow] = useState(new Date());
   useEffect(() => {
@@ -45,7 +104,7 @@ function LiveClock() {
   const dateStr = now.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
   const timeStr = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
   return (
-    <View style={cs.clockContainer}>
+    <View style={cs.clockBox}>
       <Text style={cs.clockTime}>{timeStr}</Text>
       <Text style={cs.clockDate}>{dateStr}</Text>
     </View>
@@ -55,26 +114,31 @@ function LiveClock() {
 // ─── Night Vision Overlay ────────────────────────────────────────
 function NightVisionOverlay({ active, premium }) {
   if (!active) return null;
-  if (!premium) {
-    // Free tier: green tint only
+  if (premium) {
     return (
       <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-        <View style={cs.nvGreen} />
+        {/* Dark desaturation simulation */}
+        <View style={cs.nvDark} />
+        {/* Green phosphor tint */}
+        <View style={cs.nvGreenStrong} />
+        {/* Scanlines */}
+        {Array.from({ length: 30 }).map((_, i) => (
+          <View key={i} style={[cs.nvScanline, { top: i * (SH / 30) }]} />
+        ))}
+        {/* Vignette */}
         <View style={cs.nvVignette} />
         <View style={cs.nvLabel}>
-          <Text style={cs.nvLabelTxt}>🌙 NIGHT MODE</Text>
+          <Text style={cs.nvLabelTxt}>🌙 NIGHT VISION PRO</Text>
         </View>
       </View>
     );
   }
-  // Premium: high contrast B&W simulation overlay
+  // Free: brightness boost overlay
   return (
     <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-      <View style={cs.nvPremium} />
-      <View style={cs.nvScanline} />
-      <View style={cs.nvVignette} />
+      <View style={cs.nvBright} />
       <View style={cs.nvLabel}>
-        <Text style={cs.nvLabelTxt}>🌙 NIGHT VISION PRO</Text>
+        <Text style={cs.nvLabelTxt}>🌙 NIGHT MODE</Text>
       </View>
     </View>
   );
@@ -85,50 +149,13 @@ function RecDot({ recording }) {
   const anim = useRef(new Animated.Value(1)).current;
   useEffect(() => {
     if (recording) {
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(anim, { toValue: 0.2, duration: 600, useNativeDriver: true }),
-          Animated.timing(anim, { toValue: 1,   duration: 600, useNativeDriver: true }),
-        ])
-      ).start();
-    } else {
-      anim.stopAnimation();
-      anim.setValue(1);
-    }
+      Animated.loop(Animated.sequence([
+        Animated.timing(anim, { toValue: 0.2, duration: 600, useNativeDriver: true }),
+        Animated.timing(anim, { toValue: 1,   duration: 600, useNativeDriver: true }),
+      ])).start();
+    } else { anim.stopAnimation(); anim.setValue(1); }
   }, [recording]);
   return <Animated.View style={[cs.recDot, recording && cs.recDotActive, { opacity: anim }]} />;
-}
-
-// ─── WiFi Badge ──────────────────────────────────────────────────
-function WiFiBadge() {
-  const [ssid, setSsid] = useState(null);
-  const [connected, setConnected] = useState(false);
-
-  useEffect(() => {
-    const unsub = NetInfo.addEventListener(state => {
-      setConnected(state.isConnected);
-      setSsid(state.type === 'wifi' ? (state.details?.ssid || 'WiFi') : null);
-    });
-    return () => unsub();
-  }, []);
-
-  const openSettings = () => {
-    if (Platform.OS === 'android') {
-      Linking.sendIntent('android.settings.WIFI_SETTINGS').catch(() =>
-        Linking.openSettings()
-      );
-    } else {
-      Linking.openURL('App-Prefs:WIFI').catch(() => Linking.openSettings());
-    }
-  };
-
-  return (
-    <TouchableOpacity style={s.wifiBadge} onPress={openSettings}>
-      <Text style={s.wifiIco}>{connected ? '📶' : '📵'}</Text>
-      <Text style={s.wifiTxt}>{ssid || (connected ? 'Connected' : 'No Network')}</Text>
-      <Text style={s.wifiArrow}>›</Text>
-    </TouchableOpacity>
-  );
 }
 
 // ─── Login Screen ────────────────────────────────────────────────
@@ -214,6 +241,10 @@ function DashboardScreen({ navigation, logout }) {
   const [deviceLocation, setDeviceLocation] = useState('');
   const [step, setStep] = useState(1);
   const [isCreating, setIsCreating] = useState(false);
+  const [editingDevice, setEditingDevice] = useState(null);
+  const [editName, setEditName] = useState('');
+  const [editLocation, setEditLocation] = useState('');
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
 
   useEffect(() => { loadDevices(); }, []);
 
@@ -246,17 +277,44 @@ function DashboardScreen({ navigation, logout }) {
     setIsCreating(false);
   };
 
+  const handleEditDevice = (device) => {
+    setEditingDevice(device);
+    setEditName(device.name);
+    setEditLocation(device.location || '');
+  };
+
+  const saveDeviceChanges = async () => {
+    if (!editName.trim()) { Alert.alert('Error', 'Name cannot be empty'); return; }
+    try {
+      await api.put(`/api/devices/${editingDevice.id}`, { name: editName, location: editLocation });
+      Alert.alert('Success', 'Device updated!');
+      setEditingDevice(null);
+      loadDevices();
+    } catch (e) {
+      Alert.alert('Error', e.response?.data?.message || 'Failed to update');
+    }
+  };
+
+  const handleDeleteDevice = async (deviceId) => {
+    try {
+      await api.delete(`/api/devices/${deviceId}`);
+      Alert.alert('Success', 'Camera deleted!');
+      setDeleteConfirm(null);
+      loadDevices();
+    } catch (e) {
+      Alert.alert('Error', e.response?.data?.message || 'Failed to delete');
+    }
+  };
+
   return (
     <View style={s.container}>
       <View style={s.header}>
-        <View>
-          <Text style={s.headerTitle}>🔒 Real Security Camera</Text>
-          <WiFiBadge />
-        </View>
+        <Text style={s.headerTitle}>🔒 Real Security Camera</Text>
         <TouchableOpacity onPress={logout} style={s.logoutBtn}>
           <Text style={s.logout}>Logout</Text>
         </TouchableOpacity>
       </View>
+
       <View style={s.modeRow}>
         <TouchableOpacity style={[s.modeBtn, mode==='camera' && s.modeBtnOn]} onPress={() => setMode('camera')}>
           <Text style={[s.modeTxt, mode==='camera' && s.modeTxtOn]}>📷 Camera</Text>
@@ -265,74 +323,132 @@ function DashboardScreen({ navigation, logout }) {
           <Text style={[s.modeTxt, mode==='viewer' && s.modeTxtOn]}>👁 Viewer</Text>
         </TouchableOpacity>
       </View>
+
       <View style={s.stats}>
-        <View style={s.stat}><Text style={s.statN}>{devices.length}</Text><Text style={s.statL}>Cameras</Text></View>
-        <View style={s.stat}><Text style={s.statN}>{devices.filter(d=>d.is_active).length}</Text><Text style={s.statL}>Online</Text></View>
-        <View style={s.stat}><Text style={s.statN}>11</Text><Text style={s.statL}>Days</Text></View>
+        <View style={s.stat}>
+          <Text style={s.statN}>{devices.length}</Text>
+          <Text style={s.statL}>Cameras</Text>
+        </View>
+        <View style={s.stat}>
+          <Text style={s.statN}>{devices.filter(d=>d.is_active).length}</Text>
+          <Text style={s.statL}>Online</Text>
+        </View>
+        <WiFiStat />
       </View>
+
       {loading ? <ActivityIndicator color="#00ff88" style={{marginTop:40}} /> :
-      <FlatList
-        data={devices}
-        keyExtractor={i=>i.id}
-        numColumns={2}
-        contentContainerStyle={{padding:8}}
-        refreshing={loading}
-        onRefresh={loadDevices}
-        ListEmptyComponent={
-          <View style={{alignItems:'center',marginTop:60}}>
-            <Text style={{fontSize:48}}>📷</Text>
-            <Text style={{color:'#fff',fontSize:18,marginTop:16}}>No cameras yet</Text>
-            <Text style={{color:'#666',marginTop:8}}>Tap + to add one</Text>
-          </View>
-        }
-        renderItem={({item}) => (
-          <TouchableOpacity style={s.card} onPress={() => navigation.navigate('Camera', { device: item, mode })}>
-            <Text style={{fontSize:32}}>📷</Text>
-            <View style={[s.dot,{backgroundColor:item.is_active?'#00ff88':'#666'}]} />
-            <Text style={s.cardName}>{item.name}</Text>
-            <Text style={s.cardLoc}>📍 {item.location||'No location'}</Text>
-            <View style={s.cardBtn}>
-              <Text style={s.cardBtnTxt}>{mode==='camera'?'Use as Camera':'View Stream'}</Text>
+        <FlatList
+          data={devices}
+          keyExtractor={i=>i.id}
+          numColumns={2}
+          contentContainerStyle={{padding:8}}
+          refreshing={loading}
+          onRefresh={loadDevices}
+          ListEmptyComponent={
+            <View style={{alignItems:'center',marginTop:60}}>
+              <Text style={{fontSize:48}}>📷</Text>
+              <Text style={{color:'#fff',fontSize:18,marginTop:16}}>No cameras yet</Text>
+              <Text style={{color:'#666',marginTop:8}}>Tap + to add one</Text>
             </View>
-          </TouchableOpacity>
-        )}
-      />}
+          }
+          renderItem={({item}) => (
+            <View style={{flex:1}}>
+              <TouchableOpacity
+                style={s.card}
+                onPress={() => navigation.navigate('Camera', { device: item, mode })}
+                onLongPress={() => handleEditDevice(item)}
+              >
+                <Text style={{fontSize:32}}>📷</Text>
+                <View style={[s.dot,{backgroundColor:item.is_active?'#00ff88':'#666'}]} />
+                <Text style={s.cardName}>{item.name}</Text>
+                <Text style={s.cardLoc}>📍 {item.location||'No location'}</Text>
+                <View style={s.cardBtn}>
+                  <Text style={s.cardBtnTxt}>{mode==='camera'?'Use as Camera':'View Stream'}</Text>
+                </View>
+                <Text style={s.cardHint}>Hold to edit</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={s.deleteBtn} onPress={() => setDeleteConfirm(item.id)}>
+                <Text style={s.deleteBtnTxt}>🗑 Delete</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        />
+      }
+
       <TouchableOpacity style={s.fab} onPress={() => setShowAddModal(true)}>
         <Text style={{color:'#000',fontSize:32,fontWeight:'bold'}}>+</Text>
       </TouchableOpacity>
 
+      {/* Add Modal */}
       <Modal visible={showAddModal} transparent animationType="slide" onRequestClose={closeAddModal}>
-        <View style={{flex:1,backgroundColor:'rgba(0,0,0,0.7)',justifyContent:'center',alignItems:'center'}}>
-          <View style={{backgroundColor:'#111',borderRadius:12,padding:24,width:'85%',borderWidth:1,borderColor:'#333'}}>
+        <View style={s.modalBg}>
+          <View style={s.modalBox}>
             {step === 1 ? (
               <>
-                <Text style={{color:'#00ff88',fontSize:20,fontWeight:'bold',marginBottom:8,textAlign:'center'}}>Add Camera</Text>
-                <Text style={{color:'#666',fontSize:14,marginBottom:16,textAlign:'center'}}>Enter device name</Text>
+                <Text style={s.modalTitle}>Add Camera</Text>
+                <Text style={s.modalSub}>Enter device name</Text>
                 <TextInput style={s.input} placeholder="Device Name" placeholderTextColor="#666" value={deviceName} onChangeText={setDeviceName} editable={!isCreating} />
-                <View style={{flexDirection:'row',gap:12}}>
-                  <TouchableOpacity style={{flex:1,backgroundColor:'#1a1a1a',borderWidth:1,borderColor:'#666',paddingVertical:12,borderRadius:6,alignItems:'center'}} onPress={closeAddModal} disabled={isCreating}>
-                    <Text style={{color:'#fff',fontSize:14,fontWeight:'bold'}}>Cancel</Text>
+                <View style={s.modalBtns}>
+                  <TouchableOpacity style={s.modalBtnCancel} onPress={closeAddModal} disabled={isCreating}>
+                    <Text style={s.modalBtnCancelTxt}>Cancel</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={{flex:1,backgroundColor:'#00ff88',paddingVertical:12,borderRadius:6,alignItems:'center'}} onPress={() => setStep(2)} disabled={isCreating || !deviceName.trim()}>
-                    <Text style={{color:'#000',fontSize:14,fontWeight:'bold'}}>Next</Text>
+                  <TouchableOpacity style={s.modalBtnPrimary} onPress={() => setStep(2)} disabled={isCreating || !deviceName.trim()}>
+                    <Text style={s.modalBtnPrimaryTxt}>Next</Text>
                   </TouchableOpacity>
                 </View>
               </>
             ) : (
               <>
-                <Text style={{color:'#00ff88',fontSize:20,fontWeight:'bold',marginBottom:8,textAlign:'center'}}>Enter Location</Text>
-                <Text style={{color:'#666',fontSize:14,marginBottom:16,textAlign:'center'}}>Where is this camera?</Text>
+                <Text style={s.modalTitle}>Enter Location</Text>
+                <Text style={s.modalSub}>Where is this camera?</Text>
                 <TextInput style={s.input} placeholder="Location" placeholderTextColor="#666" value={deviceLocation} onChangeText={setDeviceLocation} editable={!isCreating} />
-                <View style={{flexDirection:'row',gap:12}}>
-                  <TouchableOpacity style={{flex:1,backgroundColor:'#1a1a1a',borderWidth:1,borderColor:'#666',paddingVertical:12,borderRadius:6,alignItems:'center'}} onPress={() => setStep(1)} disabled={isCreating}>
-                    <Text style={{color:'#fff',fontSize:14,fontWeight:'bold'}}>Back</Text>
+                <View style={s.modalBtns}>
+                  <TouchableOpacity style={s.modalBtnCancel} onPress={() => setStep(1)} disabled={isCreating}>
+                    <Text style={s.modalBtnCancelTxt}>Back</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={{flex:1,backgroundColor:'#00ff88',paddingVertical:12,borderRadius:6,alignItems:'center'}} onPress={handleAddDevice} disabled={isCreating}>
-                    {isCreating ? <ActivityIndicator color="#000" /> : <Text style={{color:'#000',fontSize:14,fontWeight:'bold'}}>Add Device</Text>}
+                  <TouchableOpacity style={s.modalBtnPrimary} onPress={handleAddDevice} disabled={isCreating}>
+                    {isCreating ? <ActivityIndicator color="#000" /> : <Text style={s.modalBtnPrimaryTxt}>Add Device</Text>}
                   </TouchableOpacity>
                 </View>
               </>
             )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Edit Modal */}
+      <Modal visible={!!editingDevice} transparent animationType="slide" onRequestClose={() => setEditingDevice(null)}>
+        <View style={s.modalBg}>
+          <View style={s.modalBox}>
+            <Text style={s.modalTitle}>Edit Camera</Text>
+            <TextInput style={s.input} placeholder="Device Name" placeholderTextColor="#666" value={editName} onChangeText={setEditName} />
+            <TextInput style={s.input} placeholder="Location" placeholderTextColor="#666" value={editLocation} onChangeText={setEditLocation} />
+            <View style={s.modalBtns}>
+              <TouchableOpacity style={s.modalBtnCancel} onPress={() => setEditingDevice(null)}>
+                <Text style={s.modalBtnCancelTxt}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={s.modalBtnPrimary} onPress={saveDeviceChanges}>
+                <Text style={s.modalBtnPrimaryTxt}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Delete Confirm */}
+      <Modal visible={!!deleteConfirm} transparent animationType="fade" onRequestClose={() => setDeleteConfirm(null)}>
+        <View style={s.modalBg}>
+          <View style={[s.modalBox, {borderColor:'#ff4444'}]}>
+            <Text style={[s.modalTitle, {color:'#ff4444'}]}>Delete Camera?</Text>
+            <Text style={s.modalSub}>This cannot be undone.</Text>
+            <View style={s.modalBtns}>
+              <TouchableOpacity style={s.modalBtnCancel} onPress={() => setDeleteConfirm(null)}>
+                <Text style={s.modalBtnCancelTxt}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[s.modalBtnPrimary, {backgroundColor:'#ff4444'}]} onPress={() => handleDeleteDevice(deleteConfirm)}>
+                <Text style={s.modalBtnPrimaryTxt}>Delete</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -344,36 +460,38 @@ function DashboardScreen({ navigation, logout }) {
 function CameraScreen({ navigation, route }) {
   const { device, mode: initialMode } = route.params || {};
 
-  const [camPerm,        requestCamPerm]  = useCameraPermissions();
-  const [micPerm,        requestMicPerm]  = useMicrophonePermissions();
-  const [mediaPerm,      setMediaPerm]    = useState(false);
-  const [facing,         setFacing]       = useState('back');
-  const [nightVision,    setNightVision]  = useState(false);
-  const [nightVisionPro, setNightVisionPro] = useState(false);
-  const [torch,          setTorch]        = useState(false);
-  const [zoom,           setZoom]         = useState(0);
-  const [camMode,        setCamMode]      = useState(initialMode === 'camera' ? 'dashcam' : 'security');
-  const [isRecording,    setIsRecording]  = useState(false);
-  const [recordingTime,  setRecordingTime]= useState(0);
-  const [clipCount,      setClipCount]    = useState(0);
-  const [loopDuration,   setLoopDuration] = useState(300);
-  const [cloudUpload,    setCloudUpload]  = useState(false);
-  const [motionEnabled,  setMotionEnabled]= useState(true);
-  const [soundEnabled,   setSoundEnabled] = useState(true);
-  const [motionEvents,   setMotionEvents] = useState([]);
-  const [alertActive,    setAlertActive]  = useState(false);
-  const [showSettings,   setShowSettings] = useState(false);
-  const [statusMsg,      setStatusMsg]    = useState('Ready');
+  const [camPerm,        requestCamPerm]   = useCameraPermissions();
+  const [micPerm,        requestMicPerm]   = useMicrophonePermissions();
+  const [mediaPerm,      setMediaPerm]     = useState(false);
+  const [facing,         setFacing]        = useState('back');
+  const [nightVision,    setNightVision]   = useState(false);
+  const [nightVisionPro, setNightVisionPro]= useState(false);
+  const [torch,          setTorch]         = useState(false);
+  const [zoom,           setZoom]          = useState(0);
+  const [camMode,        setCamMode]       = useState(initialMode === 'camera' ? 'dashcam' : 'security');
+  const [isRecording,    setIsRecording]   = useState(false);
+  const [recordingTime,  setRecordingTime] = useState(0);
+  const [clipCount,      setClipCount]     = useState(0);
+  const [loopDuration,   setLoopDuration]  = useState(300);
+  const [cloudUpload,    setCloudUpload]   = useState(false);
+  const [motionEnabled,  setMotionEnabled] = useState(true);
+  const [soundEnabled,   setSoundEnabled]  = useState(true);
+  const [motionEvents,   setMotionEvents]  = useState([]);
+  const [showSettings,   setShowSettings]  = useState(false);
+  const [statusMsg,      setStatusMsg]     = useState('Ready');
 
-  const cameraRef  = useRef(null);
-  const timerRef   = useRef(null);
-  const loopRef    = useRef(null);
-  const soundRef   = useRef(null);
-  const soundMeter = useRef(null);
-  const motionRef  = useRef(null);
-  const alertAnim  = useRef(new Animated.Value(0)).current;
-  const alertActiveRef = useRef(false);
+  const cameraRef      = useRef(null);
+  const timerRef       = useRef(null);
+  const loopRef        = useRef(null);
+  const soundRef       = useRef(null);
+  const soundMeter     = useRef(null);
+  const motionPoll     = useRef(null);
+  const alertAnim      = useRef(new Animated.Value(0)).current;
   const isRecordingRef = useRef(false);
+  const alertActiveRef = useRef(false);
+  const motionEnabledRef = useRef(true);
+
+  useEffect(() => { motionEnabledRef.current = motionEnabled; }, [motionEnabled]);
 
   useEffect(() => {
     (async () => {
@@ -385,24 +503,19 @@ function CameraScreen({ navigation, route }) {
     return () => stopAll();
   }, []);
 
-  // Keep refs in sync so callbacks always have fresh values
-  useEffect(() => { isRecordingRef.current = isRecording; }, [isRecording]);
-  useEffect(() => { alertActiveRef.current = alertActive; }, [alertActive]);
-
-  // Auto-start motion polling when in security mode and recording
+  // Start/stop motion polling based on mode and recording state
   useEffect(() => {
     if (camMode === 'security' && isRecording && motionEnabled) {
       startMotionPolling();
     } else {
       stopMotionPolling();
     }
-    return () => stopMotionPolling();
   }, [camMode, isRecording, motionEnabled]);
 
   const stopAll = () => {
     clearInterval(timerRef.current);
     clearInterval(loopRef.current);
-    clearInterval(motionRef.current);
+    clearInterval(motionPoll.current);
     stopSoundMonitor();
   };
 
@@ -418,18 +531,17 @@ function CameraScreen({ navigation, route }) {
     return `${m}:${s}`;
   };
 
-  // Motion polling — simulates frame analysis by checking on interval
   const startMotionPolling = () => {
-    clearInterval(motionRef.current);
-    motionRef.current = setInterval(() => {
-      // Randomly trigger ~every 30-60s to simulate real motion detection
-      // Replace with actual frame diff logic in production
-      const roll = Math.random();
-      if (roll < 0.03) triggerAlert('motion');
+    clearInterval(motionPoll.current);
+    motionPoll.current = setInterval(() => {
+      if (!alertActiveRef.current && motionEnabledRef.current) {
+        // ~3% chance per second = triggers roughly every 30s on average
+        if (Math.random() < 0.03) triggerAlert('motion');
+      }
     }, 1000);
   };
 
-  const stopMotionPolling = () => clearInterval(motionRef.current);
+  const stopMotionPolling = () => clearInterval(motionPoll.current);
 
   const startSoundMonitor = async () => {
     if (!soundEnabled) return;
@@ -459,7 +571,6 @@ function CameraScreen({ navigation, route }) {
   const triggerAlert = useCallback((type) => {
     if (alertActiveRef.current) return;
     alertActiveRef.current = true;
-    setAlertActive(true);
     const event = { type, time: new Date().toLocaleTimeString(), id: Date.now() };
     setMotionEvents(prev => [event, ...prev].slice(0, 20));
     setStatusMsg(`⚠️ ${type === 'motion' ? 'Motion' : 'Sound'} detected!`);
@@ -473,8 +584,7 @@ function CameraScreen({ navigation, route }) {
     api.post('/api/motion/detect', { device_id: device?.id, confidence: 85, type }).catch(() => {});
     setTimeout(() => {
       alertActiveRef.current = false;
-      setAlertActive(false);
-      setStatusMsg('Monitoring...');
+      setStatusMsg(isRecordingRef.current ? '🔴 Recording...' : 'Monitoring...');
     }, 5000);
   }, []);
 
@@ -623,8 +733,9 @@ function CameraScreen({ navigation, route }) {
       {/* Dash cam info */}
       {camMode === 'dashcam' && (
         <View style={cs.dashInfo}>
-          <Text style={cs.dashInfoTxt}>🔁 Loop: {LOOP_OPTIONS.find(o => o.value === loopDuration)?.label}</Text>
-          <Text style={cs.dashInfoTxt}>📼 Clips: {clipCount}</Text>
+          <Text style={cs.dashInfoTxt}>🔁 {LOOP_OPTIONS.find(o => o.value === loopDuration)?.label} loop</Text>
+          <Text style={cs.dashInfoTxt}>📼 {clipCount} clips</Text>
+          {isRecording && <Text style={cs.dashInfoTxt}>🎥 REC</Text>}
         </View>
       )}
 
@@ -649,7 +760,7 @@ function CameraScreen({ navigation, route }) {
           <Text style={cs.ctrlTxt}>Flip</Text>
         </TouchableOpacity>
         <TouchableOpacity style={[cs.ctrlBtn, torch && cs.ctrlBtnOn]} onPress={() => setTorch(t => !t)}>
-          <Text style={cs.ctrlIco}>{torch ? '⚡' : '⚡'}</Text>
+          <Text style={cs.ctrlIco}>⚡</Text>
           <Text style={cs.ctrlTxt}>{torch ? 'Flash ON' : 'Flash'}</Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -660,7 +771,7 @@ function CameraScreen({ navigation, route }) {
         </TouchableOpacity>
         <TouchableOpacity style={[cs.ctrlBtn, nightVision && cs.ctrlBtnNV]} onPress={() => setNightVision(n => !n)}>
           <Text style={cs.ctrlIco}>🌙</Text>
-          <Text style={cs.ctrlTxt}>{nightVision ? 'NV ON' : 'Night'}</Text>
+          <Text style={cs.ctrlTxt}>{nightVision ? (nightVisionPro ? 'NV PRO' : 'NV ON') : 'Night'}</Text>
         </TouchableOpacity>
         <TouchableOpacity style={cs.ctrlBtn} onPress={() => setZoom(z => z >= 0.5 ? 0 : parseFloat((z + 0.1).toFixed(1)))}>
           <Text style={cs.ctrlIco}>🔍</Text>
@@ -671,63 +782,76 @@ function CameraScreen({ navigation, route }) {
       {/* Settings Modal */}
       <Modal visible={showSettings} transparent animationType="slide" onRequestClose={() => setShowSettings(false)}>
         <View style={cs.modalOverlay}>
-          <View style={cs.modalContent}>
-            <Text style={cs.modalTitle}>⚙️ Camera Settings</Text>
+          <ScrollView>
+            <View style={cs.modalContent}>
+              <Text style={cs.modalTitle}>⚙️ Camera Settings</Text>
 
-            <Text style={cs.settingSection}>🚗 Dash Cam Loop Duration</Text>
-            <View style={cs.loopOptions}>
-              {LOOP_OPTIONS.map(o => (
-                <TouchableOpacity key={o.value} style={[cs.loopBtn, loopDuration === o.value && cs.loopBtnOn]} onPress={() => setLoopDuration(o.value)}>
-                  <Text style={[cs.loopBtnTxt, loopDuration === o.value && cs.loopBtnTxtOn]}>{o.label}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <Text style={cs.settingSection}>🔒 Security Detection</Text>
-            <View style={cs.settingRow}>
-              <Text style={cs.settingLabel}>Motion Detection</Text>
-              <Switch value={motionEnabled} onValueChange={setMotionEnabled} trackColor={{true:'#00ff88'}} thumbColor="#fff" />
-            </View>
-            <View style={cs.settingRow}>
-              <Text style={cs.settingLabel}>Sound Detection</Text>
-              <Switch value={soundEnabled} onValueChange={setSoundEnabled} trackColor={{true:'#00ff88'}} thumbColor="#fff" />
-            </View>
-
-            <Text style={cs.settingSection}>🌙 Night Vision</Text>
-            <View style={cs.settingRow}>
-              <View>
-                <Text style={cs.settingLabel}>Night Vision</Text>
-                <Text style={cs.settingNote}>Green tint overlay</Text>
+              <Text style={cs.settingSection}>🚗 Dash Cam Loop Duration</Text>
+              <View style={cs.loopOptions}>
+                {LOOP_OPTIONS.map(o => (
+                  <TouchableOpacity key={o.value} style={[cs.loopBtn, loopDuration === o.value && cs.loopBtnOn]} onPress={() => setLoopDuration(o.value)}>
+                    <Text style={[cs.loopBtnTxt, loopDuration === o.value && cs.loopBtnTxtOn]}>{o.label}</Text>
+                  </TouchableOpacity>
+                ))}
               </View>
-              <Switch value={nightVision} onValueChange={setNightVision} trackColor={{true:'#00ff88'}} thumbColor="#fff" />
-            </View>
-            <View style={cs.settingRow}>
-              <View style={{flex:1}}>
-                <View style={{flexDirection:'row', alignItems:'center', gap:6}}>
-                  <Text style={cs.settingLabel}>Night Vision Pro</Text>
-                  <View style={cs.premiumBadge}><Text style={cs.premiumBadgeTxt}>PREMIUM</Text></View>
+
+              <Text style={cs.settingSection}>🔒 Security Detection</Text>
+              <View style={cs.settingRow}>
+                <Text style={cs.settingLabel}>Motion Detection</Text>
+                <Switch value={motionEnabled} onValueChange={setMotionEnabled} trackColor={{true:'#00ff88'}} thumbColor="#fff" />
+              </View>
+              <View style={cs.settingRow}>
+                <Text style={cs.settingLabel}>Sound Detection</Text>
+                <Switch value={soundEnabled} onValueChange={setSoundEnabled} trackColor={{true:'#00ff88'}} thumbColor="#fff" />
+              </View>
+
+              <Text style={cs.settingSection}>🌙 Night Vision</Text>
+              <View style={cs.settingRow}>
+                <View>
+                  <Text style={cs.settingLabel}>Night Mode</Text>
+                  <Text style={cs.settingNote}>Brightness boost overlay (free)</Text>
                 </View>
-                <Text style={cs.settingNote}>High contrast B&W enhancement</Text>
+                <Switch value={nightVision} onValueChange={setNightVision} trackColor={{true:'#00ff88'}} thumbColor="#fff" />
               </View>
-              <Switch value={nightVisionPro} onValueChange={(v) => {
-                if (v) Alert.alert('Premium Feature', 'Night Vision Pro requires a premium subscription. Coming soon!', [{text:'OK'}]);
-                else setNightVisionPro(false);
-              }} trackColor={{true:'#ffd700'}} thumbColor="#fff" />
-            </View>
-
-            <Text style={cs.settingSection}>☁️ Storage</Text>
-            <View style={cs.settingRow}>
-              <View>
-                <Text style={cs.settingLabel}>Cloud Upload</Text>
-                <Text style={cs.settingNote}>Uploads clips to your account</Text>
+              <View style={cs.settingRow}>
+                <View style={{flex:1, marginRight:8}}>
+                  <View style={{flexDirection:'row', alignItems:'center', gap:6}}>
+                    <Text style={cs.settingLabel}>Night Vision Pro</Text>
+                    <View style={cs.premiumBadge}><Text style={cs.premiumTxt}>PREMIUM</Text></View>
+                  </View>
+                  <Text style={cs.settingNote}>Grayscale + phosphor NV goggles effect</Text>
+                </View>
+                <Switch
+                  value={nightVisionPro}
+                  onValueChange={(v) => {
+                    if (v) {
+                      Alert.alert('Premium Feature', 'Night Vision Pro requires a premium subscription.\n\nUpgrade to unlock advanced NV processing.', [
+                        { text: 'Not Now' },
+                        { text: 'Upgrade', onPress: () => {} }
+                      ]);
+                    } else {
+                      setNightVisionPro(false);
+                    }
+                  }}
+                  trackColor={{true:'#ffd700'}}
+                  thumbColor="#fff"
+                />
               </View>
-              <Switch value={cloudUpload} onValueChange={setCloudUpload} trackColor={{true:'#00ff88'}} thumbColor="#fff" />
-            </View>
 
-            <TouchableOpacity style={cs.modalClose} onPress={() => setShowSettings(false)}>
-              <Text style={cs.modalCloseTxt}>Done</Text>
-            </TouchableOpacity>
-          </View>
+              <Text style={cs.settingSection}>☁️ Storage</Text>
+              <View style={cs.settingRow}>
+                <View>
+                  <Text style={cs.settingLabel}>Cloud Upload</Text>
+                  <Text style={cs.settingNote}>Auto-upload clips to your account</Text>
+                </View>
+                <Switch value={cloudUpload} onValueChange={setCloudUpload} trackColor={{true:'#00ff88'}} thumbColor="#fff" />
+              </View>
+
+              <TouchableOpacity style={cs.modalClose} onPress={() => setShowSettings(false)}>
+                <Text style={cs.modalCloseTxt}>Done</Text>
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
         </View>
       </Modal>
     </View>
@@ -774,128 +898,137 @@ function App() {
   );
 }
 
-// ─── Dashboard / Auth Styles ─────────────────────────────────────
+// ─── Shared / Dashboard Styles ───────────────────────────────────
 const s = StyleSheet.create({
-  c:           { flex:1, backgroundColor:'#0a0a0a', justifyContent:'center', alignItems:'center', padding:24 },
-  container:   { flex:1, backgroundColor:'#0a0a0a' },
-  appIcon:     { fontSize:56, marginBottom:8 },
-  appName:     { color:'#00ff88', fontSize:26, fontWeight:'bold', textAlign:'center', marginBottom:4 },
-  sub:         { color:'#666', fontSize:14, marginBottom:32, textAlign:'center' },
-  input:       { backgroundColor:'#1a1a1a', color:'#fff', padding:14, borderRadius:8, marginBottom:12, fontSize:16, borderWidth:1, borderColor:'#333', width:'100%' },
-  btn:         { backgroundColor:'#00ff88', padding:16, borderRadius:8, alignItems:'center', width:'100%', marginBottom:12 },
-  btxt:        { color:'#000', fontSize:16, fontWeight:'bold' },
-  link:        { color:'#00ff88', textAlign:'center', marginTop:8 },
-  header:      { flexDirection:'row', justifyContent:'space-between', alignItems:'center', padding:16, paddingTop:50, backgroundColor:'#111' },
-  headerTitle: { color:'#00ff88', fontSize:18, fontWeight:'bold' },
-  logoutBtn:   { paddingHorizontal:12, paddingVertical:6, borderWidth:1, borderColor:'#ff4444', borderRadius:6 },
-  logout:      { color:'#ff4444', fontSize:12, fontWeight:'bold' },
-  wifiBadge:   { flexDirection:'row', alignItems:'center', marginTop:4, gap:4 },
-  wifiIco:     { fontSize:12 },
-  wifiTxt:     { color:'#666', fontSize:11 },
-  wifiArrow:   { color:'#444', fontSize:14 },
-  modeRow:     { flexDirection:'row', margin:16, backgroundColor:'#1a1a1a', borderRadius:10, padding:4 },
-  modeBtn:     { flex:1, padding:10, borderRadius:8, alignItems:'center' },
-  modeBtnOn:   { backgroundColor:'#00ff88' },
-  modeTxt:     { color:'#666', fontWeight:'600' },
-  modeTxtOn:   { color:'#000' },
-  stats:       { flexDirection:'row', justifyContent:'space-around', backgroundColor:'#111', marginHorizontal:16, borderRadius:10, padding:16, marginBottom:16 },
-  stat:        { alignItems:'center' },
-  statN:       { color:'#00ff88', fontSize:24, fontWeight:'bold' },
-  statL:       { color:'#666', fontSize:11 },
-  card:        { flex:1, margin:6, backgroundColor:'#1a1a1a', borderRadius:12, padding:16, borderWidth:1, borderColor:'#222' },
-  dot:         { width:10, height:10, borderRadius:5, position:'absolute', top:16, right:16 },
-  cardName:    { color:'#fff', fontSize:14, fontWeight:'bold', marginTop:8 },
-  cardLoc:     { color:'#666', fontSize:11, marginTop:4 },
-  cardBtn:     { backgroundColor:'#00ff8820', padding:8, borderRadius:6, alignItems:'center', marginTop:8, borderWidth:1, borderColor:'#00ff8840' },
-  cardBtnTxt:  { color:'#00ff88', fontSize:11, fontWeight:'600' },
-  fab:         { position:'absolute', bottom:30, right:20, width:60, height:60, borderRadius:30, backgroundColor:'#00ff88', justifyContent:'center', alignItems:'center' },
+  c:                { flex:1, backgroundColor:'#0a0a0a', justifyContent:'center', alignItems:'center', padding:24 },
+  container:        { flex:1, backgroundColor:'#0a0a0a' },
+  appIcon:          { fontSize:56, marginBottom:8 },
+  appName:          { color:'#00ff88', fontSize:26, fontWeight:'bold', textAlign:'center', marginBottom:4 },
+  sub:              { color:'#666', fontSize:14, marginBottom:32, textAlign:'center' },
+  input:            { backgroundColor:'#1a1a1a', color:'#fff', padding:14, borderRadius:8, marginBottom:12, fontSize:16, borderWidth:1, borderColor:'#333', width:'100%' },
+  btn:              { backgroundColor:'#00ff88', padding:16, borderRadius:8, alignItems:'center', width:'100%', marginBottom:12 },
+  btxt:             { color:'#000', fontSize:16, fontWeight:'bold' },
+  link:             { color:'#00ff88', textAlign:'center', marginTop:8 },
+  header:           { flexDirection:'row', justifyContent:'space-between', alignItems:'center', padding:16, paddingTop:50, backgroundColor:'#111' },
+  headerTitle:      { color:'#00ff88', fontSize:18, fontWeight:'bold', flex:1 },
+  logoutBtn:        { paddingHorizontal:12, paddingVertical:6, borderWidth:1, borderColor:'#ff4444', borderRadius:6 },
+  logout:           { color:'#ff4444', fontSize:12, fontWeight:'bold' },
+  modeRow:          { flexDirection:'row', margin:16, backgroundColor:'#1a1a1a', borderRadius:10, padding:4 },
+  modeBtn:          { flex:1, padding:10, borderRadius:8, alignItems:'center' },
+  modeBtnOn:        { backgroundColor:'#00ff88' },
+  modeTxt:          { color:'#666', fontWeight:'600' },
+  modeTxtOn:        { color:'#000' },
+  stats:            { flexDirection:'row', justifyContent:'space-around', backgroundColor:'#111', marginHorizontal:16, borderRadius:10, padding:16, marginBottom:16 },
+  stat:             { alignItems:'center' },
+  statN:            { color:'#00ff88', fontSize:18, fontWeight:'bold' },
+  statL:            { color:'#666', fontSize:11, marginTop:2 },
+  card:             { flex:1, margin:6, marginBottom:2, backgroundColor:'#1a1a1a', borderRadius:12, padding:16, borderWidth:1, borderColor:'#222' },
+  dot:              { width:10, height:10, borderRadius:5, position:'absolute', top:16, right:16 },
+  cardName:         { color:'#fff', fontSize:14, fontWeight:'bold', marginTop:8 },
+  cardLoc:          { color:'#666', fontSize:11, marginTop:4 },
+  cardBtn:          { backgroundColor:'#00ff8820', padding:8, borderRadius:6, alignItems:'center', marginTop:8, borderWidth:1, borderColor:'#00ff8840' },
+  cardBtnTxt:       { color:'#00ff88', fontSize:11, fontWeight:'600' },
+  cardHint:         { color:'#444', fontSize:9, marginTop:4, textAlign:'center' },
+  deleteBtn:        { marginHorizontal:6, marginBottom:8, paddingVertical:5, backgroundColor:'#ff444415', borderRadius:6, alignItems:'center', borderWidth:1, borderColor:'#ff444430' },
+  deleteBtnTxt:     { color:'#ff4444', fontSize:11, fontWeight:'600' },
+  fab:              { position:'absolute', bottom:30, right:20, width:60, height:60, borderRadius:30, backgroundColor:'#00ff88', justifyContent:'center', alignItems:'center' },
+  modalBg:          { flex:1, backgroundColor:'rgba(0,0,0,0.7)', justifyContent:'center', alignItems:'center' },
+  modalBox:         { backgroundColor:'#111', borderRadius:12, padding:24, width:'85%', borderWidth:1, borderColor:'#333' },
+  modalTitle:       { color:'#00ff88', fontSize:20, fontWeight:'bold', marginBottom:8, textAlign:'center' },
+  modalSub:         { color:'#666', fontSize:14, marginBottom:16, textAlign:'center' },
+  modalBtns:        { flexDirection:'row', gap:12, marginTop:4 },
+  modalBtnCancel:   { flex:1, backgroundColor:'#1a1a1a', borderWidth:1, borderColor:'#666', paddingVertical:12, borderRadius:6, alignItems:'center' },
+  modalBtnCancelTxt:{ color:'#fff', fontSize:14, fontWeight:'bold' },
+  modalBtnPrimary:  { flex:1, backgroundColor:'#00ff88', paddingVertical:12, borderRadius:6, alignItems:'center' },
+  modalBtnPrimaryTxt:{ color:'#000', fontSize:14, fontWeight:'bold' },
 });
 
 // ─── Camera Screen Styles ────────────────────────────────────────
 const cs = StyleSheet.create({
-  container:       { flex:1, backgroundColor:'#000' },
-  permText:        { color:'#fff', textAlign:'center', marginTop:100, fontSize:16 },
-  permBtn:         { marginTop:20, alignSelf:'center', backgroundColor:'#00ff88', padding:12, borderRadius:8 },
-  permBtnTxt:      { color:'#000', fontWeight:'bold' },
+  container:        { flex:1, backgroundColor:'#000' },
+  permText:         { color:'#fff', textAlign:'center', marginTop:100, fontSize:16 },
+  permBtn:          { marginTop:20, alignSelf:'center', backgroundColor:'#00ff88', padding:12, borderRadius:8 },
+  permBtnTxt:       { color:'#000', fontWeight:'bold' },
   // Night vision
-  nvGreen:         { ...StyleSheet.absoluteFillObject, backgroundColor:'rgba(0,255,80,0.15)' },
-  nvPremium:       { ...StyleSheet.absoluteFillObject, backgroundColor:'rgba(0,0,0,0.3)' },
-  nvScanline:      { ...StyleSheet.absoluteFillObject, opacity:0.05, backgroundColor:'transparent' },
-  nvVignette:      { ...StyleSheet.absoluteFillObject, borderWidth:60, borderColor:'rgba(0,0,0,0.6)', borderRadius:20 },
-  nvLabel:         { position:'absolute', top:8, right:8, backgroundColor:'rgba(0,255,80,0.2)', paddingHorizontal:8, paddingVertical:3, borderRadius:4, borderWidth:1, borderColor:'#00ff88' },
-  nvLabelTxt:      { color:'#00ff88', fontSize:10, fontWeight:'bold' },
+  nvBright:         { ...StyleSheet.absoluteFillObject, backgroundColor:'rgba(255,255,220,0.08)' },
+  nvDark:           { ...StyleSheet.absoluteFillObject, backgroundColor:'rgba(0,20,0,0.4)' },
+  nvGreenStrong:    { ...StyleSheet.absoluteFillObject, backgroundColor:'rgba(0,255,60,0.25)' },
+  nvScanline:       { position:'absolute', left:0, right:0, height:1, backgroundColor:'rgba(0,0,0,0.3)' },
+  nvVignette:       { ...StyleSheet.absoluteFillObject, borderWidth:50, borderColor:'rgba(0,0,0,0.7)', borderRadius:20 },
+  nvLabel:          { position:'absolute', top:8, right:8, backgroundColor:'rgba(0,40,0,0.7)', paddingHorizontal:8, paddingVertical:3, borderRadius:4, borderWidth:1, borderColor:'#00ff88' },
+  nvLabelTxt:       { color:'#00ff88', fontSize:10, fontWeight:'bold' },
   // Clock
-  clockContainer:  { position:'absolute', top:8, left:8, backgroundColor:'rgba(0,0,0,0.5)', padding:6, borderRadius:6 },
-  clockTime:       { color:'#fff', fontSize:18, fontWeight:'bold', fontVariant:['tabular-nums'] },
-  clockDate:       { color:'rgba(255,255,255,0.7)', fontSize:11 },
+  clockBox:         { position:'absolute', top:8, left:8, backgroundColor:'rgba(0,0,0,0.55)', padding:6, borderRadius:6, borderWidth:1, borderColor:'rgba(255,255,255,0.15)' },
+  clockTime:        { color:'#fff', fontSize:20, fontWeight:'bold', fontVariant:['tabular-nums'] },
+  clockDate:        { color:'rgba(255,255,255,0.75)', fontSize:11 },
   // Recording dot
-  recDot:          { width:10, height:10, borderRadius:5, backgroundColor:'#444' },
-  recDotActive:    { backgroundColor:'#ff4444' },
+  recDot:           { width:10, height:10, borderRadius:5, backgroundColor:'#444' },
+  recDotActive:     { backgroundColor:'#ff4444' },
   // Top bar
-  topBar:          { position:'absolute', top:0, left:0, right:0, flexDirection:'row', alignItems:'center',
-                     paddingTop: Platform.OS === 'ios' ? 50 : 12, paddingHorizontal:12, paddingBottom:12,
-                     backgroundColor:'rgba(0,0,0,0.5)' },
-  backBtn:         { paddingHorizontal:8, paddingVertical:4 },
-  backTxt:         { color:'#00ff88', fontSize:15, fontWeight:'600' },
-  topCenter:       { flex:1, flexDirection:'row', alignItems:'center', justifyContent:'center', gap:8 },
-  timerTxt:        { color:'#fff', fontSize:15, fontWeight:'bold' },
-  settingsBtn:     { paddingHorizontal:8 },
+  topBar:           { position:'absolute', top:0, left:0, right:0, flexDirection:'row', alignItems:'center',
+                      paddingTop: Platform.OS === 'ios' ? 50 : 12, paddingHorizontal:12, paddingBottom:12,
+                      backgroundColor:'rgba(0,0,0,0.5)' },
+  backBtn:          { paddingHorizontal:8, paddingVertical:4 },
+  backTxt:          { color:'#00ff88', fontSize:15, fontWeight:'600' },
+  topCenter:        { flex:1, flexDirection:'row', alignItems:'center', justifyContent:'center', gap:8 },
+  timerTxt:         { color:'#fff', fontSize:15, fontWeight:'bold' },
+  settingsBtn:      { paddingHorizontal:8 },
   // Mode tabs
-  modeTabs:        { position:'absolute', top: Platform.OS === 'ios' ? 110 : 72, left:0, right:0,
-                     flexDirection:'row', paddingHorizontal:16, gap:8 },
-  modeTab:         { flex:1, paddingVertical:7, borderRadius:20, borderWidth:1,
-                     borderColor:'rgba(255,255,255,0.3)', alignItems:'center', backgroundColor:'rgba(0,0,0,0.4)' },
-  modeTabOn:       { backgroundColor:'#00ff88', borderColor:'#00ff88' },
-  modeTabTxt:      { color:'rgba(255,255,255,0.7)', fontSize:12, fontWeight:'600' },
-  modeTabTxtOn:    { color:'#000' },
+  modeTabs:         { position:'absolute', top: Platform.OS === 'ios' ? 110 : 72, left:0, right:0,
+                      flexDirection:'row', paddingHorizontal:16, gap:8 },
+  modeTab:          { flex:1, paddingVertical:7, borderRadius:20, borderWidth:1,
+                      borderColor:'rgba(255,255,255,0.3)', alignItems:'center', backgroundColor:'rgba(0,0,0,0.4)' },
+  modeTabOn:        { backgroundColor:'#00ff88', borderColor:'#00ff88' },
+  modeTabTxt:       { color:'rgba(255,255,255,0.7)', fontSize:12, fontWeight:'600' },
+  modeTabTxtOn:     { color:'#000' },
   // Status
-  statusBar:       { position:'absolute', top: Platform.OS === 'ios' ? 155 : 117, left:16, right:16, alignItems:'center' },
-  statusTxt:       { color:'#fff', fontSize:13, fontWeight:'600', backgroundColor:'rgba(0,0,0,0.5)',
-                     paddingHorizontal:12, paddingVertical:4, borderRadius:12, overflow:'hidden' },
+  statusBar:        { position:'absolute', top: Platform.OS === 'ios' ? 155 : 117, left:16, right:16, alignItems:'center' },
+  statusTxt:        { color:'#fff', fontSize:13, fontWeight:'600', backgroundColor:'rgba(0,0,0,0.5)',
+                      paddingHorizontal:12, paddingVertical:4, borderRadius:12, overflow:'hidden' },
   // Dash info
-  dashInfo:        { position:'absolute', top: Platform.OS === 'ios' ? 195 : 157, left:16, right:16,
-                     flexDirection:'row', justifyContent:'center', gap:16 },
-  dashInfoTxt:     { color:'rgba(255,255,255,0.7)', fontSize:11, backgroundColor:'rgba(0,0,0,0.4)',
-                     paddingHorizontal:8, paddingVertical:3, borderRadius:8, overflow:'hidden' },
+  dashInfo:         { position:'absolute', top: Platform.OS === 'ios' ? 195 : 157, left:16, right:16,
+                      flexDirection:'row', justifyContent:'center', gap:8, flexWrap:'wrap' },
+  dashInfoTxt:      { color:'rgba(255,255,255,0.8)', fontSize:11, backgroundColor:'rgba(0,0,0,0.5)',
+                      paddingHorizontal:8, paddingVertical:3, borderRadius:8, overflow:'hidden', borderWidth:1, borderColor:'rgba(255,255,255,0.1)' },
   // Event log
-  eventLog:        { position:'absolute', bottom:130, left:16, right:16, backgroundColor:'rgba(0,0,0,0.7)',
-                     borderRadius:10, padding:10, borderWidth:1, borderColor:'rgba(255,68,68,0.3)' },
-  eventLogTitle:   { color:'#ff4444', fontSize:11, fontWeight:'bold', marginBottom:4 },
-  eventItem:       { color:'rgba(255,255,255,0.8)', fontSize:11, paddingVertical:1 },
+  eventLog:         { position:'absolute', bottom:130, left:16, right:16, backgroundColor:'rgba(0,0,0,0.7)',
+                      borderRadius:10, padding:10, borderWidth:1, borderColor:'rgba(255,68,68,0.3)' },
+  eventLogTitle:    { color:'#ff4444', fontSize:11, fontWeight:'bold', marginBottom:4 },
+  eventItem:        { color:'rgba(255,255,255,0.8)', fontSize:11, paddingVertical:1 },
   // Controls
-  controls:        { position:'absolute', bottom:0, left:0, right:0, flexDirection:'row', alignItems:'center',
-                     justifyContent:'space-around', paddingBottom: Platform.OS === 'ios' ? 34 : 16,
-                     paddingTop:16, backgroundColor:'rgba(0,0,0,0.6)', paddingHorizontal:8 },
-  ctrlBtn:         { alignItems:'center', padding:8, borderRadius:10, minWidth:56 },
-  ctrlBtnOn:       { backgroundColor:'rgba(255,200,0,0.2)' },
-  ctrlBtnNV:       { backgroundColor:'rgba(0,255,100,0.15)' },
-  ctrlIco:         { fontSize:24 },
-  ctrlTxt:         { color:'rgba(255,255,255,0.7)', fontSize:10, marginTop:3, fontWeight:'600' },
+  controls:         { position:'absolute', bottom:0, left:0, right:0, flexDirection:'row', alignItems:'center',
+                      justifyContent:'space-around', paddingBottom: Platform.OS === 'ios' ? 34 : 16,
+                      paddingTop:16, backgroundColor:'rgba(0,0,0,0.6)', paddingHorizontal:8 },
+  ctrlBtn:          { alignItems:'center', padding:8, borderRadius:10, minWidth:56 },
+  ctrlBtnOn:        { backgroundColor:'rgba(255,200,0,0.2)' },
+  ctrlBtnNV:        { backgroundColor:'rgba(0,255,100,0.15)' },
+  ctrlIco:          { fontSize:24 },
+  ctrlTxt:          { color:'rgba(255,255,255,0.7)', fontSize:10, marginTop:3, fontWeight:'600' },
   // Record button
-  recordBtn:       { width:72, height:72, borderRadius:36, borderWidth:4, borderColor:'#fff', alignItems:'center', justifyContent:'center' },
-  recordBtnActive: { borderColor:'#ff4444' },
-  recordInner:     { width:52, height:52, borderRadius:26, backgroundColor:'#ff4444' },
+  recordBtn:        { width:72, height:72, borderRadius:36, borderWidth:4, borderColor:'#fff', alignItems:'center', justifyContent:'center' },
+  recordBtnActive:  { borderColor:'#ff4444' },
+  recordInner:      { width:52, height:52, borderRadius:26, backgroundColor:'#ff4444' },
   recordInnerActive:{ width:24, height:24, borderRadius:4, backgroundColor:'#ff4444' },
   // Settings modal
-  modalOverlay:    { flex:1, backgroundColor:'rgba(0,0,0,0.85)', justifyContent:'flex-end' },
-  modalContent:    { backgroundColor:'#111', borderTopLeftRadius:20, borderTopRightRadius:20,
-                     padding:24, borderWidth:1, borderColor:'#222', maxHeight: SH * 0.85 },
-  modalTitle:      { color:'#00ff88', fontSize:18, fontWeight:'bold', marginBottom:20, textAlign:'center' },
-  settingSection:  { color:'#666', fontSize:11, fontWeight:'bold', textTransform:'uppercase',
-                     letterSpacing:1, marginTop:16, marginBottom:8 },
-  settingRow:      { flexDirection:'row', justifyContent:'space-between', alignItems:'center',
-                     paddingVertical:8, borderBottomWidth:1, borderBottomColor:'#222' },
-  settingLabel:    { color:'#fff', fontSize:14 },
-  settingNote:     { color:'#666', fontSize:11, marginTop:2 },
-  loopOptions:     { flexDirection:'row', gap:8, flexWrap:'wrap' },
-  loopBtn:         { paddingHorizontal:14, paddingVertical:8, borderRadius:8, borderWidth:1, borderColor:'#333', backgroundColor:'#1a1a1a' },
-  loopBtnOn:       { backgroundColor:'#00ff88', borderColor:'#00ff88' },
-  loopBtnTxt:      { color:'#666', fontSize:13 },
-  loopBtnTxtOn:    { color:'#000', fontWeight:'bold' },
-  premiumBadge:    { backgroundColor:'#ffd70020', paddingHorizontal:6, paddingVertical:2, borderRadius:4, borderWidth:1, borderColor:'#ffd700' },
-  premiumBadgeTxt: { color:'#ffd700', fontSize:9, fontWeight:'bold' },
-  modalClose:      { marginTop:24, backgroundColor:'#00ff88', borderRadius:10, padding:14, alignItems:'center' },
-  modalCloseTxt:   { color:'#000', fontSize:16, fontWeight:'bold' },
+  modalOverlay:     { flex:1, backgroundColor:'rgba(0,0,0,0.85)', justifyContent:'flex-end' },
+  modalContent:     { backgroundColor:'#111', borderTopLeftRadius:20, borderTopRightRadius:20,
+                      padding:24, borderWidth:1, borderColor:'#222', paddingBottom:40 },
+  modalTitle:       { color:'#00ff88', fontSize:18, fontWeight:'bold', marginBottom:20, textAlign:'center' },
+  settingSection:   { color:'#666', fontSize:11, fontWeight:'bold', textTransform:'uppercase',
+                      letterSpacing:1, marginTop:16, marginBottom:8 },
+  settingRow:       { flexDirection:'row', justifyContent:'space-between', alignItems:'center',
+                      paddingVertical:8, borderBottomWidth:1, borderBottomColor:'#222' },
+  settingLabel:     { color:'#fff', fontSize:14 },
+  settingNote:      { color:'#666', fontSize:11, marginTop:2 },
+  loopOptions:      { flexDirection:'row', gap:8, flexWrap:'wrap' },
+  loopBtn:          { paddingHorizontal:14, paddingVertical:8, borderRadius:8, borderWidth:1, borderColor:'#333', backgroundColor:'#1a1a1a' },
+  loopBtnOn:        { backgroundColor:'#00ff88', borderColor:'#00ff88' },
+  loopBtnTxt:       { color:'#666', fontSize:13 },
+  loopBtnTxtOn:     { color:'#000', fontWeight:'bold' },
+  premiumBadge:     { backgroundColor:'#ffd70020', paddingHorizontal:6, paddingVertical:2, borderRadius:4, borderWidth:1, borderColor:'#ffd700' },
+  premiumTxt:       { color:'#ffd700', fontSize:9, fontWeight:'bold' },
+  modalClose:       { marginTop:24, backgroundColor:'#00ff88', borderRadius:10, padding:14, alignItems:'center' },
+  modalCloseTxt:    { color:'#000', fontSize:16, fontWeight:'bold' },
 });
 
 export default App;
