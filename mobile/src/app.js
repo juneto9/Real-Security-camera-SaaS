@@ -13,7 +13,6 @@ import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo
 import * as MediaLibrary from 'expo-media-library';
 import * as FileSystem from 'expo-file-system';
 import { useAudioRecorder, AudioModule, RecordingPresets } from 'expo-audio';
-import { registerRootComponent } from 'expo';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 const API_URL = 'https://whale-app-hxokg.ondigitalocean.app';
@@ -340,20 +339,22 @@ function CameraScreen({ navigation, route }) {
     return `${m}:${s}`;
   };
 
-  const startSoundMonitor = async () => {
-    if (!soundEnabled) return;
-    try {
-      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
-      const { recording } = await Audio.Recording.createAsync(Audio.RecordingOptionsPresets.LOW_QUALITY);
-      soundRef.current = recording;
-      soundMeter.current = setInterval(async () => {
-        try {
-          const status = await recording.getStatusAsync();
-          if (status.metering && Math.abs(status.metering) < 40) triggerAlert('sound');
-        } catch {}
-      }, 500);
-    } catch (e) { console.log('Sound monitor error:', e.message); }
-  };
+const startSoundMonitor = async () => {
+  if (!soundEnabled) return;
+  try {
+    await AudioModule.requestRecordingPermissionsAsync();
+    const recording = new AudioModule.Recording();
+    await recording.prepareToRecordAsync(RecordingPresets.LOW_QUALITY);
+    await recording.startAsync();
+    soundRef.current = recording;
+    soundMeter.current = setInterval(async () => {
+      try {
+        const status = await recording.getStatusAsync();
+        if (status.metering && Math.abs(status.metering) < 40) triggerAlert('sound');
+      } catch {}
+    }, 500);
+  } catch (e) { console.log('Sound monitor error:', e.message); }
+};
 
   const stopSoundMonitor = async () => {
     clearInterval(soundMeter.current);
