@@ -21,19 +21,19 @@
       }
     },
     "android": {
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#0a0a0a"
-      },
-      "package": "com.securecamera.app",
-      "permissions": [
-        "CAMERA",
-        "RECORD_AUDIO",
-        "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE",
-        "FLASHLIGHT"
-      ]
-    },
+  "adaptiveIcon": {
+    "foregroundImage": "./assets/adaptive-icon.png",
+    "backgroundColor": "#0a0a0a"
+  },
+  "package": "com.securecamera.app",
+  "permissions": [
+    "CAMERA",
+    "RECORD_AUDIO",
+    "READ_EXTERNAL_STORAGE",
+    "WRITE_EXTERNAL_STORAGE",
+    "FLASHLIGHT"
+  ]
+},
     "plugins": [
       "expo-camera",
       "expo-media-library",

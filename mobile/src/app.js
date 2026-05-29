@@ -1,3 +1,4 @@
+import NetworkInfo from 'react-native-network-info';
 import { jwtDecode } from 'jwt-decode';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
@@ -243,8 +244,8 @@ const saveDeviceChanges = async () => {
   return (
     <View style={s.container}>
       <View style={s.header}>
-  <Text style={s.title}>🔒 Real Security Camera</Text>
-  <TouchableOpacity onPress={logout}>
+  <Text style={s.title}>🔒 Security Camera</Text>
+  <TouchableOpacity onPress={logout} style={{paddingHorizontal:12}}>
     <Text style={s.logout}>Logout</Text>
   </TouchableOpacity>
 </View>
@@ -766,14 +767,14 @@ function App() {
 const s = StyleSheet.create({
   c:          { flex:1, backgroundColor:'#0a0a0a', justifyContent:'center', alignItems:'center', padding:24 },
   container:  { flex:1, backgroundColor:'#0a0a0a' },
-  title:      { color:'#00ff88', fontSize:28, fontWeight:'bold', textAlign:'center' },
+  title:      { color:'#00ff88', fontSize:20, fontWeight:'bold', textAlign:'center', flex:1 },
   sub:        { color:'#666', fontSize:14, marginBottom:32, textAlign:'center' },
   input:      { backgroundColor:'#1a1a1a', color:'#fff', padding:14, borderRadius:8, marginBottom:12, fontSize:16, borderWidth:1, borderColor:'#333', width:'100%' },
   btn:        { backgroundColor:'#00ff88', padding:16, borderRadius:8, alignItems:'center', width:'100%', marginBottom:12 },
   btxt:       { color:'#000', fontSize:16, fontWeight:'bold' },
   link:       { color:'#00ff88', textAlign:'center', marginTop:8 },
-  header:     { flexDirection:'row', justifyContent:'space-between', alignItems:'center', paddingHorizontal:16, paddingVertical:12, paddingTop:50, backgroundColor:'#111' },
-  logout:     { color:'#ff4444', fontSize:14, fontWeight:'bold', paddingRight:8 },
+  header:     { flexDirection:'row', justifyContent:'space-between', alignItems:'center', paddingHorizontal:12, paddingVertical:12, paddingTop:50, backgroundColor:'#111' },
+  logout:     { color:'#ff4444', fontSize:13, fontWeight:'bold' },
   modeRow:    { flexDirection:'row', margin:16, backgroundColor:'#1a1a1a', borderRadius:10, padding:4 },
   modeBtn:    { flex:1, padding:10, borderRadius:8, alignItems:'center' },
   modeBtnOn:  { backgroundColor:'#00ff88' },
