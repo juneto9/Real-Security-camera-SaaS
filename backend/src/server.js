@@ -13,8 +13,22 @@ const deviceRoutes = require('./routes/devices');
 const recordingRoutes = require('./routes/recordings');
 const streamRoutes = require('./routes/streams');
 const userRoutes = require('./routes/users');
+const http = require('http');
+const { Server } = require('socket.io');
+const setupSocket = require('./socket');
+const streamingRoutes = require('./routes/streaming');
 
 const app = express();
+
+// After: const app = express();
+const server = http.createServer(app);
+const io = new Server(server, { cors: { origin: '*', methods: ['GET','POST'] } });
+app.set('io', io);
+app.set('activeStreams', {});
+app.use('/api/streaming', streamingRoutes);
+setupSocket(io, app);
+
+// Change app.listen → server.listen (at bottom of file)
 
 app.set('trust proxy', 1);
 app.use(helmet());
