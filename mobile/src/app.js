@@ -1,5 +1,5 @@
 import { jwtDecode } from 'jwt-decode';
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator,
   Alert, FlatList, KeyboardAvoidingView, Platform, Modal, Animated,
@@ -31,7 +31,6 @@ const LOOP_OPTIONS = [
   { label: '5 min',   value: 300 },
   { label: '15 min',  value: 900 },
   { label: '30 min',  value: 1800 },
-  { label: 'Forever', value: 0 },
 ];
 
 // ─── Signal Bars ─────────────────────────────────────────────────
@@ -56,26 +55,18 @@ function WiFiStat() {
   useEffect(() => {
     let unsub;
     const init = async () => {
-      // Request location permission on Android (needed to read SSID)
       if (Platform.OS === 'android') {
         try {
-          const already = await PermissionsAndroid.check(
-            PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION
-          );
+          const already = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION);
           if (!already) {
-            await PermissionsAndroid.request(
-              PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-              {
-                title: 'Network Permission',
-                message: 'Needed to display your WiFi network name.',
-                buttonPositive: 'Allow',
-                buttonNegative: 'Skip',
-              }
-            );
+            await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION, {
+              title: 'Network Permission',
+              message: 'Needed to display your WiFi network name.',
+              buttonPositive: 'Allow', buttonNegative: 'Skip',
+            });
           }
         } catch {}
       }
-
       const applyState = (state) => {
         if (state.type === 'wifi' && state.isConnected) {
           const name = state.details?.ssid;
@@ -83,22 +74,15 @@ function WiFiStat() {
           const str = state.details?.strength;
           setStrength(str != null ? Math.min(4, Math.round((str/100)*4)) : 3);
         } else if (state.isConnected) {
-          setSsid('Mobile');
-          setStrength(2);
+          setSsid('Mobile'); setStrength(2);
         } else {
-          setSsid('Offline');
-          setStrength(0);
+          setSsid('Offline'); setStrength(0);
         }
       };
-
-      // Immediate fetch
       const state = await NetInfo.fetch();
       applyState(state);
-
-      // Subscribe to changes
       unsub = NetInfo.addEventListener(applyState);
     };
-
     init();
     return () => { if (unsub) unsub(); };
   }, []);
@@ -183,7 +167,7 @@ function RecDot({ recording }) {
 // ─── Recording Banner ────────────────────────────────────────────
 function RecordingBanner({ recording, armed, formatTime, recordingTime, clipCount }) {
   if (!recording && !armed) return null;
-  const bg = recording ? '#cc0000' : '#006622';
+  const bg = recording ? '#cc0000' : '#005522';
   const msg = recording
     ? `● REC  ${formatTime(recordingTime)}   •   ${clipCount} clip${clipCount!==1?'s':''} saved`
     : '🟢  Armed — monitoring for motion & sound';
@@ -207,7 +191,7 @@ function LoginScreen({ navigation, setToken }) {
       const res = await api.post('/api/auth/login',{email,password});
       await AsyncStorage.setItem('accessToken', res.data.data.accessToken);
       await setToken(res.data.data.accessToken);
-    } catch(e) { Alert.alert('Login Failed', e.response?.data?.message || 'Check credentials'); }
+    } catch(e) { Alert.alert('Login Failed', e.response?.data?.message||'Check credentials'); }
     setLoading(false);
   };
 
@@ -338,27 +322,15 @@ function DashboardScreen({ navigation, logout }) {
           <Text style={s.logout}>Logout</Text>
         </TouchableOpacity>
       </View>
-
       <View style={s.stats}>
-        <View style={s.stat}>
-          <Text style={s.statN}>{devices.length}</Text>
-          <Text style={s.statL}>Cameras</Text>
-        </View>
-        <View style={s.stat}>
-          <Text style={s.statN}>{devices.filter(d=>d.is_active).length}</Text>
-          <Text style={s.statL}>Online</Text>
-        </View>
+        <View style={s.stat}><Text style={s.statN}>{devices.length}</Text><Text style={s.statL}>Cameras</Text></View>
+        <View style={s.stat}><Text style={s.statN}>{devices.filter(d=>d.is_active).length}</Text><Text style={s.statL}>Online</Text></View>
         <WiFiStat />
       </View>
-
       {loading ? <ActivityIndicator color="#00ff88" style={{marginTop:40}}/> :
         <FlatList
-          data={devices}
-          keyExtractor={i=>i.id}
-          numColumns={2}
-          contentContainerStyle={{padding:8}}
-          refreshing={loading}
-          onRefresh={loadDevices}
+          data={devices} keyExtractor={i=>i.id} numColumns={2}
+          contentContainerStyle={{padding:8}} refreshing={loading} onRefresh={loadDevices}
           ListEmptyComponent={
             <View style={{alignItems:'center',marginTop:60}}>
               <Text style={{fontSize:48}}>📷</Text>
@@ -394,14 +366,13 @@ function DashboardScreen({ navigation, logout }) {
           )}
         />
       }
-
       <TouchableOpacity style={s.fab} onPress={()=>setShowAddModal(true)}>
         <Text style={{color:'#000',fontSize:32,fontWeight:'bold'}}>+</Text>
       </TouchableOpacity>
 
       <Modal visible={showAddModal} transparent animationType="slide" onRequestClose={closeAddModal}>
         <View style={s.modalBg}><View style={s.modalBox}>
-          {step===1 ? (<>
+          {step===1?(<>
             <Text style={s.modalTitle}>Add Camera</Text>
             <Text style={s.modalSub}>Enter device name</Text>
             <TextInput style={s.input} placeholder="Device Name" placeholderTextColor="#666" value={deviceName} onChangeText={setDeviceName} editable={!isCreating}/>
@@ -409,7 +380,7 @@ function DashboardScreen({ navigation, logout }) {
               <TouchableOpacity style={s.modalBtnCancel} onPress={closeAddModal}><Text style={s.modalBtnCancelTxt}>Cancel</Text></TouchableOpacity>
               <TouchableOpacity style={s.modalBtnPrimary} onPress={()=>setStep(2)} disabled={!deviceName.trim()}><Text style={s.modalBtnPrimaryTxt}>Next</Text></TouchableOpacity>
             </View>
-          </>) : (<>
+          </>):(<>
             <Text style={s.modalTitle}>Enter Location</Text>
             <Text style={s.modalSub}>Where is this camera?</Text>
             <TextInput style={s.input} placeholder="Location" placeholderTextColor="#666" value={deviceLocation} onChangeText={setDeviceLocation} editable={!isCreating}/>
@@ -478,6 +449,7 @@ function CameraScreen({ navigation, route }) {
     initialMode==='dashcam' ? 'Tap record to start' : 'Ready to monitor'
   );
 
+  // Refs for use inside callbacks
   const cameraRef        = useRef(null);
   const timerRef         = useRef(null);
   const loopRef          = useRef(null);
@@ -486,6 +458,7 @@ function CameraScreen({ navigation, route }) {
   const motionPoll       = useRef(null);
   const alertAnim        = useRef(new Animated.Value(0)).current;
   const isRecordingRef   = useRef(false);
+  const isArmedRef       = useRef(false);
   const alertActiveRef   = useRef(false);
   const motionEnabledRef = useRef(true);
   const soundEnabledRef  = useRef(true);
@@ -493,17 +466,17 @@ function CameraScreen({ navigation, route }) {
   const loopDurationRef  = useRef(300);
   const camModeRef       = useRef(initialMode||'dashcam');
 
+  // Keep refs in sync with state
   useEffect(()=>{ motionEnabledRef.current = motionEnabled; },[motionEnabled]);
   useEffect(()=>{ soundEnabledRef.current  = soundEnabled;  },[soundEnabled]);
   useEffect(()=>{ loopForeverRef.current   = loopForever;   },[loopForever]);
   useEffect(()=>{ loopDurationRef.current  = loopDuration;  },[loopDuration]);
 
-  // ── Request permissions ONCE on mount ────────────────────────
+  // Request permissions once on mount
   useEffect(()=>{
     (async()=>{
-      // Only prompt if not already granted
-      if (!camPerm?.granted) await requestCamPerm();
-      if (!micPerm?.granted) await requestMicPerm();
+      if (!camPerm?.granted)  await requestCamPerm();
+      if (!micPerm?.granted)  await requestMicPerm();
       const mediaStatus = await MediaLibrary.getPermissionsAsync();
       if (mediaStatus.status === 'granted') {
         setMediaPerm(true);
@@ -512,15 +485,9 @@ function CameraScreen({ navigation, route }) {
         setMediaPerm(status === 'granted');
       }
     })();
-    // Show loop prompt for dash cam after camera loads
     if (initialMode === 'dashcam') setTimeout(()=>setShowLoopPrompt(true), 700);
     return ()=>stopAll();
-  },[]); // runs once only
-
-  useEffect(()=>{
-    if (camMode==='security' && isArmed && motionEnabled) startMotionPolling();
-    else stopMotionPolling();
-  },[camMode, isArmed, motionEnabled]);
+  },[]);
 
   const stopAll = () => {
     clearInterval(timerRef.current);
@@ -544,64 +511,73 @@ function CameraScreen({ navigation, route }) {
     return `${m}:${s}`;
   };
 
-  // ── Dash cam: user picks loop option → record immediately ────
+  // Dash cam: user picks loop option → record immediately
   const handleLoopChoice = (forever, duration) => {
     setLoopForever(forever);
     loopForeverRef.current = forever;
     if (!forever) { setLoopDuration(duration); loopDurationRef.current = duration; }
     setShowLoopPrompt(false);
-    // Small delay for state to settle before recording
     setTimeout(()=>startRecording(), 200);
   };
 
-  // ── Security: arm/disarm ─────────────────────────────────────
+  // Security: arm/disarm — uses refs so always fresh
   const handleArmToggle = async () => {
-    if (isArmed) {
+    if (isArmedRef.current) {
+      isArmedRef.current = false;
       setIsArmed(false);
-      if (isRecordingRef.current) await stopRecording();
+      stopMotionPolling();
       stopSoundMonitor();
+      if (isRecordingRef.current) await stopRecording();
       setStatusMsg('Ready to monitor');
     } else {
+      isArmedRef.current = true;
       setIsArmed(true);
       setStatusMsg('🟢 Armed — monitoring...');
-      if (soundEnabledRef.current) await startSoundMonitor();
+      startMotionPolling();
+      if (soundEnabledRef.current) startSoundMonitor();
     }
   };
 
+  // Motion polling — plain interval, uses only refs
   const startMotionPolling = () => {
     clearInterval(motionPoll.current);
+    console.log('🟢 Motion polling started');
     motionPoll.current = setInterval(()=>{
-      if (!alertActiveRef.current && motionEnabledRef.current) {
-        if (Math.random() < 0.03) triggerAlert('motion');
+      if (!alertActiveRef.current && motionEnabledRef.current && isArmedRef.current) {
+        if (Math.random() < 0.03) {
+          console.log('⚡ Motion triggered!');
+          triggerAlert('motion');
+        }
       }
     }, 1000);
   };
-  const stopMotionPolling = () => clearInterval(motionPoll.current);
+  const stopMotionPolling = () => {
+    clearInterval(motionPoll.current);
+    console.log('🔴 Motion polling stopped');
+  };
 
-  // ── Sound monitor ────────────────────────────────────────────
- const startSoundMonitor = async () => {
-  if (!soundEnabledRef.current) return;
-  try {
-    const perm = await AudioModule.requestRecordingPermissionsAsync();
-    if (!perm.granted) return;
-
-    const recorder = new AudioModule.AudioRecorder({
-      android: { extension: '.m4a', outputFormat: 'mpeg4', audioEncoder: 'aac' },
-      ios: { extension: '.m4a', outputFormat: 'mpeg4', audioQuality: 'medium' },
-      web: {},
-    });
-    recorderRef.current = recorder;
-    await recorder.prepareToRecordAsync();
-    await recorder.record();
-
-    soundMeter.current = setInterval(async () => {
-      try {
-        const level = recorder.currentMeteringLevel ?? -160;
-        if (level > -40) triggerAlert('sound');
-      } catch {}
-    }, 600);
-  } catch (e) { console.log('Sound monitor error:', e.message); }
-};
+  // Sound monitor
+  const startSoundMonitor = async () => {
+    if (!soundEnabledRef.current) return;
+    try {
+      const perm = await AudioModule.requestRecordingPermissionsAsync();
+      if (!perm.granted) return;
+      const recorder = new AudioModule.AudioRecorder({
+        android: { extension:'.m4a', outputFormat:'mpeg4', audioEncoder:'aac' },
+        ios:     { extension:'.m4a', outputFormat:'mpeg4', audioQuality:'medium' },
+        web:     {},
+      });
+      recorderRef.current = recorder;
+      await recorder.prepareToRecordAsync();
+      await recorder.record();
+      soundMeter.current = setInterval(async ()=>{
+        try {
+          const level = recorder.currentMeteringLevel ?? -160;
+          if (level > -40 && isArmedRef.current) triggerAlert('sound');
+        } catch {}
+      }, 600);
+    } catch(e) { console.log('Sound monitor error:', e.message); }
+  };
 
   const stopSoundMonitor = async () => {
     clearInterval(soundMeter.current);
@@ -611,71 +587,81 @@ function CameraScreen({ navigation, route }) {
     }
   };
 
-  // ── Trigger alert ────────────────────────────────────────────
-  const triggerAlert = useCallback((type)=>{
+  // triggerAlert — plain function (NOT useCallback) so it always reads fresh refs
+  const triggerAlert = (type) => {
     if (alertActiveRef.current) return;
     alertActiveRef.current = true;
+    console.log('🚨 Alert:', type);
+
     const event = { type, time: new Date().toLocaleTimeString(), id: Date.now() };
-    setMotionEvents(prev=>[event,...prev].slice(0,20));
-    setStatusMsg(`⚠️ ${type==='motion'?'Motion':'Sound'} detected!`);
+    setMotionEvents(prev => [event, ...prev].slice(0, 20));
+    setStatusMsg(`⚠️ ${type === 'motion' ? 'Motion' : 'Sound'} detected!`);
+
+    // Flash red border
     Animated.sequence([
-      Animated.timing(alertAnim,{toValue:1,duration:200,useNativeDriver:true}),
-      Animated.timing(alertAnim,{toValue:0,duration:200,useNativeDriver:true}),
-      Animated.timing(alertAnim,{toValue:1,duration:200,useNativeDriver:true}),
-      Animated.timing(alertAnim,{toValue:0,duration:400,useNativeDriver:true}),
+      Animated.timing(alertAnim,{toValue:1,duration:150,useNativeDriver:true}),
+      Animated.timing(alertAnim,{toValue:0,duration:150,useNativeDriver:true}),
+      Animated.timing(alertAnim,{toValue:1,duration:150,useNativeDriver:true}),
+      Animated.timing(alertAnim,{toValue:0,duration:300,useNativeDriver:true}),
     ]).start();
-    // Auto-record on trigger with delay for camera readiness
-    if (!isRecordingRef.current) {
-      setTimeout(()=>startRecording(true), 300);
-    }
-    api.post('/api/motion/detect',{device_id:device?.id,confidence:85,type}).catch(()=>{});
+
+    // Auto-start recording after short delay
+    setTimeout(()=>{
+      if (!isRecordingRef.current && cameraRef.current) {
+        startRecording(true);
+      }
+    }, 300);
+
+    api.post('/api/motion/detect',{device_id:device?.id, confidence:85, type}).catch(()=>{});
+
+    // Reset alert after 5s
     setTimeout(()=>{
       alertActiveRef.current = false;
-      setStatusMsg(isRecordingRef.current ? '🔴 Recording...' : '🟢 Armed — monitoring...');
+      setStatusMsg(isArmedRef.current ? '🟢 Armed — monitoring...' : 'Ready');
     }, 5000);
-  },[]);
+  };
 
-  // ── Start recording ──────────────────────────────────────────
   const startRecording = async (triggered=false) => {
-  if (!cameraRef.current || isRecordingRef.current) return;
-  if (!camPerm?.granted || !micPerm?.granted) {
-    console.log('Permissions not granted, skipping record');
-    return;
-  }
-  try {
-    isRecordingRef.current = true;
-    setIsRecording(true);
-    setStatusMsg(triggered ? '🔴 Recording (triggered)' : '🔴 Recording...');
-    startTimer();
-
-    // Loop rotation for timed dashcam
-    if (camModeRef.current === 'dashcam' && !loopForeverRef.current && loopDurationRef.current > 0) {
-      clearInterval(loopRef.current);
-      loopRef.current = setInterval(() => rotateClip(), loopDurationRef.current * 1000);
+    if (!cameraRef.current || isRecordingRef.current) return;
+    if (!camPerm?.granted || !micPerm?.granted) {
+      console.log('Permissions not granted, skipping record');
+      return;
     }
+    try {
+      isRecordingRef.current = true;
+      setIsRecording(true);
+      setStatusMsg(triggered ? '🔴 Recording (triggered)' : '🔴 Recording...');
+      startTimer();
 
-    const recordOptions = { mute: false };
-    if (triggered) {
-      recordOptions.maxDuration = 60; // 60s per triggered clip
-    } else if (!loopForeverRef.current && loopDurationRef.current > 0) {
-      recordOptions.maxDuration = loopDurationRef.current;
+      // Set up timed loop rotation for dashcam
+      if (camModeRef.current==='dashcam' && !loopForeverRef.current && loopDurationRef.current>0) {
+        clearInterval(loopRef.current);
+        loopRef.current = setInterval(()=>rotateClip(), loopDurationRef.current * 1000);
+      }
+
+      const recordOptions = { mute: false };
+      if (triggered) {
+        recordOptions.maxDuration = 60; // 60s per triggered security clip
+      } else if (!loopForeverRef.current && loopDurationRef.current > 0) {
+        recordOptions.maxDuration = loopDurationRef.current;
+      }
+      // loopForever = no maxDuration
+
+      cameraRef.current.recordAsync(recordOptions)
+        .then(async (video)=>{ if (video?.uri) await saveClip(video.uri); })
+        .catch((e)=>{
+          if (!e.message?.includes('cancelled') && !e.message?.includes('stopped')) {
+            console.log('Record error:', e.message);
+          }
+        });
+
+    } catch(e) {
+      console.log('Start recording error:', e.message);
+      isRecordingRef.current = false;
+      setIsRecording(false);
+      setStatusMsg('Error — tap to retry');
     }
-
-    cameraRef.current.recordAsync(recordOptions)
-      .then(async (video) => { if (video?.uri) await saveClip(video.uri); })
-      .catch((e) => {
-        if (!e.message?.includes('cancelled') && !e.message?.includes('stopped')) {
-          console.log('Record error:', e.message);
-        }
-      });
-
-  } catch(e) {
-    console.log('Start recording error:', e.message);
-    isRecordingRef.current = false;
-    setIsRecording(false);
-    setStatusMsg('Error — tap to retry');
-  }
-};
+  };
 
   const stopRecording = async () => {
     clearInterval(loopRef.current);
@@ -685,7 +671,7 @@ function CameraScreen({ navigation, route }) {
     }
     isRecordingRef.current = false;
     setIsRecording(false);
-    setStatusMsg(camMode==='security' && isArmed ? '🟢 Armed — monitoring...' : 'Ready');
+    setStatusMsg(isArmedRef.current ? '🟢 Armed — monitoring...' : 'Ready');
   };
 
   const rotateClip = async () => {
@@ -711,7 +697,6 @@ function CameraScreen({ navigation, route }) {
       setClipCount(c=>c+1);
       if (!alertActiveRef.current) setStatusMsg('✅ Clip saved');
       if (cloudUpload) uploadClip(dest, filename);
-      // For loop forever dashcam, immediately start next clip
       if (camModeRef.current==='dashcam' && loopForeverRef.current && isRecordingRef.current) {
         rotateClip();
       }
@@ -741,14 +726,21 @@ function CameraScreen({ navigation, route }) {
     );
   }
 
+  const bannerVisible = isRecording || isArmed;
   const borderColor = alertAnim.interpolate({inputRange:[0,1],outputRange:['transparent','#ff4444']});
   const modeColor = camMode==='dashcam' ? '#00ff88' : '#4488ff';
   const modeLabel = camMode==='dashcam' ? '🚗 Dash Cam' : '🔒 Security';
 
+  // Top bar shifts down when banner is visible
+  const topBarPaddingTop = bannerVisible
+    ? (Platform.OS==='ios' ? 72 : 54)
+    : (Platform.OS==='ios' ? 50 : 30);
+
   return (
     <View style={cs.container}>
-      <StatusBar barStyle="light-content" backgroundColor={isRecording?'#cc0000':isArmed?'#004422':'#000'}/>
+      <StatusBar barStyle="light-content" backgroundColor={isRecording?'#cc0000':isArmed?'#005522':'#000'}/>
 
+      {/* Banner */}
       <RecordingBanner recording={isRecording} armed={isArmed} formatTime={formatTime} recordingTime={recordingTime} clipCount={clipCount}/>
 
       {/* Camera feed */}
@@ -757,14 +749,14 @@ function CameraScreen({ navigation, route }) {
           facing={facing} enableTorch={torch} zoom={zoom} mode="video"/>
       </Animated.View>
 
-      {/* Overlays (outside CameraView) */}
+      {/* Overlays outside CameraView */}
       <NightVisionOverlay active={nightVision} premium={nightVisionPro}/>
       {camMode==='security' && (
         <View style={cs.clockWrapper} pointerEvents="none"><LiveClock/></View>
       )}
 
-      {/* Top bar */}
-      <View style={cs.topBar}>
+      {/* Top bar — shifts down when banner showing */}
+      <View style={[cs.topBar,{paddingTop:topBarPaddingTop}]}>
         <TouchableOpacity onPress={()=>{ stopAll(); navigation.goBack(); }} style={cs.backBtn}>
           <Text style={cs.backTxt}>← Back</Text>
         </TouchableOpacity>
@@ -778,14 +770,14 @@ function CameraScreen({ navigation, route }) {
       </View>
 
       {/* Mode badge */}
-      <View style={cs.modeBadgeRow}>
+      <View style={[cs.modeBadgeRow,{top: bannerVisible?(Platform.OS==='ios'?122:98):(Platform.OS==='ios'?105:76)}]}>
         <View style={[cs.modeBadge,{borderColor:modeColor}]}>
           <Text style={[cs.modeBadgeTxt,{color:modeColor}]}>{modeLabel}</Text>
         </View>
       </View>
 
       {/* Status */}
-      <View style={cs.statusBar}>
+      <View style={[cs.statusBar,{top: bannerVisible?(Platform.OS==='ios'?160:135):(Platform.OS==='ios'?143:112)}]}>
         <Text style={cs.statusTxt}>{statusMsg}</Text>
       </View>
 
@@ -865,7 +857,7 @@ function CameraScreen({ navigation, route }) {
               <Text style={cs.promptOptionIco}>♾️</Text>
               <View style={{flex:1}}>
                 <Text style={cs.promptOptionTitle}>Loop Forever</Text>
-                <Text style={cs.promptOptionDesc}>Continuous recording, new clip every 5 min</Text>
+                <Text style={cs.promptOptionDesc}>Continuous — new clip every 5 min</Text>
               </View>
             </TouchableOpacity>
             {[60,300,900,1800].map(dur=>(
@@ -960,10 +952,10 @@ function App() {
   return (
     <NavigationContainer>
       <Stack.Navigator screenOptions={{headerShown:false}}>
-        {!token ? (<>
+        {!token?(<>
           <Stack.Screen name="Login">{(props)=><LoginScreen {...props} setToken={setToken}/>}</Stack.Screen>
           <Stack.Screen name="Register">{(props)=><RegisterScreen {...props} setToken={setToken}/>}</Stack.Screen>
-        </>) : (<>
+        </>):(<>
           <Stack.Screen name="Dashboard">{(props)=><DashboardScreen {...props} logout={logout}/>}</Stack.Screen>
           <Stack.Screen name="Camera" component={CameraScreen}/>
         </>)}
@@ -1022,7 +1014,8 @@ const cs = StyleSheet.create({
   permBtn:           {marginTop:20,alignSelf:'center',backgroundColor:'#00ff88',padding:12,borderRadius:8},
   permBtnTxt:        {color:'#000',fontWeight:'bold'},
   recBanner:         {position:'absolute',top:0,left:0,right:0,zIndex:100,
-                      paddingTop:Platform.OS==='ios'?44:28,paddingBottom:6,paddingHorizontal:16,alignItems:'center'},
+                      paddingTop:Platform.OS==='ios'?44:24,paddingBottom:8,
+                      paddingHorizontal:16,alignItems:'center'},
   recBannerTxt:      {color:'#fff',fontSize:12,fontWeight:'bold'},
   nvBright:          {...StyleSheet.absoluteFillObject,backgroundColor:'rgba(255,255,220,0.1)',zIndex:10},
   nvDark:            {...StyleSheet.absoluteFillObject,backgroundColor:'rgba(0,20,0,0.45)',zIndex:10},
@@ -1038,20 +1031,20 @@ const cs = StyleSheet.create({
   recDot:            {width:10,height:10,borderRadius:5,backgroundColor:'#444'},
   recDotActive:      {backgroundColor:'#ff4444'},
   topBar:            {position:'absolute',top:0,left:0,right:0,flexDirection:'row',alignItems:'center',
-                      paddingTop:Platform.OS==='ios'?50:34,paddingHorizontal:12,paddingBottom:12,
+                      paddingHorizontal:12,paddingBottom:12,
                       backgroundColor:'rgba(0,0,0,0.55)',zIndex:20},
   backBtn:           {paddingHorizontal:8,paddingVertical:4},
   backTxt:           {color:'#00ff88',fontSize:15,fontWeight:'600'},
   topCenter:         {flex:1,flexDirection:'row',alignItems:'center',justifyContent:'center',gap:8},
   timerTxt:          {color:'#fff',fontSize:15,fontWeight:'bold'},
   settingsBtn:       {paddingHorizontal:8},
-  modeBadgeRow:      {position:'absolute',top:Platform.OS==='ios'?105:82,left:0,right:0,alignItems:'center',zIndex:20},
+  modeBadgeRow:      {position:'absolute',left:0,right:0,alignItems:'center',zIndex:20},
   modeBadge:         {paddingHorizontal:16,paddingVertical:5,borderRadius:20,borderWidth:1.5,backgroundColor:'rgba(0,0,0,0.6)'},
   modeBadgeTxt:      {fontSize:13,fontWeight:'bold'},
-  statusBar:         {position:'absolute',top:Platform.OS==='ios'?145:119,left:16,right:16,alignItems:'center',zIndex:20},
+  statusBar:         {position:'absolute',left:16,right:16,alignItems:'center',zIndex:20},
   statusTxt:         {color:'#fff',fontSize:13,fontWeight:'600',backgroundColor:'rgba(0,0,0,0.6)',
                       paddingHorizontal:12,paddingVertical:4,borderRadius:12,overflow:'hidden'},
-  dashInfo:          {position:'absolute',top:Platform.OS==='ios'?183:157,left:16,right:16,
+  dashInfo:          {position:'absolute',bottom:220,left:16,right:16,
                       flexDirection:'row',justifyContent:'center',gap:8,flexWrap:'wrap',zIndex:20},
   dashInfoTxt:       {color:'rgba(255,255,255,0.9)',fontSize:11,backgroundColor:'rgba(0,0,0,0.6)',
                       paddingHorizontal:8,paddingVertical:3,borderRadius:8,overflow:'hidden',
