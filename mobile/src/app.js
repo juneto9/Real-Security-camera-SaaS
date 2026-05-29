@@ -85,17 +85,36 @@ function LoginScreen({ navigation, setToken }) {
   };
 
   return (
-    <KeyboardAvoidingView style={s.c} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-      <Text style={s.title}>🔒 Real Security Camera</Text>
-      <Text style={s.sub}>Enterprise Security System</Text>
-      <TextInput style={s.input} placeholder="Email" placeholderTextColor="#666" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" editable={!loading} />
-      <TextInput style={s.input} placeholder="Password" placeholderTextColor="#666" value={password} onChangeText={setPassword} secureTextEntry editable={!loading} />
-      <TouchableOpacity style={s.btn} onPress={login} disabled={loading}>
-        {loading ? <ActivityIndicator color="#000" /> : <Text style={s.btxt}>Login</Text>}
-      </TouchableOpacity>
-      <TouchableOpacity onPress={() => navigation.navigate('Register')} disabled={loading}>
-        <Text style={s.link}>Don't have an account? Register</Text>
-      </TouchableOpacity>
+    <KeyboardAvoidingView style={s.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <ScrollView contentContainerStyle={{flexGrow: 1, justifyContent: 'center', padding: 24}}>
+        <Text style={s.title}>🔒 Real Security Camera</Text>
+        <Text style={s.sub}>Enterprise Security System</Text>
+        <TextInput 
+          style={s.input} 
+          placeholder="Email" 
+          placeholderTextColor="#666" 
+          value={email} 
+          onChangeText={setEmail} 
+          keyboardType="email-address" 
+          autoCapitalize="none" 
+          editable={!loading} 
+        />
+        <TextInput 
+          style={s.input} 
+          placeholder="Password" 
+          placeholderTextColor="#666" 
+          value={password} 
+          onChangeText={setPassword} 
+          secureTextEntry 
+          editable={!loading} 
+        />
+        <TouchableOpacity style={s.btn} onPress={login} disabled={loading}>
+          {loading ? <ActivityIndicator color="#000" /> : <Text style={s.btxt}>Login</Text>}
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => navigation.navigate('Register')} disabled={loading}>
+          <Text style={s.link}>Don't have an account? Register</Text>
+        </TouchableOpacity>
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
@@ -138,7 +157,9 @@ function RegisterScreen({ navigation, setToken }) {
 
 // ─── Dashboard Screen ────────────────────────────────────────────
 function DashboardScreen({ navigation, route, logout }) {
-  const [devices, setDevices] = useState([]);
+  const [editingDevice, setEditingDevice] = useState(null);
+  const [editName, setEditName] = useState('');
+  const [editLocation, setEditLocation] = useState('');const [devices, setDevices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [mode, setMode] = useState('viewer');
   const [showAddModal, setShowAddModal] = useState(false);
@@ -184,13 +205,37 @@ function DashboardScreen({ navigation, route, logout }) {
     }
     setIsCreating(false);
   };
+const handleEditDevice = (device) => {
+  setEditingDevice(device);
+  setEditName(device.name);
+  setEditLocation(device.location || '');
+};
 
+const saveDeviceChanges = async () => {
+  if (!editName.trim()) {
+    Alert.alert('Error', 'Name cannot be empty');
+    return;
+  }
+  try {
+    await api.put(`/api/devices/${editingDevice.id}`, {
+      name: editName,
+      location: editLocation,
+    });
+    Alert.alert('Success', 'Device updated!');
+    setEditingDevice(null);
+    loadDevices();
+  } catch (e) {
+    Alert.alert('Error', e.response?.data?.message || 'Failed to update');
+  }
+};
   return (
     <View style={s.container}>
       <View style={s.header}>
-        <Text style={s.title}>🔒 Real Security Camera</Text>
-        <TouchableOpacity onPress={logout}><Text style={s.logout}>Logout</Text></TouchableOpacity>
-      </View>
+  <Text style={s.title}>🔒 Real Security Camera</Text>
+  <TouchableOpacity onPress={logout} style={{paddingHorizontal: 12}}>
+    <Text style={s.logout}>Logout</Text>
+  </TouchableOpacity>
+</View>
       <View style={s.modeRow}>
         <TouchableOpacity style={[s.modeBtn, mode==='camera' && s.modeBtnOn]} onPress={() => setMode('camera')}>
           <Text style={[s.modeTxt, mode==='camera' && s.modeTxtOn]}>📷 Camera</Text>
@@ -220,16 +265,21 @@ function DashboardScreen({ navigation, route, logout }) {
           </View>
         }
         renderItem={({item}) => (
-          <TouchableOpacity style={s.card} onPress={() => navigation.navigate('Camera', { device: item, mode })}>
-            <Text style={{fontSize:32}}>📷</Text>
-            <View style={[s.dot,{backgroundColor:item.is_active?'#00ff88':'#666'}]} />
-            <Text style={s.cardName}>{item.name}</Text>
-            <Text style={s.cardLoc}>📍 {item.location||'No location'}</Text>
-            <View style={s.cardBtn}>
-              <Text style={s.cardBtnTxt}>{mode==='camera'?'Use as Camera':'View Stream'}</Text>
-            </View>
-          </TouchableOpacity>
-        )}
+  <TouchableOpacity 
+    style={s.card} 
+    onPress={() => navigation.navigate('Camera', { device: item, mode })}
+    onLongPress={() => handleEditDevice(item)}
+  >
+    <Text style={{fontSize:32}}>📷</Text>
+    <View style={[s.dot,{backgroundColor:item.is_active?'#00ff88':'#666'}]} />
+    <Text style={s.cardName}>{item.name}</Text>
+    <Text style={s.cardLoc}>📍 {item.location||'No location'}</Text>
+    <View style={s.cardBtn}>
+      <Text style={s.cardBtnTxt}>{mode==='camera'?'Use as Camera':'View Stream'}</Text>
+    </View>
+    <Text style={{fontSize:10, color:'#666', marginTop:4}}>Hold to edit</Text>
+  </TouchableOpacity>
+)}
       />}
       <TouchableOpacity style={s.fab} onPress={() => setShowAddModal(true)}>
         <Text style={{color:'#000',fontSize:32,fontWeight:'bold'}}>+</Text>
@@ -270,7 +320,24 @@ function DashboardScreen({ navigation, route, logout }) {
           </View>
         </View>
       </Modal>
+    <Modal visible={!!editingDevice} transparent animationType="slide" onRequestClose={() => setEditingDevice(null)}>
+  <View style={{flex:1,backgroundColor:'rgba(0,0,0,0.7)',justifyContent:'center',alignItems:'center'}}>
+    <View style={{backgroundColor:'#111',borderRadius:12,padding:24,width:'85%',borderWidth:1,borderColor:'#333'}}>
+      <Text style={{color:'#00ff88',fontSize:20,fontWeight:'bold',marginBottom:16,textAlign:'center'}}>Edit Camera</Text>
+      <TextInput style={s.input} placeholder="Device Name" placeholderTextColor="#666" value={editName} onChangeText={setEditName} />
+      <TextInput style={s.input} placeholder="Location" placeholderTextColor="#666" value={editLocation} onChangeText={setEditLocation} />
+      <View style={{flexDirection:'row',gap:12}}>
+        <TouchableOpacity style={{flex:1,backgroundColor:'#1a1a1a',borderWidth:1,borderColor:'#666',paddingVertical:12,borderRadius:6,alignItems:'center'}} onPress={() => setEditingDevice(null)}>
+          <Text style={{color:'#fff',fontSize:14,fontWeight:'bold'}}>Cancel</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={{flex:1,backgroundColor:'#00ff88',paddingVertical:12,borderRadius:6,alignItems:'center'}} onPress={saveDeviceChanges}>
+          <Text style={{color:'#000',fontSize:14,fontWeight:'bold'}}>Save</Text>
+        </TouchableOpacity>
+      </View>
     </View>
+  </View>
+</Modal>
+</View>
   );
 }
 
@@ -666,7 +733,7 @@ const s = StyleSheet.create({
   btn:        { backgroundColor:'#00ff88', padding:16, borderRadius:8, alignItems:'center', width:'100%', marginBottom:12 },
   btxt:       { color:'#000', fontSize:16, fontWeight:'bold' },
   link:       { color:'#00ff88', textAlign:'center', marginTop:8 },
-  header:     { flexDirection:'row', justifyContent:'space-between', alignItems:'center', padding:20, paddingTop:50, backgroundColor:'#111' },
+  header:     { flexDirection:'row', justifyContent:'space-between', alignItems:'center', padding:16, paddingTop:50, backgroundColor:'#111' },
   logout:     { color:'#ff4444' },
   modeRow:    { flexDirection:'row', margin:16, backgroundColor:'#1a1a1a', borderRadius:10, padding:4 },
   modeBtn:    { flex:1, padding:10, borderRadius:8, alignItems:'center' },
