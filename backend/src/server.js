@@ -52,7 +52,7 @@ app.get('/health', (req, res) => {
 });
 
 app.use('/api/auth', authRoutes);
-app.use('/api/devices', authMiddleware, deviceRoutes);
+app.use('/api/devices', deviceRoutes);
 app.use('/api/recordings', authMiddleware, recordingRoutes);
 app.use('/api/streams', authMiddleware, streamRoutes);
 app.use('/api/users', authMiddleware, userRoutes);
