@@ -61,12 +61,17 @@ exports.createDevice = async (req, res, next) => {
 
 exports.updateDevice = async (req, res, next) => {
   try {
-    const device = await Device.update(req.params.deviceId, req.user.userId, req.body);
+    const { name, location } = req.body;
+    const deviceId = req.params.deviceId;
+    const userId = req.user.userId;
+
+    const device = await Device.update(deviceId, userId, { name, location });
     if (!device) return res.status(404).json({ success: false, message: 'Device not found' });
+    
     res.json({ success: true, data: device });
-  } catch (err) { 
-    logger.error('Error updating device', { error: err.message });
-    next(err); 
+  } catch (err) {
+    logger.error('Update device error', { error: err.message });
+    next(err);
   }
 };
 
