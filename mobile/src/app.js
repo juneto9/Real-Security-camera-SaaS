@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator,
   Alert, FlatList, KeyboardAvoidingView, Platform, Modal, Animated,
-  ScrollView, Switch, Dimensions, StatusBar, Linking
+  ScrollView, Switch, Dimensions, StatusBar, Linking, PermissionsAndroid
 } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -11,8 +11,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
 import * as MediaLibrary from 'expo-media-library';
-import * as FileSystem from 'expo-file-system';
-import { AudioModule, RecordingPresets } from 'expo-audio';
+import * as FileSystem from 'expo-file-system/legacy';
+import { useAudioRecorder, AudioModule } from 'expo-audio';
 import NetInfo from '@react-native-community/netinfo';
 
 const { width: SW, height: SH } = Dimensions.get('window');
@@ -54,14 +54,37 @@ function WiFiStat() {
   const [strength, setStrength] = useState(0);
 
   useEffect(() => {
-    const unsub = NetInfo.addEventListener(state => {
+    // Request location permission on Android (required for SSID)
+    const requestAndGetSSID = async () => {
+      if (Platform.OS === 'android') {
+        try {
+          const granted = await PermissionsAndroid.request(
+            PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+            { title: 'Location Permission', message: 'Required to show WiFi network name', buttonPositive: 'Allow' }
+          );
+          if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
+            setSsid('WiFi'); return;
+          }
+        } catch {}
+      }
+      const state = await NetInfo.fetch();
+      updateFromState(state);
+    };
+
+    const updateFromState = (state) => {
       if (state.type === 'wifi' && state.isConnected) {
-        setSsid(state.details?.ssid && state.details.ssid !== '<unknown ssid>'
-          ? state.details.ssid : 'WiFi');
+        const name = state.details?.ssid;
+        setSsid(name && name !== '<unknown ssid>' ? name : 'Connected');
         const str = state.details?.strength;
-        setStrength(str != null ? Math.round((str / 100) * 4) : 3);
-      } else { setSsid('No WiFi'); setStrength(0); }
-    });
+        setStrength(str != null ? Math.min(4, Math.round((str / 100) * 4)) : 3);
+      } else {
+        setSsid('No WiFi');
+        setStrength(0);
+      }
+    };
+
+    requestAndGetSSID();
+    const unsub = NetInfo.addEventListener(updateFromState);
     return () => unsub();
   }, []);
 
@@ -76,12 +99,12 @@ function WiFiStat() {
   return (
     <TouchableOpacity style={s.stat} onPress={openWifi}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-        <Text style={[s.statN, {fontSize:13}]} numberOfLines={1}>
+        <Text style={[s.statN, {fontSize:12}]} numberOfLines={1}>
           {ssid.length > 9 ? ssid.substring(0,8)+'…' : ssid}
         </Text>
         <SignalBars strength={strength} />
       </View>
-      <Text style={s.statL}>Network</Text>
+      <Text style={s.statL}>Network ›</Text>
     </TouchableOpacity>
   );
 }
@@ -109,11 +132,11 @@ function NightVisionOverlay({ active, premium }) {
   if (!active) return null;
   if (premium) {
     return (
-      <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+      <View pointerEvents="none" style={[StyleSheet.absoluteFill, {zIndex:10}]}>
         <View style={cs.nvDark} />
         <View style={cs.nvGreenStrong} />
-        {Array.from({ length: 30 }).map((_, i) => (
-          <View key={i} style={[cs.nvScanline, { top: i * (SH / 30) }]} />
+        {Array.from({ length: 25 }).map((_, i) => (
+          <View key={i} style={[cs.nvScanline, { top: i * (SH / 25) }]} />
         ))}
         <View style={cs.nvVignette} />
         <View style={cs.nvLabel}><Text style={cs.nvLabelTxt}>🌙 NIGHT VISION PRO</Text></View>
@@ -121,7 +144,7 @@ function NightVisionOverlay({ active, premium }) {
     );
   }
   return (
-    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+    <View pointerEvents="none" style={[StyleSheet.absoluteFill, {zIndex:10}]}>
       <View style={cs.nvBright} />
       <View style={cs.nvLabel}><Text style={cs.nvLabelTxt}>🌙 NIGHT MODE</Text></View>
     </View>
@@ -140,6 +163,20 @@ function RecDot({ recording }) {
     } else { anim.stopAnimation(); anim.setValue(1); }
   }, [recording]);
   return <Animated.View style={[cs.recDot, recording && cs.recDotActive, { opacity: anim }]} />;
+}
+
+// ─── Recording Status Bar Banner ─────────────────────────────────
+function RecordingBanner({ recording, armed, camMode, clipCount, formatTime, recordingTime }) {
+  if (!recording && !armed) return null;
+  const bgColor = recording ? '#ff4444' : '#00aa44';
+  const msg = recording
+    ? `● REC ${formatTime(recordingTime)}  •  ${clipCount} clip${clipCount!==1?'s':''} saved`
+    : '🟢 Armed — monitoring for motion & sound';
+  return (
+    <View style={[cs.recBanner, { backgroundColor: bgColor }]}>
+      <Text style={cs.recBannerTxt}>{msg}</Text>
+    </View>
+  );
 }
 
 // ─── Login Screen ────────────────────────────────────────────────
@@ -281,20 +318,14 @@ function DashboardScreen({ navigation, logout }) {
   const handleDeleteDevice = async (deviceId) => {
     try {
       await api.delete(`/api/devices/${deviceId}`);
-      Alert.alert('Success', 'Camera deleted!');
       setDeleteConfirm(null); loadDevices();
     } catch (e) {
       Alert.alert('Error', e.response?.data?.message || 'Failed to delete');
     }
   };
 
-  // 📷 Camera tap → Dash Cam mode
-  // 👁 Viewer tap → Security mode
   const openCamera = (device, mode) => {
-    navigation.navigate('Camera', {
-      device,
-      initialMode: mode === 'camera' ? 'dashcam' : 'security',
-    });
+    navigation.navigate('Camera', { device, initialMode: mode === 'camera' ? 'dashcam' : 'security' });
   };
 
   return (
@@ -335,32 +366,35 @@ function DashboardScreen({ navigation, logout }) {
           }
           renderItem={({item}) => (
             <View style={{flex:1}}>
-              <View style={s.card}>
-                <Text style={{fontSize:28}}>📷</Text>
-                <View style={[s.dot,{backgroundColor:item.is_active?'#00ff88':'#666'}]} />
+              <TouchableOpacity
+                style={s.card}
+                onLongPress={() => handleEditDevice(item)}
+                delayLongPress={400}
+              >
+                <View style={{flexDirection:'row', justifyContent:'space-between', alignItems:'flex-start'}}>
+                  <Text style={{fontSize:28}}>📷</Text>
+                  <View style={[s.dot,{backgroundColor:item.is_active?'#00ff88':'#666'}]} />
+                </View>
                 <Text style={s.cardName}>{item.name}</Text>
                 <Text style={s.cardLoc}>📍 {item.location||'No location'}</Text>
-                {/* Two distinct action buttons */}
+                <Text style={s.cardHint}>Hold to edit</Text>
                 <View style={s.cardActions}>
                   <TouchableOpacity
-                    style={[s.cardActionBtn, {backgroundColor:'#00ff8820', borderColor:'#00ff8860'}]}
+                    style={[s.cardActionBtn, {backgroundColor:'#00ff8818', borderColor:'#00ff8860'}]}
                     onPress={() => openCamera(item, 'camera')}
                   >
                     <Text style={s.cardActionIco}>🚗</Text>
                     <Text style={[s.cardActionTxt, {color:'#00ff88'}]}>Dash Cam</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={[s.cardActionBtn, {backgroundColor:'#4488ff20', borderColor:'#4488ff60'}]}
+                    style={[s.cardActionBtn, {backgroundColor:'#4488ff18', borderColor:'#4488ff60'}]}
                     onPress={() => openCamera(item, 'viewer')}
                   >
                     <Text style={s.cardActionIco}>🔒</Text>
                     <Text style={[s.cardActionTxt, {color:'#4488ff'}]}>Security</Text>
                   </TouchableOpacity>
                 </View>
-                <TouchableOpacity onLongPress={() => handleEditDevice(item)} style={s.cardEditHint}>
-                  <Text style={s.cardHint}>Hold to edit</Text>
-                </TouchableOpacity>
-              </View>
+              </TouchableOpacity>
               <TouchableOpacity style={s.deleteBtn} onPress={() => setDeleteConfirm(item.id)}>
                 <Text style={s.deleteBtnTxt}>🗑 Delete</Text>
               </TouchableOpacity>
@@ -383,10 +417,10 @@ function DashboardScreen({ navigation, logout }) {
                 <Text style={s.modalSub}>Enter device name</Text>
                 <TextInput style={s.input} placeholder="Device Name" placeholderTextColor="#666" value={deviceName} onChangeText={setDeviceName} editable={!isCreating} />
                 <View style={s.modalBtns}>
-                  <TouchableOpacity style={s.modalBtnCancel} onPress={closeAddModal} disabled={isCreating}>
+                  <TouchableOpacity style={s.modalBtnCancel} onPress={closeAddModal}>
                     <Text style={s.modalBtnCancelTxt}>Cancel</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={s.modalBtnPrimary} onPress={() => setStep(2)} disabled={isCreating || !deviceName.trim()}>
+                  <TouchableOpacity style={s.modalBtnPrimary} onPress={() => setStep(2)} disabled={!deviceName.trim()}>
                     <Text style={s.modalBtnPrimaryTxt}>Next</Text>
                   </TouchableOpacity>
                 </View>
@@ -397,7 +431,7 @@ function DashboardScreen({ navigation, logout }) {
                 <Text style={s.modalSub}>Where is this camera?</Text>
                 <TextInput style={s.input} placeholder="Location" placeholderTextColor="#666" value={deviceLocation} onChangeText={setDeviceLocation} editable={!isCreating} />
                 <View style={s.modalBtns}>
-                  <TouchableOpacity style={s.modalBtnCancel} onPress={() => setStep(1)} disabled={isCreating}>
+                  <TouchableOpacity style={s.modalBtnCancel} onPress={() => setStep(1)}>
                     <Text style={s.modalBtnCancelTxt}>Back</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={s.modalBtnPrimary} onPress={handleAddDevice} disabled={isCreating}>
@@ -414,7 +448,7 @@ function DashboardScreen({ navigation, logout }) {
       <Modal visible={!!editingDevice} transparent animationType="slide" onRequestClose={() => setEditingDevice(null)}>
         <View style={s.modalBg}>
           <View style={s.modalBox}>
-            <Text style={s.modalTitle}>Edit Camera</Text>
+            <Text style={s.modalTitle}>✏️ Edit Camera</Text>
             <TextInput style={s.input} placeholder="Device Name" placeholderTextColor="#666" value={editName} onChangeText={setEditName} />
             <TextInput style={s.input} placeholder="Location" placeholderTextColor="#666" value={editLocation} onChangeText={setEditLocation} />
             <View style={s.modalBtns}>
@@ -462,12 +496,9 @@ function CameraScreen({ navigation, route }) {
   const [nightVisionPro,  setNightVisionPro] = useState(false);
   const [torch,           setTorch]          = useState(false);
   const [zoom,            setZoom]           = useState(0);
-
-  // Mode: 'dashcam' | 'security'
   const [camMode]                            = useState(initialMode || 'dashcam');
-
   const [isRecording,     setIsRecording]    = useState(false);
-  const [isArmed,         setIsArmed]        = useState(false); // Security mode armed state
+  const [isArmed,         setIsArmed]        = useState(false);
   const [recordingTime,   setRecordingTime]  = useState(0);
   const [clipCount,       setClipCount]      = useState(0);
   const [loopDuration,    setLoopDuration]   = useState(300);
@@ -477,7 +508,7 @@ function CameraScreen({ navigation, route }) {
   const [soundEnabled,    setSoundEnabled]   = useState(true);
   const [motionEvents,    setMotionEvents]   = useState([]);
   const [showSettings,    setShowSettings]   = useState(false);
-  const [showLoopPrompt,  setShowLoopPrompt] = useState(false); // Dash cam loop prompt
+  const [showLoopPrompt,  setShowLoopPrompt] = useState(false);
   const [statusMsg,       setStatusMsg]      = useState(
     initialMode === 'dashcam' ? 'Choose recording mode...' : 'Ready to monitor'
   );
@@ -485,19 +516,21 @@ function CameraScreen({ navigation, route }) {
   const cameraRef        = useRef(null);
   const timerRef         = useRef(null);
   const loopRef          = useRef(null);
-  const soundRef         = useRef(null);
+  const recorderRef      = useRef(null);
   const soundMeter       = useRef(null);
   const motionPoll       = useRef(null);
   const alertAnim        = useRef(new Animated.Value(0)).current;
   const isRecordingRef   = useRef(false);
   const alertActiveRef   = useRef(false);
   const motionEnabledRef = useRef(true);
+  const soundEnabledRef  = useRef(true);
   const loopForeverRef   = useRef(false);
   const loopDurationRef  = useRef(300);
 
   useEffect(() => { motionEnabledRef.current = motionEnabled; }, [motionEnabled]);
-  useEffect(() => { loopForeverRef.current = loopForever; }, [loopForever]);
-  useEffect(() => { loopDurationRef.current = loopDuration; }, [loopDuration]);
+  useEffect(() => { soundEnabledRef.current  = soundEnabled;  }, [soundEnabled]);
+  useEffect(() => { loopForeverRef.current   = loopForever;   }, [loopForever]);
+  useEffect(() => { loopDurationRef.current  = loopDuration;  }, [loopDuration]);
 
   useEffect(() => {
     (async () => {
@@ -506,27 +539,24 @@ function CameraScreen({ navigation, route }) {
       const { status } = await MediaLibrary.requestPermissionsAsync();
       setMediaPerm(status === 'granted');
     })();
-    // Show loop prompt immediately for dash cam mode
-    if (initialMode === 'dashcam') {
-      setTimeout(() => setShowLoopPrompt(true), 600);
-    }
+    if (initialMode === 'dashcam') setTimeout(() => setShowLoopPrompt(true), 500);
     return () => stopAll();
   }, []);
 
-  // Start/stop motion polling when armed in security mode
   useEffect(() => {
-    if (camMode === 'security' && isArmed && motionEnabled) {
-      startMotionPolling();
-    } else {
-      stopMotionPolling();
-    }
+    if (camMode === 'security' && isArmed && motionEnabled) startMotionPolling();
+    else stopMotionPolling();
   }, [camMode, isArmed, motionEnabled]);
 
   const stopAll = () => {
     clearInterval(timerRef.current);
     clearInterval(loopRef.current);
     clearInterval(motionPoll.current);
-    stopSoundMonitor();
+    clearInterval(soundMeter.current);
+    if (recorderRef.current) {
+      try { recorderRef.current.stop(); } catch {}
+      recorderRef.current = null;
+    }
   };
 
   const startTimer = () => {
@@ -535,39 +565,32 @@ function CameraScreen({ navigation, route }) {
   };
   const stopTimer = () => { clearInterval(timerRef.current); setRecordingTime(0); };
   const formatTime = (sec) => {
-    const m = Math.floor(sec / 60).toString().padStart(2,'0');
-    const s = (sec % 60).toString().padStart(2,'0');
+    const m = Math.floor(sec/60).toString().padStart(2,'0');
+    const s = (sec%60).toString().padStart(2,'0');
     return `${m}:${s}`;
   };
 
-  // ── Dash Cam: user chose loop option ──────────────────────────
   const handleLoopChoice = (forever, duration) => {
     setLoopForever(forever);
     loopForeverRef.current = forever;
-    if (!forever) {
-      setLoopDuration(duration);
-      loopDurationRef.current = duration;
-    }
+    if (!forever) { setLoopDuration(duration); loopDurationRef.current = duration; }
     setShowLoopPrompt(false);
     startRecording();
   };
 
-  // ── Security: arm / disarm ───────────────────────────────────
   const handleArmToggle = async () => {
     if (isArmed) {
-      // Disarm
       setIsArmed(false);
       if (isRecordingRef.current) await stopRecording();
+      stopSoundMonitor();
       setStatusMsg('Ready to monitor');
     } else {
-      // Arm
       setIsArmed(true);
       setStatusMsg('🟢 Armed — monitoring...');
-      if (soundEnabled) await startSoundMonitor();
+      if (soundEnabledRef.current) await startSoundMonitor();
     }
   };
 
-  // ── Motion polling ───────────────────────────────────────────
   const startMotionPolling = () => {
     clearInterval(motionPoll.current);
     motionPoll.current = setInterval(() => {
@@ -578,33 +601,35 @@ function CameraScreen({ navigation, route }) {
   };
   const stopMotionPolling = () => clearInterval(motionPoll.current);
 
-  // ── Sound monitor ────────────────────────────────────────────
+  // ── Sound monitor using expo-audio recorder ──────────────────
   const startSoundMonitor = async () => {
-    if (!soundEnabled) return;
+    if (!soundEnabledRef.current) return;
     try {
-      await AudioModule.requestRecordingPermissionsAsync();
-      const recording = new AudioModule.Recording();
-      await recording.prepareToRecordAsync(RecordingPresets.LOW_QUALITY);
-      await recording.startAsync();
-      soundRef.current = recording;
+      const perm = await AudioModule.requestRecordingPermissionsAsync();
+      if (!perm.granted) return;
+
+      const recorder = new AudioModule.AudioRecorder();
+      recorderRef.current = recorder;
+      await recorder.prepareToRecordAsync({ android: { extension: '.m4a' }, ios: { extension: '.m4a' } });
+      await recorder.record();
+
       soundMeter.current = setInterval(async () => {
         try {
-          const status = await recording.getStatusAsync();
-          if (status.metering && Math.abs(status.metering) < 40) triggerAlert('sound');
+          const level = recorder.currentMeteringLevel ?? -160;
+          if (level > -40) triggerAlert('sound');
         } catch {}
-      }, 500);
+      }, 600);
     } catch (e) { console.log('Sound monitor error:', e.message); }
   };
 
   const stopSoundMonitor = async () => {
     clearInterval(soundMeter.current);
-    if (soundRef.current) {
-      try { await soundRef.current.stopAndUnloadAsync(); } catch {}
-      soundRef.current = null;
+    if (recorderRef.current) {
+      try { await recorderRef.current.stop(); } catch {}
+      recorderRef.current = null;
     }
   };
 
-  // ── Trigger alert (motion or sound) ─────────────────────────
   const triggerAlert = useCallback((type) => {
     if (alertActiveRef.current) return;
     alertActiveRef.current = true;
@@ -617,7 +642,6 @@ function CameraScreen({ navigation, route }) {
       Animated.timing(alertAnim, { toValue:1, duration:200, useNativeDriver:true }),
       Animated.timing(alertAnim, { toValue:0, duration:400, useNativeDriver:true }),
     ]).start();
-    // Auto-start recording on trigger
     if (!isRecordingRef.current) startRecording(true);
     api.post('/api/motion/detect', { device_id: device?.id, confidence:85, type }).catch(()=>{});
     setTimeout(() => {
@@ -626,7 +650,6 @@ function CameraScreen({ navigation, route }) {
     }, 5000);
   }, []);
 
-  // ── Start recording ──────────────────────────────────────────
   const startRecording = async (triggered = false) => {
     if (!cameraRef.current || isRecordingRef.current) return;
     if (!camPerm?.granted || !micPerm?.granted) {
@@ -639,15 +662,14 @@ function CameraScreen({ navigation, route }) {
       setStatusMsg(triggered ? '🔴 Recording (triggered)' : '🔴 Recording...');
       startTimer();
 
-      const maxDur = loopForeverRef.current ? undefined : (loopDurationRef.current || undefined);
-
-      // Loop interval for dash cam
       if (camMode === 'dashcam' && !loopForeverRef.current && loopDurationRef.current > 0) {
         loopRef.current = setInterval(() => rotateClip(), loopDurationRef.current * 1000);
       }
 
       const recordOptions = { mute: false };
-      if (maxDur) recordOptions.maxDuration = maxDur;
+      if (!loopForeverRef.current && loopDurationRef.current > 0) {
+        recordOptions.maxDuration = loopDurationRef.current;
+      }
 
       cameraRef.current.recordAsync(recordOptions)
         .then(async (video) => { if (video?.uri) await saveClip(video.uri); })
@@ -664,7 +686,6 @@ function CameraScreen({ navigation, route }) {
   const stopRecording = async () => {
     clearInterval(loopRef.current);
     stopTimer();
-    if (camMode !== 'security') stopSoundMonitor();
     if (cameraRef.current && isRecordingRef.current) {
       try { cameraRef.current.stopRecording(); } catch {}
     }
@@ -693,12 +714,9 @@ function CameraScreen({ navigation, route }) {
       await FileSystem.moveAsync({ from: uri, to: dest });
       if (mediaPerm) await MediaLibrary.saveToLibraryAsync(dest);
       setClipCount(c => c + 1);
-      if (!alertActiveRef.current) setStatusMsg(`✅ Clip saved`);
+      if (!alertActiveRef.current) setStatusMsg('✅ Clip saved');
       if (cloudUpload) uploadClip(dest, filename);
-      // Auto-rotate for dash cam loop forever
-      if (camMode === 'dashcam' && loopForeverRef.current && isRecordingRef.current) {
-        rotateClip();
-      }
+      if (camMode === 'dashcam' && loopForeverRef.current && isRecordingRef.current) rotateClip();
     } catch (e) { console.log('Save clip error:', e.message); }
   };
 
@@ -728,15 +746,25 @@ function CameraScreen({ navigation, route }) {
   }
 
   const borderColor = alertAnim.interpolate({ inputRange:[0,1], outputRange:['transparent','#ff4444'] });
-  const modeLabel = camMode === 'dashcam' ? '🚗 Dash Cam' : '🔒 Security';
   const modeColor = camMode === 'dashcam' ? '#00ff88' : '#4488ff';
+  const modeLabel = camMode === 'dashcam' ? '🚗 Dash Cam' : '🔒 Security';
 
   return (
     <View style={cs.container}>
-      <StatusBar barStyle="light-content" />
+      <StatusBar barStyle="light-content" backgroundColor={isRecording ? '#ff4444' : '#000'} />
 
-      {/* Camera Feed */}
-      <Animated.View style={[StyleSheet.absoluteFill, { borderWidth:3, borderColor }]}>
+      {/* Recording banner at very top (status bar area) */}
+      <RecordingBanner
+        recording={isRecording}
+        armed={isArmed}
+        camMode={camMode}
+        clipCount={clipCount}
+        formatTime={formatTime}
+        recordingTime={recordingTime}
+      />
+
+      {/* Camera Feed — NO children */}
+      <Animated.View style={[cs.cameraContainer, { borderWidth:3, borderColor }]}>
         <CameraView
           ref={cameraRef}
           style={StyleSheet.absoluteFill}
@@ -744,11 +772,16 @@ function CameraScreen({ navigation, route }) {
           enableTorch={torch}
           zoom={zoom}
           mode="video"
-        >
-          <NightVisionOverlay active={nightVision} premium={nightVisionPro} />
-          {camMode === 'security' && <LiveClock />}
-        </CameraView>
+        />
       </Animated.View>
+
+      {/* Overlays on top of camera (outside CameraView) */}
+      <NightVisionOverlay active={nightVision} premium={nightVisionPro} />
+      {camMode === 'security' && (
+        <View style={cs.clockWrapper} pointerEvents="none">
+          <LiveClock />
+        </View>
+      )}
 
       {/* Top Bar */}
       <View style={cs.topBar}>
@@ -783,7 +816,6 @@ function CameraScreen({ navigation, route }) {
             🔁 {loopForever ? 'Loop forever' : LOOP_OPTIONS.find(o=>o.value===loopDuration)?.label}
           </Text>
           <Text style={cs.dashInfoTxt}>📼 {clipCount} clips</Text>
-          {isRecording && <Text style={[cs.dashInfoTxt, {borderColor:'#ff4444', color:'#ff4444'}]}>● REC</Text>}
         </View>
       )}
 
@@ -801,7 +833,7 @@ function CameraScreen({ navigation, route }) {
         </View>
       )}
 
-      {/* ── SECURITY MODE: Arm/Disarm + manual record ── */}
+      {/* Security: Arm/Disarm button */}
       {camMode === 'security' && (
         <View style={cs.securityControls}>
           <TouchableOpacity
@@ -833,7 +865,6 @@ function CameraScreen({ navigation, route }) {
           <Text style={cs.ctrlTxt}>{torch ? 'Flash ON' : 'Flash'}</Text>
         </TouchableOpacity>
 
-        {/* Dash cam: record button. Security: just zoom stays here */}
         {camMode === 'dashcam' ? (
           <TouchableOpacity
             style={[cs.recordBtn, isRecording && cs.recordBtnActive]}
@@ -842,8 +873,8 @@ function CameraScreen({ navigation, route }) {
             <View style={[cs.recordInner, isRecording && cs.recordInnerActive]} />
           </TouchableOpacity>
         ) : (
-          <View style={cs.recordBtn}>
-            <Text style={{fontSize:28}}>{isArmed ? '🔴' : '⚫'}</Text>
+          <View style={[cs.recordBtn, isArmed && {borderColor: isRecording ? '#ff4444' : '#00ff88'}]}>
+            <Text style={{fontSize:28}}>{isArmed ? (isRecording ? '🔴' : '🟢') : '⚫'}</Text>
           </View>
         )}
 
@@ -857,7 +888,7 @@ function CameraScreen({ navigation, route }) {
         </TouchableOpacity>
       </View>
 
-      {/* ── Dash Cam Loop Prompt ── */}
+      {/* Dash Cam Loop Prompt */}
       <Modal visible={showLoopPrompt} transparent animationType="fade" onRequestClose={() => setShowLoopPrompt(false)}>
         <View style={cs.promptOverlay}>
           <View style={cs.promptBox}>
@@ -865,19 +896,19 @@ function CameraScreen({ navigation, route }) {
             <Text style={cs.promptSub}>How would you like to record?</Text>
             <TouchableOpacity style={cs.promptOption} onPress={() => handleLoopChoice(true, 0)}>
               <Text style={cs.promptOptionIco}>♾️</Text>
-              <View>
+              <View style={{flex:1}}>
                 <Text style={cs.promptOptionTitle}>Loop Forever</Text>
-                <Text style={cs.promptOptionDesc}>Record continuously, saving clips every 5 min</Text>
+                <Text style={cs.promptOptionDesc}>Continuous recording, clips saved every 5 min. Oldest overwritten when full.</Text>
               </View>
             </TouchableOpacity>
-            {[60, 300, 900, 1800].map(dur => (
+            {[60,300,900,1800].map(dur => (
               <TouchableOpacity key={dur} style={cs.promptOption} onPress={() => handleLoopChoice(false, dur)}>
                 <Text style={cs.promptOptionIco}>⏱</Text>
-                <View>
+                <View style={{flex:1}}>
                   <Text style={cs.promptOptionTitle}>
-                    {dur === 60 ? '1 minute' : dur === 300 ? '5 minutes' : dur === 900 ? '15 minutes' : '30 minutes'}
+                    {dur===60?'1 minute':dur===300?'5 minutes':dur===900?'15 minutes':'30 minutes'}
                   </Text>
-                  <Text style={cs.promptOptionDesc}>Record one clip then stop</Text>
+                  <Text style={cs.promptOptionDesc}>Record one clip then stop automatically</Text>
                 </View>
               </TouchableOpacity>
             ))}
@@ -909,7 +940,7 @@ function CameraScreen({ navigation, route }) {
               <View style={cs.settingRow}>
                 <View>
                   <Text style={cs.settingLabel}>Night Mode</Text>
-                  <Text style={cs.settingNote}>Brightness boost (free)</Text>
+                  <Text style={cs.settingNote}>Brightness boost overlay (free)</Text>
                 </View>
                 <Switch value={nightVision} onValueChange={setNightVision} trackColor={{true:'#00ff88'}} thumbColor="#fff" />
               </View>
@@ -919,15 +950,14 @@ function CameraScreen({ navigation, route }) {
                     <Text style={cs.settingLabel}>Night Vision Pro</Text>
                     <View style={cs.premiumBadge}><Text style={cs.premiumTxt}>PREMIUM</Text></View>
                   </View>
-                  <Text style={cs.settingNote}>Green phosphor NV goggles effect</Text>
+                  <Text style={cs.settingNote}>Green phosphor NV goggles + scanlines</Text>
                 </View>
+                {/* Unlocked for testing — gate with subscription check in production */}
                 <Switch
                   value={nightVisionPro}
                   onValueChange={(v) => {
-                    if (v) Alert.alert('Premium Feature',
-                      'Night Vision Pro requires a premium subscription.\n\nUpgrade to unlock.',
-                      [{text:'Not Now'},{text:'Upgrade',onPress:()=>{}}]);
-                    else setNightVisionPro(false);
+                    setNightVisionPro(v);
+                    if (v) setNightVision(true); // NV Pro implies NV on
                   }}
                   trackColor={{true:'#ffd700'}} thumbColor="#fff"
                 />
@@ -1008,20 +1038,19 @@ const s = StyleSheet.create({
   headerTitle:       { color:'#00ff88', fontSize:18, fontWeight:'bold', flex:1 },
   logoutBtn:         { paddingHorizontal:12, paddingVertical:6, borderWidth:1, borderColor:'#ff4444', borderRadius:6 },
   logout:            { color:'#ff4444', fontSize:12, fontWeight:'bold' },
-  stats:             { flexDirection:'row', justifyContent:'space-around', backgroundColor:'#111', marginHorizontal:16, marginTop:16, borderRadius:10, padding:16, marginBottom:16 },
+  stats:             { flexDirection:'row', justifyContent:'space-around', backgroundColor:'#111', marginHorizontal:16, marginTop:16, borderRadius:10, padding:16, marginBottom:8 },
   stat:              { alignItems:'center' },
   statN:             { color:'#00ff88', fontSize:18, fontWeight:'bold' },
   statL:             { color:'#666', fontSize:11, marginTop:2 },
   card:              { flex:1, margin:6, marginBottom:2, backgroundColor:'#1a1a1a', borderRadius:12, padding:12, borderWidth:1, borderColor:'#222' },
-  dot:               { width:10, height:10, borderRadius:5, position:'absolute', top:12, right:12 },
-  cardName:          { color:'#fff', fontSize:14, fontWeight:'bold', marginTop:24 },
-  cardLoc:           { color:'#666', fontSize:11, marginTop:2, marginBottom:8 },
-  cardActions:       { flexDirection:'row', gap:6, marginTop:4 },
+  dot:               { width:10, height:10, borderRadius:5 },
+  cardName:          { color:'#fff', fontSize:14, fontWeight:'bold', marginTop:6 },
+  cardLoc:           { color:'#666', fontSize:11, marginTop:2, marginBottom:4 },
+  cardHint:          { color:'#333', fontSize:9, marginBottom:6 },
+  cardActions:       { flexDirection:'row', gap:6 },
   cardActionBtn:     { flex:1, paddingVertical:8, borderRadius:8, alignItems:'center', borderWidth:1 },
   cardActionIco:     { fontSize:16 },
   cardActionTxt:     { fontSize:10, fontWeight:'bold', marginTop:2 },
-  cardEditHint:      { marginTop:6, alignItems:'center' },
-  cardHint:          { color:'#333', fontSize:9 },
   deleteBtn:         { marginHorizontal:6, marginBottom:8, paddingVertical:5, backgroundColor:'#ff444415', borderRadius:6, alignItems:'center', borderWidth:1, borderColor:'#ff444430' },
   deleteBtnTxt:      { color:'#ff4444', fontSize:11, fontWeight:'600' },
   fab:               { position:'absolute', bottom:30, right:20, width:60, height:60, borderRadius:30, backgroundColor:'#00ff88', justifyContent:'center', alignItems:'center' },
@@ -1039,46 +1068,56 @@ const s = StyleSheet.create({
 // ─── Camera Styles ───────────────────────────────────────────────
 const cs = StyleSheet.create({
   container:         { flex:1, backgroundColor:'#000' },
+  cameraContainer:   { ...StyleSheet.absoluteFillObject },
   permText:          { color:'#fff', textAlign:'center', marginTop:100, fontSize:16 },
   permBtn:           { marginTop:20, alignSelf:'center', backgroundColor:'#00ff88', padding:12, borderRadius:8 },
   permBtnTxt:        { color:'#000', fontWeight:'bold' },
-  nvBright:          { ...StyleSheet.absoluteFillObject, backgroundColor:'rgba(255,255,220,0.08)' },
-  nvDark:            { ...StyleSheet.absoluteFillObject, backgroundColor:'rgba(0,20,0,0.4)' },
-  nvGreenStrong:     { ...StyleSheet.absoluteFillObject, backgroundColor:'rgba(0,255,60,0.25)' },
-  nvScanline:        { position:'absolute', left:0, right:0, height:1, backgroundColor:'rgba(0,0,0,0.3)' },
-  nvVignette:        { ...StyleSheet.absoluteFillObject, borderWidth:50, borderColor:'rgba(0,0,0,0.7)', borderRadius:20 },
-  nvLabel:           { position:'absolute', top:8, right:8, backgroundColor:'rgba(0,40,0,0.7)', paddingHorizontal:8, paddingVertical:3, borderRadius:4, borderWidth:1, borderColor:'#00ff88' },
+  // Recording banner
+  recBanner:         { position:'absolute', top:0, left:0, right:0, zIndex:100,
+                       paddingTop: Platform.OS==='ios'?44:24, paddingBottom:6,
+                       paddingHorizontal:16, alignItems:'center' },
+  recBannerTxt:      { color:'#fff', fontSize:12, fontWeight:'bold' },
+  // Night vision
+  nvBright:          { ...StyleSheet.absoluteFillObject, backgroundColor:'rgba(255,255,220,0.1)', zIndex:10 },
+  nvDark:            { ...StyleSheet.absoluteFillObject, backgroundColor:'rgba(0,20,0,0.45)', zIndex:10 },
+  nvGreenStrong:     { ...StyleSheet.absoluteFillObject, backgroundColor:'rgba(0,255,60,0.28)', zIndex:10 },
+  nvScanline:        { position:'absolute', left:0, right:0, height:1, backgroundColor:'rgba(0,0,0,0.25)', zIndex:11 },
+  nvVignette:        { ...StyleSheet.absoluteFillObject, borderWidth:55, borderColor:'rgba(0,0,0,0.75)', borderRadius:20, zIndex:11 },
+  nvLabel:           { position:'absolute', top:90, right:8, backgroundColor:'rgba(0,40,0,0.8)', paddingHorizontal:8, paddingVertical:3, borderRadius:4, borderWidth:1, borderColor:'#00ff88', zIndex:12 },
   nvLabelTxt:        { color:'#00ff88', fontSize:10, fontWeight:'bold' },
-  clockBox:          { position:'absolute', top:8, left:8, backgroundColor:'rgba(0,0,0,0.55)', padding:6, borderRadius:6, borderWidth:1, borderColor:'rgba(255,255,255,0.15)' },
+  // Clock
+  clockWrapper:      { position:'absolute', top:90, left:8, zIndex:12 },
+  clockBox:          { backgroundColor:'rgba(0,0,0,0.55)', padding:6, borderRadius:6, borderWidth:1, borderColor:'rgba(255,255,255,0.15)' },
   clockTime:         { color:'#fff', fontSize:20, fontWeight:'bold', fontVariant:['tabular-nums'] },
   clockDate:         { color:'rgba(255,255,255,0.75)', fontSize:11 },
+  // Recording dot
   recDot:            { width:10, height:10, borderRadius:5, backgroundColor:'#444' },
   recDotActive:      { backgroundColor:'#ff4444' },
+  // Top bar
   topBar:            { position:'absolute', top:0, left:0, right:0, flexDirection:'row', alignItems:'center',
-                       paddingTop: Platform.OS==='ios'?50:12, paddingHorizontal:12, paddingBottom:12,
-                       backgroundColor:'rgba(0,0,0,0.5)' },
+                       paddingTop: Platform.OS==='ios'?50:30, paddingHorizontal:12, paddingBottom:12,
+                       backgroundColor:'rgba(0,0,0,0.55)', zIndex:20 },
   backBtn:           { paddingHorizontal:8, paddingVertical:4 },
   backTxt:           { color:'#00ff88', fontSize:15, fontWeight:'600' },
   topCenter:         { flex:1, flexDirection:'row', alignItems:'center', justifyContent:'center', gap:8 },
   timerTxt:          { color:'#fff', fontSize:15, fontWeight:'bold' },
   settingsBtn:       { paddingHorizontal:8 },
-  modeBadgeRow:      { position:'absolute', top: Platform.OS==='ios'?100:62, left:0, right:0, alignItems:'center' },
-  modeBadge:         { paddingHorizontal:16, paddingVertical:5, borderRadius:20, borderWidth:1.5, backgroundColor:'rgba(0,0,0,0.5)' },
+  modeBadgeRow:      { position:'absolute', top: Platform.OS==='ios'?105:78, left:0, right:0, alignItems:'center', zIndex:20 },
+  modeBadge:         { paddingHorizontal:16, paddingVertical:5, borderRadius:20, borderWidth:1.5, backgroundColor:'rgba(0,0,0,0.6)' },
   modeBadgeTxt:      { fontSize:13, fontWeight:'bold' },
-  statusBar:         { position:'absolute', top: Platform.OS==='ios'?140:100, left:16, right:16, alignItems:'center' },
-  statusTxt:         { color:'#fff', fontSize:13, fontWeight:'600', backgroundColor:'rgba(0,0,0,0.5)',
+  statusBar:         { position:'absolute', top: Platform.OS==='ios'?145:115, left:16, right:16, alignItems:'center', zIndex:20 },
+  statusTxt:         { color:'#fff', fontSize:13, fontWeight:'600', backgroundColor:'rgba(0,0,0,0.6)',
                        paddingHorizontal:12, paddingVertical:4, borderRadius:12, overflow:'hidden' },
-  dashInfo:          { position:'absolute', top: Platform.OS==='ios'?178:138, left:16, right:16,
-                       flexDirection:'row', justifyContent:'center', gap:8, flexWrap:'wrap' },
-  dashInfoTxt:       { color:'rgba(255,255,255,0.8)', fontSize:11, backgroundColor:'rgba(0,0,0,0.5)',
+  dashInfo:          { position:'absolute', top: Platform.OS==='ios'?183:153, left:16, right:16,
+                       flexDirection:'row', justifyContent:'center', gap:8, flexWrap:'wrap', zIndex:20 },
+  dashInfoTxt:       { color:'rgba(255,255,255,0.9)', fontSize:11, backgroundColor:'rgba(0,0,0,0.6)',
                        paddingHorizontal:8, paddingVertical:3, borderRadius:8, overflow:'hidden',
-                       borderWidth:1, borderColor:'rgba(255,255,255,0.1)' },
-  eventLog:          { position:'absolute', bottom:200, left:16, right:16, backgroundColor:'rgba(0,0,0,0.7)',
-                       borderRadius:10, padding:10, borderWidth:1, borderColor:'rgba(255,68,68,0.3)' },
+                       borderWidth:1, borderColor:'rgba(255,255,255,0.15)' },
+  eventLog:          { position:'absolute', bottom:210, left:16, right:16, backgroundColor:'rgba(0,0,0,0.75)',
+                       borderRadius:10, padding:10, borderWidth:1, borderColor:'rgba(255,68,68,0.4)', zIndex:20 },
   eventLogTitle:     { color:'#ff4444', fontSize:11, fontWeight:'bold', marginBottom:4 },
-  eventItem:         { color:'rgba(255,255,255,0.8)', fontSize:11, paddingVertical:1 },
-  // Security arm controls
-  securityControls:  { position:'absolute', bottom:110, left:16, right:16, gap:10 },
+  eventItem:         { color:'rgba(255,255,255,0.85)', fontSize:11, paddingVertical:1 },
+  securityControls:  { position:'absolute', bottom:115, left:16, right:16, gap:10, zIndex:20 },
   armBtn:            { flexDirection:'row', alignItems:'center', justifyContent:'center', gap:10,
                        backgroundColor:'rgba(0,255,136,0.15)', borderRadius:14, paddingVertical:14,
                        borderWidth:2, borderColor:'#00ff88' },
@@ -1086,25 +1125,23 @@ const cs = StyleSheet.create({
   armBtnIco:         { fontSize:22 },
   armBtnTxt:         { color:'#fff', fontSize:16, fontWeight:'bold' },
   manualRecBtn:      { flexDirection:'row', alignItems:'center', justifyContent:'center',
-                       backgroundColor:'rgba(0,0,0,0.5)', borderRadius:10, paddingVertical:10,
+                       backgroundColor:'rgba(0,0,0,0.6)', borderRadius:10, paddingVertical:10,
                        borderWidth:1, borderColor:'rgba(255,255,255,0.2)' },
   manualRecBtnActive:{ borderColor:'#ff4444' },
   manualRecTxt:      { color:'#fff', fontSize:13, fontWeight:'600' },
-  // Bottom controls
   controls:          { position:'absolute', bottom:0, left:0, right:0, flexDirection:'row', alignItems:'center',
                        justifyContent:'space-around', paddingBottom: Platform.OS==='ios'?34:16,
-                       paddingTop:16, backgroundColor:'rgba(0,0,0,0.7)', paddingHorizontal:8 },
+                       paddingTop:14, backgroundColor:'rgba(0,0,0,0.75)', paddingHorizontal:8, zIndex:20 },
   ctrlBtn:           { alignItems:'center', padding:8, borderRadius:10, minWidth:56 },
   ctrlBtnOn:         { backgroundColor:'rgba(255,200,0,0.2)' },
   ctrlBtnNV:         { backgroundColor:'rgba(0,255,100,0.15)' },
   ctrlIco:           { fontSize:24 },
   ctrlTxt:           { color:'rgba(255,255,255,0.7)', fontSize:10, marginTop:3, fontWeight:'600' },
-  recordBtn:         { width:72, height:72, borderRadius:36, borderWidth:4, borderColor:'#fff', alignItems:'center', justifyContent:'center' },
+  recordBtn:         { width:72, height:72, borderRadius:36, borderWidth:4, borderColor:'#555', alignItems:'center', justifyContent:'center' },
   recordBtnActive:   { borderColor:'#ff4444' },
   recordInner:       { width:52, height:52, borderRadius:26, backgroundColor:'#ff4444' },
   recordInnerActive: { width:24, height:24, borderRadius:4, backgroundColor:'#ff4444' },
-  // Dash cam loop prompt
-  promptOverlay:     { flex:1, backgroundColor:'rgba(0,0,0,0.85)', justifyContent:'center', alignItems:'center', padding:24 },
+  promptOverlay:     { flex:1, backgroundColor:'rgba(0,0,0,0.88)', justifyContent:'center', alignItems:'center', padding:20 },
   promptBox:         { backgroundColor:'#111', borderRadius:16, padding:24, width:'100%', borderWidth:1, borderColor:'#333' },
   promptTitle:       { color:'#00ff88', fontSize:22, fontWeight:'bold', textAlign:'center', marginBottom:6 },
   promptSub:         { color:'#666', fontSize:14, textAlign:'center', marginBottom:20 },
@@ -1115,8 +1152,7 @@ const cs = StyleSheet.create({
   promptOptionDesc:  { color:'#666', fontSize:12, marginTop:2 },
   promptCancel:      { marginTop:8, alignItems:'center', padding:12 },
   promptCancelTxt:   { color:'#666', fontSize:14 },
-  // Settings modal
-  modalOverlay:      { flex:1, backgroundColor:'rgba(0,0,0,0.85)', justifyContent:'flex-end' },
+  modalOverlay:      { flex:1, backgroundColor:'rgba(0,0,0,0.88)', justifyContent:'flex-end' },
   modalContent:      { backgroundColor:'#111', borderTopLeftRadius:20, borderTopRightRadius:20,
                        padding:24, borderWidth:1, borderColor:'#222', paddingBottom:40 },
   modalTitle:        { color:'#00ff88', fontSize:18, fontWeight:'bold', marginBottom:20, textAlign:'center' },
