@@ -752,3 +752,5 @@ const cs = StyleSheet.create({
   modalClose:     { marginTop:24, backgroundColor:'#00ff88', borderRadius:10, padding:14, alignItems:'center' },
   modalCloseTxt:  { color:'#000', fontSize:16, fontWeight:'bold' },
 });
+
+export default App;
