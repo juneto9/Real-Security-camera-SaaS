@@ -157,6 +157,7 @@ function RegisterScreen({ navigation, setToken }) {
 
 // ─── Dashboard Screen ────────────────────────────────────────────
 function DashboardScreen({ navigation, route, logout }) {
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [editingDevice, setEditingDevice] = useState(null);
   const [editName, setEditName] = useState('');
   const [editLocation, setEditLocation] = useState('');const [devices, setDevices] = useState([]);
@@ -211,6 +212,17 @@ const handleEditDevice = (device) => {
   setEditLocation(device.location || '');
 };
 
+const handleDeleteDevice = async (deviceId) => {
+  try {
+    await api.delete(`/api/devices/${deviceId}`);
+    Alert.alert('Success', 'Camera deleted!');
+    setDeleteConfirm(null);
+    loadDevices();
+  } catch (e) {
+    Alert.alert('Error', e.response?.data?.message || 'Failed to delete');
+  }
+};
+
 const saveDeviceChanges = async () => {
   if (!editName.trim()) {
     Alert.alert('Error', 'Name cannot be empty');
@@ -232,7 +244,7 @@ const saveDeviceChanges = async () => {
     <View style={s.container}>
       <View style={s.header}>
   <Text style={s.title}>🔒 Real Security Camera</Text>
-  <TouchableOpacity onPress={logout} style={{paddingHorizontal: 12}}>
+  <TouchableOpacity onPress={logout}>
     <Text style={s.logout}>Logout</Text>
   </TouchableOpacity>
 </View>
@@ -247,7 +259,10 @@ const saveDeviceChanges = async () => {
       <View style={s.stats}>
         <View style={s.stat}><Text style={s.statN}>{devices.length}</Text><Text style={s.statL}>Cameras</Text></View>
         <View style={s.stat}><Text style={s.statN}>{devices.filter(d=>d.is_active).length}</Text><Text style={s.statL}>Online</Text></View>
-        <View style={s.stat}><Text style={s.statN}>11</Text><Text style={s.statL}>Days</Text></View>
+        <View style={s.stat}>
+  <Text style={s.statN}>WiFi</Text>
+  <Text style={s.statL}>Network</Text>
+</View>
       </View>
       {loading ? <ActivityIndicator color="#00ff88" style={{marginTop:40}} /> :
       <FlatList
@@ -265,20 +280,28 @@ const saveDeviceChanges = async () => {
           </View>
         }
         renderItem={({item}) => (
-  <TouchableOpacity 
-    style={s.card} 
-    onPress={() => navigation.navigate('Camera', { device: item, mode })}
-    onLongPress={() => handleEditDevice(item)}
-  >
-    <Text style={{fontSize:32}}>📷</Text>
-    <View style={[s.dot,{backgroundColor:item.is_active?'#00ff88':'#666'}]} />
-    <Text style={s.cardName}>{item.name}</Text>
-    <Text style={s.cardLoc}>📍 {item.location||'No location'}</Text>
-    <View style={s.cardBtn}>
-      <Text style={s.cardBtnTxt}>{mode==='camera'?'Use as Camera':'View Stream'}</Text>
-    </View>
-    <Text style={{fontSize:10, color:'#666', marginTop:4}}>Hold to edit</Text>
-  </TouchableOpacity>
+  <View>
+    <TouchableOpacity 
+      style={s.card} 
+      onPress={() => navigation.navigate('Camera', { device: item, mode })}
+      onLongPress={() => handleEditDevice(item)}
+    >
+      <Text style={{fontSize:32}}>📷</Text>
+      <View style={[s.dot,{backgroundColor:item.is_active?'#00ff88':'#666'}]} />
+      <Text style={s.cardName}>{item.name}</Text>
+      <Text style={s.cardLoc}>📍 {item.location||'No location'}</Text>
+      <View style={s.cardBtn}>
+        <Text style={s.cardBtnTxt}>{mode==='camera'?'Use as Camera':'View Stream'}</Text>
+      </View>
+      <Text style={{fontSize:10, color:'#666', marginTop:4}}>Hold to edit</Text>
+    </TouchableOpacity>
+    <TouchableOpacity 
+      style={{alignSelf:'center', marginTop:4, paddingHorizontal:12, paddingVertical:4, backgroundColor:'#ff444420', borderRadius:4}}
+      onPress={() => setDeleteConfirm(item.id)}
+    >
+      <Text style={{color:'#ff4444', fontSize:11, fontWeight:'bold'}}>Delete</Text>
+    </TouchableOpacity>
+  </View>
 )}
       />}
       <TouchableOpacity style={s.fab} onPress={() => setShowAddModal(true)}>
@@ -332,6 +355,22 @@ const saveDeviceChanges = async () => {
         </TouchableOpacity>
         <TouchableOpacity style={{flex:1,backgroundColor:'#00ff88',paddingVertical:12,borderRadius:6,alignItems:'center'}} onPress={saveDeviceChanges}>
           <Text style={{color:'#000',fontSize:14,fontWeight:'bold'}}>Save</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  </View>
+</Modal>
+<Modal visible={!!deleteConfirm} transparent animationType="fade" onRequestClose={() => setDeleteConfirm(null)}>
+  <View style={{flex:1,backgroundColor:'rgba(0,0,0,0.7)',justifyContent:'center',alignItems:'center'}}>
+    <View style={{backgroundColor:'#111',borderRadius:12,padding:24,width:'80%',borderWidth:1,borderColor:'#ff4444'}}>
+      <Text style={{color:'#ff4444',fontSize:18,fontWeight:'bold',marginBottom:12,textAlign:'center'}}>Delete Camera?</Text>
+      <Text style={{color:'#999',fontSize:14,marginBottom:20,textAlign:'center'}}>This cannot be undone.</Text>
+      <View style={{flexDirection:'row',gap:12}}>
+        <TouchableOpacity style={{flex:1,backgroundColor:'#1a1a1a',borderWidth:1,borderColor:'#666',paddingVertical:12,borderRadius:6,alignItems:'center'}} onPress={() => setDeleteConfirm(null)}>
+          <Text style={{color:'#fff',fontSize:14,fontWeight:'bold'}}>Cancel</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={{flex:1,backgroundColor:'#ff4444',paddingVertical:12,borderRadius:6,alignItems:'center'}} onPress={() => handleDeleteDevice(deleteConfirm)}>
+          <Text style={{color:'#fff',fontSize:14,fontWeight:'bold'}}>Delete</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -733,8 +772,8 @@ const s = StyleSheet.create({
   btn:        { backgroundColor:'#00ff88', padding:16, borderRadius:8, alignItems:'center', width:'100%', marginBottom:12 },
   btxt:       { color:'#000', fontSize:16, fontWeight:'bold' },
   link:       { color:'#00ff88', textAlign:'center', marginTop:8 },
-  header:     { flexDirection:'row', justifyContent:'space-between', alignItems:'center', padding:16, paddingTop:50, backgroundColor:'#111' },
-  logout:     { color:'#ff4444' },
+  header:     { flexDirection:'row', justifyContent:'space-between', alignItems:'center', paddingHorizontal:16, paddingVertical:12, paddingTop:50, backgroundColor:'#111' },
+  logout:     { color:'#ff4444', fontSize:14, fontWeight:'bold', paddingRight:8 },
   modeRow:    { flexDirection:'row', margin:16, backgroundColor:'#1a1a1a', borderRadius:10, padding:4 },
   modeBtn:    { flex:1, padding:10, borderRadius:8, alignItems:'center' },
   modeBtnOn:  { backgroundColor:'#00ff88' },
