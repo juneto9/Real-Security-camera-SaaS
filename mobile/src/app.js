@@ -1,3 +1,4 @@
+import WifiManager from 'react-native-wifi-reborn';
 import NetworkInfo from 'react-native-network-info';
 import { jwtDecode } from 'jwt-decode';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -170,7 +171,21 @@ function DashboardScreen({ navigation, route, logout }) {
   const [step, setStep] = useState(1);
   const [isCreating, setIsCreating] = useState(false);
 
-  useEffect(() => { loadDevices(); }, []);
+  const getNetworkInfo = async () => {
+    try {
+      const ssid = await WifiManager.getCurrentSSID();
+      console.log('Current SSID:', ssid);
+      if (ssid && ssid !== '<unknown ssid>') {
+        setNetworkSSID(ssid.replace(/"/g, ''));
+      }
+    } catch (e) {
+      console.log('Wifi error:', e);
+    }
+  };
+  useEffect(() => {
+  loadDevices();
+  getNetworkInfo();
+}, []);
 
   const loadDevices = async () => {
     try {
