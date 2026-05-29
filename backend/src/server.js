@@ -35,10 +35,11 @@ app.use(helmet());
 app.use(compression());
 
 app.use(cors({
-  origin: config.SECURITY.corsOrigin,
+  origin: [
+    'http://localhost:3000',
+    'https://real-security-camera-web-a4yq7.ondigitalocean.app',
+  ],
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 
 app.use(express.json({ limit: '10mb' }));
