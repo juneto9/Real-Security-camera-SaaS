@@ -115,8 +115,8 @@ const connectSpaces = async () => {
 
 const startServer = async () => {
   try {
-    // Start server immediately
-    const server = app.listen(config.PORT, () => {
+    // Use the http server (with Socket.io) NOT app.listen
+    server.listen(config.PORT, () => {
       logger.info(`Server started`, {
         port: config.PORT,
         env: config.NODE_ENV,
@@ -124,7 +124,7 @@ const startServer = async () => {
       });
     });
 
-    // Connect to services in background (non-blocking)
+    // Connect to services in background
     connectDatabase();
     connectSpaces();
 
