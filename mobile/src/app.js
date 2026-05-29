@@ -26,11 +26,19 @@ api.interceptors.request.use(async (config) => {
 
 const Stack = createNativeStackNavigator();
 
+// Loop duration options (seconds). 0 = forever (uses clipSize)
 const LOOP_OPTIONS = [
-  { label: '1 min',   value: 60 },
-  { label: '5 min',   value: 300 },
-  { label: '15 min',  value: 900 },
-  { label: '30 min',  value: 1800 },
+  { label: '1 min',  value: 60 },
+  { label: '5 min',  value: 300 },
+  { label: '15 min', value: 900 },
+  { label: '30 min', value: 1800 },
+];
+
+// Clip sizes for Loop Forever mode
+const CLIP_SIZE_OPTIONS = [
+  { label: '1 min clips',  value: 60 },
+  { label: '3 min clips',  value: 180 },
+  { label: '5 min clips',  value: 300 },
 ];
 
 // ─── Signal Bars ─────────────────────────────────────────────────
@@ -174,6 +182,145 @@ function RecordingBanner({ recording, armed, formatTime, recordingTime, clipCoun
   return (
     <View style={[cs.recBanner,{backgroundColor:bg}]}>
       <Text style={cs.recBannerTxt}>{msg}</Text>
+    </View>
+  );
+}
+
+// ─── Clips Management Screen ─────────────────────────────────────
+function ClipsScreen({ navigation, route }) {
+  const { mode } = route.params || {};
+  const [clips, setClips] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [totalSize, setTotalSize] = useState(0);
+
+  useEffect(() => { loadClips(); }, []);
+
+  const loadClips = async () => {
+    try {
+      const dir = FileSystem.documentDirectory;
+      const files = await FileSystem.readDirectoryAsync(dir);
+      const mp4s = files.filter(f => f.endsWith('.mp4'));
+      const details = await Promise.all(mp4s.map(async (f) => {
+        const info = await FileSystem.getInfoAsync(dir + f);
+        return {
+          name: f,
+          uri: dir + f,
+          size: info.size || 0,
+          modTime: info.modificationTime || 0,
+        };
+      }));
+      details.sort((a,b) => b.modTime - a.modTime);
+      setClips(details);
+      setTotalSize(details.reduce((acc,c) => acc + c.size, 0));
+    } catch(e) { console.log('Load clips error:', e.message); }
+    setLoading(false);
+  };
+
+  const deleteClip = async (clip) => {
+    Alert.alert('Delete Clip', `Delete ${clip.name}?`, [
+      { text: 'Cancel' },
+      { text: 'Delete', style: 'destructive', onPress: async () => {
+        try {
+          await FileSystem.deleteAsync(clip.uri);
+          loadClips();
+        } catch(e) { Alert.alert('Error', 'Could not delete clip'); }
+      }},
+    ]);
+  };
+
+  const deleteAll = () => {
+    Alert.alert('Delete All Clips', `Delete all ${clips.length} clips? This cannot be undone.`, [
+      { text: 'Cancel' },
+      { text: 'Delete All', style: 'destructive', onPress: async () => {
+        try {
+          await Promise.all(clips.map(c => FileSystem.deleteAsync(c.uri)));
+          loadClips();
+        } catch(e) { Alert.alert('Error', 'Could not delete all clips'); }
+      }},
+    ]);
+  };
+
+  const openGallery = () => {
+    if (Platform.OS === 'android') {
+      Linking.sendIntent('android.intent.action.VIEW', [
+        { key: 'android.intent.extra.MIME_TYPES', value: 'video/*' }
+      ]).catch(() => Linking.openSettings());
+    } else {
+      Linking.openURL('photos-redirect://').catch(() => {});
+    }
+  };
+
+  const formatSize = (bytes) => {
+    if (bytes < 1024*1024) return `${(bytes/1024).toFixed(1)} KB`;
+    return `${(bytes/(1024*1024)).toFixed(1)} MB`;
+  };
+
+  const formatDate = (ts) => {
+    if (!ts) return '--';
+    return new Date(ts * 1000).toLocaleString('en-US', {
+      month:'short', day:'2-digit', hour:'2-digit', minute:'2-digit'
+    });
+  };
+
+  return (
+    <View style={cl.container}>
+      <View style={cl.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={cl.backBtn}>
+          <Text style={cl.backTxt}>← Back</Text>
+        </TouchableOpacity>
+        <Text style={cl.title}>📼 Saved Clips</Text>
+        <TouchableOpacity onPress={openGallery} style={cl.galleryBtn}>
+          <Text style={cl.galleryTxt}>Gallery ›</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Summary row */}
+      <View style={cl.summary}>
+        <View style={cl.summaryItem}>
+          <Text style={cl.summaryN}>{clips.length}</Text>
+          <Text style={cl.summaryL}>Total Clips</Text>
+        </View>
+        <View style={cl.summaryItem}>
+          <Text style={cl.summaryN}>{formatSize(totalSize)}</Text>
+          <Text style={cl.summaryL}>Storage Used</Text>
+        </View>
+        {clips.length > 0 && (
+          <TouchableOpacity style={cl.deleteAllBtn} onPress={deleteAll}>
+            <Text style={cl.deleteAllTxt}>🗑 Delete All</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {loading ? <ActivityIndicator color="#00ff88" style={{marginTop:40}}/> :
+        clips.length === 0 ? (
+          <View style={cl.empty}>
+            <Text style={{fontSize:48}}>📭</Text>
+            <Text style={cl.emptyTxt}>No clips saved yet</Text>
+            <Text style={cl.emptySub}>Start recording to save clips here</Text>
+          </View>
+        ) : (
+          <FlatList
+            data={clips}
+            keyExtractor={i=>i.name}
+            contentContainerStyle={{padding:12}}
+            renderItem={({item, index}) => (
+              <View style={cl.clipCard}>
+                <View style={cl.clipIcon}>
+                  <Text style={{fontSize:28}}>🎬</Text>
+                  <Text style={cl.clipNum}>#{clips.length - index}</Text>
+                </View>
+                <View style={cl.clipInfo}>
+                  <Text style={cl.clipName} numberOfLines={1}>{item.name.replace('clip_','').replace('.mp4','')}</Text>
+                  <Text style={cl.clipMeta}>{formatDate(item.modTime)}  •  {formatSize(item.size)}</Text>
+                </View>
+                <TouchableOpacity style={cl.clipDelete} onPress={() => deleteClip(item)}>
+                  <Text style={{fontSize:18}}>🗑</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          />
+        )
+      }
     </View>
   );
 }
@@ -439,44 +586,58 @@ function CameraScreen({ navigation, route }) {
   const [clipCount,      setClipCount]      = useState(0);
   const [loopDuration,   setLoopDuration]   = useState(300);
   const [loopForever,    setLoopForever]    = useState(false);
+  const [clipSize,       setClipSize]       = useState(300); // for loop forever
   const [cloudUpload,    setCloudUpload]    = useState(false);
   const [motionEnabled,  setMotionEnabled]  = useState(true);
   const [soundEnabled,   setSoundEnabled]   = useState(true);
   const [motionEvents,   setMotionEvents]   = useState([]);
   const [showSettings,   setShowSettings]   = useState(false);
   const [showLoopPrompt, setShowLoopPrompt] = useState(false);
+  const [showClipSizePrompt, setShowClipSizePrompt] = useState(false);
+  const [pendingForever, setPendingForever] = useState(false);
   const [statusMsg,      setStatusMsg]      = useState(
     initialMode==='dashcam' ? 'Tap record to start' : 'Ready to monitor'
   );
 
-  // Refs for use inside callbacks
-  const cameraRef        = useRef(null);
-  const timerRef         = useRef(null);
-  const loopRef          = useRef(null);
-  const recorderRef      = useRef(null);
-  const soundMeter       = useRef(null);
-  const motionPoll       = useRef(null);
-  const alertAnim        = useRef(new Animated.Value(0)).current;
-  const isRecordingRef   = useRef(false);
-  const isArmedRef       = useRef(false);
-  const alertActiveRef   = useRef(false);
-  const motionEnabledRef = useRef(true);
-  const soundEnabledRef  = useRef(true);
-  const loopForeverRef   = useRef(false);
-  const loopDurationRef  = useRef(300);
-  const camModeRef       = useRef(initialMode||'dashcam');
+  // Refs
+  const cameraRef          = useRef(null);
+  const timerRef           = useRef(null);
+  const loopRef            = useRef(null);
+  const recorderRef        = useRef(null);
+  const soundMeter         = useRef(null);
+  const motionPoll         = useRef(null);
+  const alertAnim          = useRef(new Animated.Value(0)).current;
+  const isRecordingRef     = useRef(false);
+  const isArmedRef         = useRef(false);
+  const alertActiveRef     = useRef(false);
+  const motionEnabledRef   = useRef(true);
+  const soundEnabledRef    = useRef(true);
+  const loopForeverRef     = useRef(false);
+  const loopDurationRef    = useRef(300);
+  const clipSizeRef        = useRef(300);
+  const camModeRef         = useRef(initialMode||'dashcam');
+  const camPermGrantedRef  = useRef(false);
+  const micPermGrantedRef  = useRef(false);
 
-  // Keep refs in sync with state
   useEffect(()=>{ motionEnabledRef.current = motionEnabled; },[motionEnabled]);
   useEffect(()=>{ soundEnabledRef.current  = soundEnabled;  },[soundEnabled]);
   useEffect(()=>{ loopForeverRef.current   = loopForever;   },[loopForever]);
   useEffect(()=>{ loopDurationRef.current  = loopDuration;  },[loopDuration]);
+  useEffect(()=>{ clipSizeRef.current      = clipSize;      },[clipSize]);
 
-  // Request permissions once on mount
+  // Request permissions once
   useEffect(()=>{
     (async()=>{
-      if (!camPerm?.granted)  await requestCamPerm();
-      if (!micPerm?.granted)  await requestMicPerm();
+      if (!camPerm?.granted) {
+        const r = await requestCamPerm();
+        camPermGrantedRef.current = r?.granted ?? false;
+      } else { camPermGrantedRef.current = true; }
+
+      if (!micPerm?.granted) {
+        const r = await requestMicPerm();
+        micPermGrantedRef.current = r?.granted ?? false;
+      } else { micPermGrantedRef.current = true; }
+
       const mediaStatus = await MediaLibrary.getPermissionsAsync();
       if (mediaStatus.status === 'granted') {
         setMediaPerm(true);
@@ -485,6 +646,7 @@ function CameraScreen({ navigation, route }) {
         setMediaPerm(status === 'granted');
       }
     })();
+    // Show loop prompt for dashcam after camera loads
     if (initialMode === 'dashcam') setTimeout(()=>setShowLoopPrompt(true), 700);
     return ()=>stopAll();
   },[]);
@@ -511,16 +673,35 @@ function CameraScreen({ navigation, route }) {
     return `${m}:${s}`;
   };
 
-  // Dash cam: user picks loop option → record immediately
+  // User picked a loop option (both dashcam and security use this)
   const handleLoopChoice = (forever, duration) => {
-    setLoopForever(forever);
-    loopForeverRef.current = forever;
-    if (!forever) { setLoopDuration(duration); loopDurationRef.current = duration; }
-    setShowLoopPrompt(false);
+    if (forever) {
+      // Need to ask clip size next
+      setPendingForever(true);
+      setShowLoopPrompt(false);
+      setShowClipSizePrompt(true);
+    } else {
+      setLoopForever(false);
+      loopForeverRef.current = false;
+      setLoopDuration(duration);
+      loopDurationRef.current = duration;
+      setShowLoopPrompt(false);
+      setTimeout(()=>startRecording(), 200);
+    }
+  };
+
+  // User picked clip size for loop forever
+  const handleClipSizeChoice = (size) => {
+    setClipSize(size);
+    clipSizeRef.current = size;
+    setLoopForever(true);
+    loopForeverRef.current = true;
+    setShowClipSizePrompt(false);
+    setPendingForever(false);
     setTimeout(()=>startRecording(), 200);
   };
 
-  // Security: arm/disarm — uses refs so always fresh
+  // Security: arm/disarm
   const handleArmToggle = async () => {
     if (isArmedRef.current) {
       isArmedRef.current = false;
@@ -530,15 +711,20 @@ function CameraScreen({ navigation, route }) {
       if (isRecordingRef.current) await stopRecording();
       setStatusMsg('Ready to monitor');
     } else {
-      isArmedRef.current = true;
-      setIsArmed(true);
-      setStatusMsg('🟢 Armed — monitoring...');
-      startMotionPolling();
-      if (soundEnabledRef.current) startSoundMonitor();
+      // Show recording prompt before arming
+      setShowLoopPrompt(true);
     }
   };
 
-  // Motion polling — plain interval, uses only refs
+  // Called after loop choice when in security mode
+  const armAfterChoice = async () => {
+    isArmedRef.current = true;
+    setIsArmed(true);
+    setStatusMsg('🟢 Armed — monitoring...');
+    startMotionPolling();
+    if (soundEnabledRef.current) startSoundMonitor();
+  };
+
   const startMotionPolling = () => {
     clearInterval(motionPoll.current);
     console.log('🟢 Motion polling started');
@@ -551,12 +737,8 @@ function CameraScreen({ navigation, route }) {
       }
     }, 1000);
   };
-  const stopMotionPolling = () => {
-    clearInterval(motionPoll.current);
-    console.log('🔴 Motion polling stopped');
-  };
+  const stopMotionPolling = () => { clearInterval(motionPoll.current); };
 
-  // Sound monitor
   const startSoundMonitor = async () => {
     if (!soundEnabledRef.current) return;
     try {
@@ -587,34 +769,24 @@ function CameraScreen({ navigation, route }) {
     }
   };
 
-  // triggerAlert — plain function (NOT useCallback) so it always reads fresh refs
+  // Plain function — always reads fresh refs
   const triggerAlert = (type) => {
     if (alertActiveRef.current) return;
     alertActiveRef.current = true;
     console.log('🚨 Alert:', type);
-
     const event = { type, time: new Date().toLocaleTimeString(), id: Date.now() };
-    setMotionEvents(prev => [event, ...prev].slice(0, 20));
-    setStatusMsg(`⚠️ ${type === 'motion' ? 'Motion' : 'Sound'} detected!`);
-
-    // Flash red border
+    setMotionEvents(prev => [event,...prev].slice(0,20));
+    setStatusMsg(`⚠️ ${type==='motion'?'Motion':'Sound'} detected!`);
     Animated.sequence([
       Animated.timing(alertAnim,{toValue:1,duration:150,useNativeDriver:true}),
       Animated.timing(alertAnim,{toValue:0,duration:150,useNativeDriver:true}),
       Animated.timing(alertAnim,{toValue:1,duration:150,useNativeDriver:true}),
       Animated.timing(alertAnim,{toValue:0,duration:300,useNativeDriver:true}),
     ]).start();
-
-    // Auto-start recording after short delay
     setTimeout(()=>{
-      if (!isRecordingRef.current && cameraRef.current) {
-        startRecording(true);
-      }
+      if (!isRecordingRef.current && cameraRef.current) startRecording(true);
     }, 300);
-
-    api.post('/api/motion/detect',{device_id:device?.id, confidence:85, type}).catch(()=>{});
-
-    // Reset alert after 5s
+    api.post('/api/motion/detect',{device_id:device?.id,confidence:85,type}).catch(()=>{});
     setTimeout(()=>{
       alertActiveRef.current = false;
       setStatusMsg(isArmedRef.current ? '🟢 Armed — monitoring...' : 'Ready');
@@ -623,7 +795,7 @@ function CameraScreen({ navigation, route }) {
 
   const startRecording = async (triggered=false) => {
     if (!cameraRef.current || isRecordingRef.current) return;
-    if (!camPerm?.granted || !micPerm?.granted) {
+    if (!camPermGrantedRef.current || !micPermGrantedRef.current) {
       console.log('Permissions not granted, skipping record');
       return;
     }
@@ -633,26 +805,30 @@ function CameraScreen({ navigation, route }) {
       setStatusMsg(triggered ? '🔴 Recording (triggered)' : '🔴 Recording...');
       startTimer();
 
-      // Set up timed loop rotation for dashcam
-      if (camModeRef.current==='dashcam' && !loopForeverRef.current && loopDurationRef.current>0) {
+      const isForever = loopForeverRef.current;
+      const clipDur   = isForever ? clipSizeRef.current : loopDurationRef.current;
+
+      // Set up rotation interval for non-forever timed loops
+      if (camModeRef.current==='dashcam' && !isForever && clipDur>0) {
         clearInterval(loopRef.current);
-        loopRef.current = setInterval(()=>rotateClip(), loopDurationRef.current * 1000);
+        loopRef.current = setInterval(()=>rotateClip(), clipDur * 1000);
       }
+      // For loop forever, rotation happens in saveClip callback
 
       const recordOptions = { mute: false };
       if (triggered) {
-        recordOptions.maxDuration = 60; // 60s per triggered security clip
-      } else if (!loopForeverRef.current && loopDurationRef.current > 0) {
-        recordOptions.maxDuration = loopDurationRef.current;
+        recordOptions.maxDuration = 60;
+      } else if (isForever) {
+        recordOptions.maxDuration = clipDur; // clip size for loop forever
+      } else if (clipDur > 0) {
+        recordOptions.maxDuration = clipDur;
       }
-      // loopForever = no maxDuration
 
       cameraRef.current.recordAsync(recordOptions)
-        .then(async (video)=>{ if (video?.uri) await saveClip(video.uri); })
+        .then(async(video)=>{ if(video?.uri) await saveClip(video.uri); })
         .catch((e)=>{
-          if (!e.message?.includes('cancelled') && !e.message?.includes('stopped')) {
+          if (!e.message?.includes('cancelled') && !e.message?.includes('stopped'))
             console.log('Record error:', e.message);
-          }
         });
 
     } catch(e) {
@@ -678,9 +854,10 @@ function CameraScreen({ navigation, route }) {
     if (cameraRef.current) { try { cameraRef.current.stopRecording(); } catch {} }
     setTimeout(()=>{
       if (cameraRef.current && isRecordingRef.current) {
+        const isForever = loopForeverRef.current;
+        const clipDur   = isForever ? clipSizeRef.current : loopDurationRef.current;
         const opts = { mute: false };
-        if (!loopForeverRef.current && loopDurationRef.current > 0)
-          opts.maxDuration = loopDurationRef.current;
+        if (clipDur > 0) opts.maxDuration = clipDur;
         cameraRef.current.recordAsync(opts)
           .then(async(video)=>{ if(video?.uri) await saveClip(video.uri); })
           .catch(()=>{});
@@ -697,9 +874,8 @@ function CameraScreen({ navigation, route }) {
       setClipCount(c=>c+1);
       if (!alertActiveRef.current) setStatusMsg('✅ Clip saved');
       if (cloudUpload) uploadClip(dest, filename);
-      if (camModeRef.current==='dashcam' && loopForeverRef.current && isRecordingRef.current) {
-        rotateClip();
-      }
+      // Loop forever: start next clip immediately
+      if (loopForeverRef.current && isRecordingRef.current) rotateClip();
     } catch(e) { console.log('Save clip error:',e.message); }
   };
 
@@ -730,17 +906,18 @@ function CameraScreen({ navigation, route }) {
   const borderColor = alertAnim.interpolate({inputRange:[0,1],outputRange:['transparent','#ff4444']});
   const modeColor = camMode==='dashcam' ? '#00ff88' : '#4488ff';
   const modeLabel = camMode==='dashcam' ? '🚗 Dash Cam' : '🔒 Security';
-
-  // Top bar shifts down when banner is visible
   const topBarPaddingTop = bannerVisible
     ? (Platform.OS==='ios' ? 72 : 54)
     : (Platform.OS==='ios' ? 50 : 30);
+
+  const loopLabel = loopForever
+    ? `♾️ ${CLIP_SIZE_OPTIONS.find(o=>o.value===clipSize)?.label||'Loop'}`
+    : LOOP_OPTIONS.find(o=>o.value===loopDuration)?.label || '';
 
   return (
     <View style={cs.container}>
       <StatusBar barStyle="light-content" backgroundColor={isRecording?'#cc0000':isArmed?'#005522':'#000'}/>
 
-      {/* Banner */}
       <RecordingBanner recording={isRecording} armed={isArmed} formatTime={formatTime} recordingTime={recordingTime} clipCount={clipCount}/>
 
       {/* Camera feed */}
@@ -749,13 +926,12 @@ function CameraScreen({ navigation, route }) {
           facing={facing} enableTorch={torch} zoom={zoom} mode="video"/>
       </Animated.View>
 
-      {/* Overlays outside CameraView */}
       <NightVisionOverlay active={nightVision} premium={nightVisionPro}/>
       {camMode==='security' && (
         <View style={cs.clockWrapper} pointerEvents="none"><LiveClock/></View>
       )}
 
-      {/* Top bar — shifts down when banner showing */}
+      {/* Top bar */}
       <View style={[cs.topBar,{paddingTop:topBarPaddingTop}]}>
         <TouchableOpacity onPress={()=>{ stopAll(); navigation.goBack(); }} style={cs.backBtn}>
           <Text style={cs.backTxt}>← Back</Text>
@@ -764,28 +940,35 @@ function CameraScreen({ navigation, route }) {
           <RecDot recording={isRecording}/>
           <Text style={cs.timerTxt}>{isRecording ? formatTime(recordingTime) : device?.name||'Camera'}</Text>
         </View>
+        {/* Clips badge — tappable to open clips screen */}
+        <TouchableOpacity style={cs.clipsBadge}
+          onPress={()=>navigation.navigate('Clips',{mode:camMode})}>
+          <Text style={cs.clipsBadgeIco}>📼</Text>
+          <Text style={cs.clipsBadgeCount}>{clipCount}</Text>
+        </TouchableOpacity>
         <TouchableOpacity onPress={()=>setShowSettings(true)} style={cs.settingsBtn}>
           <Text style={{fontSize:22}}>⚙️</Text>
         </TouchableOpacity>
       </View>
 
       {/* Mode badge */}
-      <View style={[cs.modeBadgeRow,{top: bannerVisible?(Platform.OS==='ios'?122:98):(Platform.OS==='ios'?105:76)}]}>
+      <View style={[cs.modeBadgeRow,{top:bannerVisible?(Platform.OS==='ios'?122:98):(Platform.OS==='ios'?105:76)}]}>
         <View style={[cs.modeBadge,{borderColor:modeColor}]}>
           <Text style={[cs.modeBadgeTxt,{color:modeColor}]}>{modeLabel}</Text>
         </View>
       </View>
 
       {/* Status */}
-      <View style={[cs.statusBar,{top: bannerVisible?(Platform.OS==='ios'?160:135):(Platform.OS==='ios'?143:112)}]}>
+      <View style={[cs.statusBar,{top:bannerVisible?(Platform.OS==='ios'?160:135):(Platform.OS==='ios'?143:112)}]}>
         <Text style={cs.statusTxt}>{statusMsg}</Text>
       </View>
 
-      {/* Dash cam info */}
-      {camMode==='dashcam' && (isRecording||clipCount>0) && (
+      {/* Recording info row */}
+      {(isRecording || clipCount > 0) && (
         <View style={cs.dashInfo}>
-          <Text style={cs.dashInfoTxt}>🔁 {loopForever?'Loop forever':LOOP_OPTIONS.find(o=>o.value===loopDuration)?.label}</Text>
+          <Text style={cs.dashInfoTxt}>{loopLabel}</Text>
           <Text style={cs.dashInfoTxt}>📼 {clipCount} clips</Text>
+          {isRecording && <Text style={[cs.dashInfoTxt,{borderColor:'#ff4444',color:'#ff8888'}]}>● REC</Text>}
         </View>
       )}
 
@@ -847,29 +1030,65 @@ function CameraScreen({ navigation, route }) {
         </TouchableOpacity>
       </View>
 
-      {/* Dash cam loop prompt */}
-      <Modal visible={showLoopPrompt} transparent animationType="fade" onRequestClose={()=>setShowLoopPrompt(false)}>
+      {/* ── Loop / Recording Mode Prompt (both dashcam + security) ── */}
+      <Modal visible={showLoopPrompt} transparent animationType="fade"
+        onRequestClose={()=>{ setShowLoopPrompt(false); }}>
         <View style={cs.promptOverlay}>
           <View style={cs.promptBox}>
-            <Text style={cs.promptTitle}>🚗 Dash Cam Mode</Text>
+            <Text style={cs.promptTitle}>
+              {camMode==='dashcam' ? '🚗 Dash Cam Mode' : '🔒 Security Mode'}
+            </Text>
             <Text style={cs.promptSub}>How would you like to record?</Text>
+
             <TouchableOpacity style={cs.promptOption} onPress={()=>handleLoopChoice(true,0)}>
               <Text style={cs.promptOptionIco}>♾️</Text>
               <View style={{flex:1}}>
                 <Text style={cs.promptOptionTitle}>Loop Forever</Text>
-                <Text style={cs.promptOptionDesc}>Continuous — new clip every 5 min</Text>
+                <Text style={cs.promptOptionDesc}>Continuous recording, you pick the clip length</Text>
               </View>
             </TouchableOpacity>
-            {[60,300,900,1800].map(dur=>(
-              <TouchableOpacity key={dur} style={cs.promptOption} onPress={()=>handleLoopChoice(false,dur)}>
+
+            {LOOP_OPTIONS.map(opt=>(
+              <TouchableOpacity key={opt.value} style={cs.promptOption} onPress={()=>handleLoopChoice(false,opt.value)}>
                 <Text style={cs.promptOptionIco}>⏱</Text>
                 <View style={{flex:1}}>
-                  <Text style={cs.promptOptionTitle}>{dur===60?'1 minute':dur===300?'5 minutes':dur===900?'15 minutes':'30 minutes'}</Text>
-                  <Text style={cs.promptOptionDesc}>Record one clip then stop</Text>
+                  <Text style={cs.promptOptionTitle}>{opt.label}</Text>
+                  <Text style={cs.promptOptionDesc}>
+                    {camMode==='dashcam' ? 'Record one clip then stop' : 'Record triggered clip, then stop'}
+                  </Text>
                 </View>
               </TouchableOpacity>
             ))}
-            <TouchableOpacity style={cs.promptCancel} onPress={()=>setShowLoopPrompt(false)}>
+
+            <TouchableOpacity style={cs.promptCancel}
+              onPress={()=>setShowLoopPrompt(false)}>
+              <Text style={cs.promptCancelTxt}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── Clip Size Prompt (loop forever only) ── */}
+      <Modal visible={showClipSizePrompt} transparent animationType="fade"
+        onRequestClose={()=>setShowClipSizePrompt(false)}>
+        <View style={cs.promptOverlay}>
+          <View style={cs.promptBox}>
+            <Text style={cs.promptTitle}>♾️ Loop Forever</Text>
+            <Text style={cs.promptSub}>Choose your clip length</Text>
+
+            {CLIP_SIZE_OPTIONS.map(opt=>(
+              <TouchableOpacity key={opt.value} style={cs.promptOption} onPress={()=>handleClipSizeChoice(opt.value)}>
+                <Text style={cs.promptOptionIco}>🎬</Text>
+                <View style={{flex:1}}>
+                  <Text style={cs.promptOptionTitle}>{opt.label}</Text>
+                  <Text style={cs.promptOptionDesc}>Each clip will be {opt.label.replace(' clips','')} long</Text>
+                </View>
+              </TouchableOpacity>
+            ))}
+
+            <TouchableOpacity style={cs.promptCancel} onPress={()=>{
+              setShowClipSizePrompt(false); setPendingForever(false);
+            }}>
               <Text style={cs.promptCancelTxt}>Cancel</Text>
             </TouchableOpacity>
           </View>
@@ -894,10 +1113,7 @@ function CameraScreen({ navigation, route }) {
 
             <Text style={cs.settingSection}>🌙 Night Vision</Text>
             <View style={cs.settingRow}>
-              <View>
-                <Text style={cs.settingLabel}>Night Mode</Text>
-                <Text style={cs.settingNote}>Brightness boost (free)</Text>
-              </View>
+              <View><Text style={cs.settingLabel}>Night Mode</Text><Text style={cs.settingNote}>Brightness boost (free)</Text></View>
               <Switch value={nightVision} onValueChange={setNightVision} trackColor={{true:'#00ff88'}} thumbColor="#fff"/>
             </View>
             <View style={cs.settingRow}>
@@ -914,12 +1130,14 @@ function CameraScreen({ navigation, route }) {
 
             <Text style={cs.settingSection}>☁️ Storage</Text>
             <View style={cs.settingRow}>
-              <View>
-                <Text style={cs.settingLabel}>Cloud Upload</Text>
-                <Text style={cs.settingNote}>Auto-upload clips to your account</Text>
-              </View>
+              <View><Text style={cs.settingLabel}>Cloud Upload</Text><Text style={cs.settingNote}>Auto-upload clips to your account</Text></View>
               <Switch value={cloudUpload} onValueChange={setCloudUpload} trackColor={{true:'#00ff88'}} thumbColor="#fff"/>
             </View>
+
+            <TouchableOpacity style={[cs.modalClose,{marginTop:16,backgroundColor:'#1a1a1a',borderWidth:1,borderColor:'#333'}]}
+              onPress={()=>{ setShowSettings(false); navigation.navigate('Clips',{mode:camMode}); }}>
+              <Text style={[cs.modalCloseTxt,{color:'#00ff88'}]}>📼 Manage Clips</Text>
+            </TouchableOpacity>
 
             <TouchableOpacity style={cs.modalClose} onPress={()=>setShowSettings(false)}>
               <Text style={cs.modalCloseTxt}>Done</Text>
@@ -958,6 +1176,7 @@ function App() {
         </>):(<>
           <Stack.Screen name="Dashboard">{(props)=><DashboardScreen {...props} logout={logout}/>}</Stack.Screen>
           <Stack.Screen name="Camera" component={CameraScreen}/>
+          <Stack.Screen name="Clips" component={ClipsScreen}/>
         </>)}
       </Stack.Navigator>
     </NavigationContainer>
@@ -1014,8 +1233,7 @@ const cs = StyleSheet.create({
   permBtn:           {marginTop:20,alignSelf:'center',backgroundColor:'#00ff88',padding:12,borderRadius:8},
   permBtnTxt:        {color:'#000',fontWeight:'bold'},
   recBanner:         {position:'absolute',top:0,left:0,right:0,zIndex:100,
-                      paddingTop:Platform.OS==='ios'?44:24,paddingBottom:8,
-                      paddingHorizontal:16,alignItems:'center'},
+                      paddingTop:Platform.OS==='ios'?44:24,paddingBottom:8,paddingHorizontal:16,alignItems:'center'},
   recBannerTxt:      {color:'#fff',fontSize:12,fontWeight:'bold'},
   nvBright:          {...StyleSheet.absoluteFillObject,backgroundColor:'rgba(255,255,220,0.1)',zIndex:10},
   nvDark:            {...StyleSheet.absoluteFillObject,backgroundColor:'rgba(0,20,0,0.45)',zIndex:10},
@@ -1031,12 +1249,15 @@ const cs = StyleSheet.create({
   recDot:            {width:10,height:10,borderRadius:5,backgroundColor:'#444'},
   recDotActive:      {backgroundColor:'#ff4444'},
   topBar:            {position:'absolute',top:0,left:0,right:0,flexDirection:'row',alignItems:'center',
-                      paddingHorizontal:12,paddingBottom:12,
-                      backgroundColor:'rgba(0,0,0,0.55)',zIndex:20},
+                      paddingHorizontal:12,paddingBottom:12,backgroundColor:'rgba(0,0,0,0.55)',zIndex:20},
   backBtn:           {paddingHorizontal:8,paddingVertical:4},
   backTxt:           {color:'#00ff88',fontSize:15,fontWeight:'600'},
   topCenter:         {flex:1,flexDirection:'row',alignItems:'center',justifyContent:'center',gap:8},
   timerTxt:          {color:'#fff',fontSize:15,fontWeight:'bold'},
+  clipsBadge:        {flexDirection:'row',alignItems:'center',gap:3,backgroundColor:'rgba(255,255,255,0.1)',
+                      paddingHorizontal:8,paddingVertical:4,borderRadius:12,marginRight:4},
+  clipsBadgeIco:     {fontSize:14},
+  clipsBadgeCount:   {color:'#fff',fontSize:13,fontWeight:'bold'},
   settingsBtn:       {paddingHorizontal:8},
   modeBadgeRow:      {position:'absolute',left:0,right:0,alignItems:'center',zIndex:20},
   modeBadge:         {paddingHorizontal:16,paddingVertical:5,borderRadius:20,borderWidth:1.5,backgroundColor:'rgba(0,0,0,0.6)'},
@@ -1100,8 +1321,40 @@ const cs = StyleSheet.create({
   settingNote:       {color:'#666',fontSize:11,marginTop:2},
   premiumBadge:      {backgroundColor:'#ffd70020',paddingHorizontal:6,paddingVertical:2,borderRadius:4,borderWidth:1,borderColor:'#ffd700'},
   premiumTxt:        {color:'#ffd700',fontSize:9,fontWeight:'bold'},
-  modalClose:        {marginTop:24,backgroundColor:'#00ff88',borderRadius:10,padding:14,alignItems:'center'},
+  modalClose:        {marginTop:12,backgroundColor:'#00ff88',borderRadius:10,padding:14,alignItems:'center'},
   modalCloseTxt:     {color:'#000',fontSize:16,fontWeight:'bold'},
+});
+
+// ─── Clips Screen Styles ─────────────────────────────────────────
+const cl = StyleSheet.create({
+  container:    {flex:1,backgroundColor:'#0a0a0a'},
+  header:       {flexDirection:'row',alignItems:'center',justifyContent:'space-between',
+                 padding:16,paddingTop:50,backgroundColor:'#111'},
+  backBtn:      {paddingRight:12},
+  backTxt:      {color:'#00ff88',fontSize:15,fontWeight:'600'},
+  title:        {color:'#fff',fontSize:18,fontWeight:'bold',flex:1,textAlign:'center'},
+  galleryBtn:   {paddingLeft:12},
+  galleryTxt:   {color:'#00ff88',fontSize:14,fontWeight:'600'},
+  summary:      {flexDirection:'row',alignItems:'center',justifyContent:'space-around',
+                 backgroundColor:'#111',marginHorizontal:16,marginTop:16,borderRadius:10,
+                 padding:16,marginBottom:8},
+  summaryItem:  {alignItems:'center'},
+  summaryN:     {color:'#00ff88',fontSize:20,fontWeight:'bold'},
+  summaryL:     {color:'#666',fontSize:11,marginTop:2},
+  deleteAllBtn: {backgroundColor:'#ff444420',paddingHorizontal:14,paddingVertical:8,
+                 borderRadius:8,borderWidth:1,borderColor:'#ff444460'},
+  deleteAllTxt: {color:'#ff4444',fontSize:12,fontWeight:'bold'},
+  empty:        {flex:1,alignItems:'center',justifyContent:'center',marginTop:60},
+  emptyTxt:     {color:'#fff',fontSize:18,marginTop:16},
+  emptySub:     {color:'#666',fontSize:13,marginTop:8},
+  clipCard:     {flexDirection:'row',alignItems:'center',backgroundColor:'#1a1a1a',
+                 borderRadius:10,padding:12,marginBottom:8,borderWidth:1,borderColor:'#222'},
+  clipIcon:     {alignItems:'center',marginRight:12},
+  clipNum:      {color:'#666',fontSize:10,marginTop:2},
+  clipInfo:     {flex:1},
+  clipName:     {color:'#fff',fontSize:13,fontWeight:'600'},
+  clipMeta:     {color:'#666',fontSize:11,marginTop:3},
+  clipDelete:   {padding:8},
 });
 
 export default App;
