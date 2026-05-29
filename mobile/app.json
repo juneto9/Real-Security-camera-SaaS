@@ -36,7 +36,8 @@
     },
     "plugins": [
       "expo-camera",
-      "expo-media-library"
+      "expo-media-library",
+      "expo-audio"
     ]
   }
 }
