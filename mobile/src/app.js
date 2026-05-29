@@ -7,7 +7,6 @@ import {
 } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { enableScreens } from 'react-native-screens';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
@@ -15,8 +14,6 @@ import * as MediaLibrary from 'expo-media-library';
 import * as FileSystem from 'expo-file-system';
 import { useAudioRecorder, AudioModule, RecordingPresets } from 'expo-audio';
 import { registerRootComponent } from 'expo';
-
-enableScreens();
 
 const { width: SW, height: SH } = Dimensions.get('window');
 const API_URL = 'https://whale-app-hxokg.ondigitalocean.app';
