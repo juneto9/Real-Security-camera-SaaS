@@ -815,7 +815,11 @@ function CameraScreen({ navigation, route }) {
     setActivePopup(event);
 
     // Add to event log
+    // Add to event log, auto-remove after 16s
     setMotionEvents(prev => [event,...prev].slice(0,20));
+    setTimeout(()=>{
+  setMotionEvents(prev => prev.filter(e => e.id !== event.id));
+}, 16000);
     setStatusMsg(`⚠️ ${type==='motion'?'Motion':'Sound'} detected!`);
 
     // Flash red border
@@ -865,8 +869,8 @@ function CameraScreen({ navigation, route }) {
 
       const recordOptions = { mute: false };
       if (triggered) {
-        recordOptions.maxDuration = 60;
-      } else if (clipDur > 0) {
+  recordOptions.maxDuration = loopForeverRef.current ? clipSizeRef.current : (loopDurationRef.current || 60);
+} else if (clipDur > 0) {
         recordOptions.maxDuration = clipDur;
       }
 
@@ -920,7 +924,15 @@ function CameraScreen({ navigation, route }) {
       setClipCount(c=>c+1);
       if (!alertActiveRef.current) setStatusMsg('✅ Clip saved');
       if (cloudUpload) uploadClip(dest, filename);
-      if (loopForeverRef.current && isRecordingRef.current) rotateClip();
+      // Only auto-rotate in dashcam loop forever, or security loop forever
+if (loopForeverRef.current && isRecordingRef.current && camModeRef.current === 'dashcam') rotateClip();
+// Security loop forever rotates too but waits for next trigger
+if (loopForeverRef.current && isRecordingRef.current && camModeRef.current === 'security') {
+  isRecordingRef.current = false;
+  setIsRecording(false);
+  setStatusMsg('🟢 Armed — monitoring...');
+  stopTimer();
+}
     } catch(e) { console.log('Save clip error:',e.message); }
   };
 
@@ -1329,8 +1341,9 @@ const cs = StyleSheet.create({
   dashInfoTxt:       {color:'rgba(255,255,255,0.9)',fontSize:11,backgroundColor:'rgba(0,0,0,0.6)',
                       paddingHorizontal:8,paddingVertical:3,borderRadius:8,overflow:'hidden',
                       borderWidth:1,borderColor:'rgba(255,255,255,0.15)'},
-  eventLog:          {position:'absolute',bottom:210,left:16,right:16,backgroundColor:'rgba(0,0,0,0.75)',
-                      borderRadius:10,padding:10,borderWidth:1,borderColor:'rgba(255,68,68,0.4)',zIndex:20},
+  eventLog: {position:'absolute',top:'40%',left:24,right:24,backgroundColor:'rgba(0,0,0,0.88)',
+            borderRadius:14,padding:16,borderWidth:1.5,borderColor:'rgba(255,68,68,0.6)',zIndex:50,
+            shadowColor:'#ff4444',shadowOffset:{width:0,height:0},shadowOpacity:0.4,shadowRadius:20},
   eventLogTitle:     {color:'#ff4444',fontSize:11,fontWeight:'bold',marginBottom:4},
   eventItem:         {color:'rgba(255,255,255,0.85)',fontSize:11,paddingVertical:1},
   securityControls:  {position:'absolute',bottom:115,left:16,right:16,gap:10,zIndex:20},
