@@ -229,24 +229,51 @@ function CameraCard({ device, socket, onEvent, onSettings, settings }) {
     socket.on('camera:offline', onOffline);
     socket.on('webrtc:offer', async({offer,fromSocketId})=>{
       if (!pcRef.current) return;
+      console.log('📺 Received WebRTC offer from:', fromSocketId);
+      cameraSocketIdRef.current = fromSocketId; // store for ICE
       await pcRef.current.setRemoteDescription(new RTCSessionDescription(offer));
       const answer = await pcRef.current.createAnswer();
       await pcRef.current.setLocalDescription(answer);
       socket.emit('webrtc:answer',{targetSocketId:fromSocketId,answer});
     });
     socket.on('webrtc:ice',({candidate,fromSocketId})=>{
-      if (pcRef.current&&candidate) pcRef.current.addIceCandidate(new RTCIceCandidate(candidate)).catch(()=>{});
+      // Only process ICE from the camera we're watching
+      if (pcRef.current && candidate && fromSocketId === cameraSocketIdRef.current) {
+        pcRef.current.addIceCandidate(new RTCIceCandidate(candidate)).catch(e=>console.log('ICE error:',e));
+      }
     });
     return ()=>{ socket.off('camera:online',onOnline); socket.off('camera:offline',onOffline); };
   },[socket,device.id]);
 
+  const cameraSocketIdRef = useRef(null); // store camera's socketId for ICE
+
   const startWatching = () => {
     if (!socket||!online) return;
-    const pc = new RTCPeerConnection({ iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}] });
+    const pc = new RTCPeerConnection({
+      iceServers:[
+        {urls:'stun:stun.l.google.com:19302'},
+        {urls:'stun:stun1.l.google.com:19302'},
+        {urls:'stun:stun2.l.google.com:19302'},
+      ]
+    });
     pcRef.current = pc;
-    pc.ontrack = e=>{ if(videoRef.current&&e.streams[0]) videoRef.current.srcObject=e.streams[0]; };
-    pc.onicecandidate = e=>{ if(e.candidate) socket.emit('webrtc:ice',{targetSocketId:'__camera__',candidate:e.candidate}); };
-    pc.onconnectionstatechange = ()=>setStatus(pc.connectionState==='connected'?'Live':pc.connectionState);
+    pc.ontrack = e=>{
+      console.log('📺 Got track:', e.track.kind, e.streams.length);
+      if(videoRef.current && e.streams[0]) {
+        videoRef.current.srcObject = e.streams[0];
+        videoRef.current.play().catch(()=>{});
+      }
+    };
+    // Send ICE candidates to the camera using its socketId from the offer
+    pc.onicecandidate = e=>{
+      if(e.candidate && cameraSocketIdRef.current) {
+        socket.emit('webrtc:ice',{targetSocketId:cameraSocketIdRef.current, candidate:e.candidate});
+      }
+    };
+    pc.onconnectionstatechange = ()=>{
+      console.log('📺 WebRTC state:', pc.connectionState);
+      setStatus(pc.connectionState==='connected'?'● Live':pc.connectionState);
+    };
     pc.addTransceiver('video',{direction:'recvonly'});
     pc.addTransceiver('audio',{direction:'recvonly'});
     socket.emit('viewer:watch',{deviceId:device.id});
@@ -277,7 +304,7 @@ function CameraCard({ device, socket, onEvent, onSettings, settings }) {
       {/* Video */}
       <div style={st.videoBox}>
         {watching
-          ? <video ref={videoRef} style={st.videoEl} autoPlay playsInline/>
+          ? <video ref={videoRef} style={st.videoEl} autoPlay playsInline controls/>
           : <div style={{...st.videoEl,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',color:C.sub,position:'absolute',inset:0}}>
               <span style={{fontSize:40}}>📷</span>
               <span style={{marginTop:8,fontSize:13}}>{status}</span>
