@@ -401,7 +401,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
   const [loopDuration,   setLoopDuration]   = useState(300);
   const [clipSize,       setClipSize]       = useState(300);
   const [showRecPrompt,  setShowRecPrompt]  = useState(false);
-  const [clipManagement, setClipManagement] = useState('download'); // download | cloud | both | ask
+  const [clipManagement, setClipManagement] = useState('cloud'); // download | cloud | both | ask
   const [showClipPrompt, setShowClipPrompt] = useState(false);
   const [recordingTime,  setRecordingTime]  = useState(0);
   // Motion detection via pixel diff
@@ -584,11 +584,6 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
   };
 
   const armCamera = () => {
-    // Ask how to manage clips if not yet decided
-    if (clipManagement === 'ask') {
-      setShowClipPrompt(true);
-      return;
-    }
     setIsArmed(true); isArmedRef.current=true;
     setStatusMsg('🟢 Armed — monitoring...');
     startMotionDetection();
@@ -756,7 +751,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
                   {/* Monitoring toggle */}
                   {!isArmed
                     ? <button style={{...st.btn,flex:2,backgroundColor:'rgba(0,255,136,0.15)',color:C.green,border:`2px solid ${C.green}`,fontWeight:'bold'}}
-                        onClick={()=>{ setClipManagement('ask'); armCamera(); }}>
+                        onClick={()=>armCamera()}>
                         🟢 Start Monitoring
                       </button>
                     : <button style={{...st.btn,flex:2,backgroundColor:'rgba(255,68,68,0.15)',color:C.red,border:`2px solid ${C.red}`,fontWeight:'bold'}}
