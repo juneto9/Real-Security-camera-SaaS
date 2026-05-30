@@ -1141,10 +1141,22 @@ export default function App() {
     if (!token||!user) return;
     const s = io(API,{auth:{token},transports:['websocket','polling']});
     s.on('connect',()=>{
-      s.emit('auth',{userId:user.userId,organizationId:user.organizationId,role:'viewer',deviceName:'Web Dashboard'});
+      const orgId = user.organizationId || user.org_id || user.organization_id;
+      s.emit('auth',{userId:user.userId||user.id,organizationId:orgId,role:'viewer',deviceName:'Web Dashboard'});
       showToast('Connected to streaming server');
+      // After connecting, fetch current active streams to catch already-online cameras
+      setTimeout(async()=>{
+        try {
+          const res = await api.get('/api/streaming/streams');
+          const streams = res.data?.data || [];
+          streams.forEach(s=>{
+            if (s.online) setOnlineMap(m=>({...m,[s.deviceId]:{online:true,name:s.deviceName}}));
+          });
+        } catch {}
+      }, 2000);
     });
     s.on('camera:online', ({deviceId,deviceName})=>{
+      console.log('📷 Web received camera:online:', deviceName, deviceId);
       setOnlineMap(m=>({...m,[deviceId]:{online:true,name:deviceName}}));
       setEvents(ev=>[{type:'system',id:Date.now(),deviceName,time:new Date().toLocaleTimeString(),message:`${deviceName} came online`},...ev]);
     });
