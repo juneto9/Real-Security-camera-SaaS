@@ -833,7 +833,7 @@ function CameraScreen({ navigation, route, socket }) {
   const [loopDuration,  setLoopDuration] = useState(300);
   const [loopForever,   setLoopForever]  = useState(false);
   const [clipSize,      setClipSize]     = useState(300);
-  const [cloudUpload,   setCloudUpload]  = useState(false);
+  const [cloudUpload,   setCloudUpload]  = useState(true);
   const [motionEnabled, setMotionEnabled]= useState(true);
   const [soundEnabled,  setSoundEnabled] = useState(true);
   const [activePopup,   setActivePopup]  = useState(null);
