@@ -877,7 +877,8 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
               ))}
             </div>
           </>}
-        </div>
+        </div>{/* end right settings card */}
+      </div>{/* end grid */}
 
       {/* Clip Management Prompt Modal */}
       {showClipPrompt && (
@@ -910,9 +911,6 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
     </div>
   );
 }
-
-
-// ─── Events Panel ─────────────────────────────────────────────────
 function EventsPanel({ events }) {
   return (
     <div style={st.card}>
