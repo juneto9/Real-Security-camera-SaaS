@@ -14,6 +14,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { AudioModule } from 'expo-audio';
 import NetInfo from '@react-native-community/netinfo';
 import { Accelerometer } from 'expo-sensors';
+import { io } from 'socket.io-client';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 const API_URL = 'https://whale-app-hxokg.ondigitalocean.app';
@@ -57,10 +58,23 @@ const formatSize = (b) => {
 
 const saveEventToLog = async (event) => {
   try {
+    // Save locally
     const raw = await AsyncStorage.getItem(EVENTS_KEY);
     const log = raw ? JSON.parse(raw) : [];
     log.unshift(event);
     await AsyncStorage.setItem(EVENTS_KEY, JSON.stringify(log.slice(0,200)));
+    // Also save to backend so web admin can see events remotely
+    const token = await AsyncStorage.getItem('accessToken');
+    if (token) {
+      api.post('/api/motion/detect', {
+        device_id: event.deviceId,
+        device_name: event.deviceName,
+        type: event.type,
+        confidence: 90,
+        timestamp: new Date(event.id).toISOString(),
+        cam_mode: event.camMode,
+      }).catch(()=>{});
+    }
   } catch {}
 };
 
@@ -564,7 +578,7 @@ function RegisterScreen({ navigation, setToken }) {
 }
 
 // ─── Dashboard ───────────────────────────────────────────────────
-function DashboardScreen({ navigation, logout }) {
+function DashboardScreen({ navigation, logout, socket }) {
   const [devices,setDevices]=useState([]); const [loading,setLoading]=useState(true);
   const [clipCounts,setClipCounts]=useState({});
   const [showAddModal,setShowAddModal]=useState(false); const [deviceName,setDeviceName]=useState('');
@@ -573,7 +587,18 @@ function DashboardScreen({ navigation, logout }) {
   const [editingDevice,setEditingDevice]=useState(null); const [editName,setEditName]=useState(''); const [editLocation,setEditLocation]=useState('');
   const [deleteConfirm,setDeleteConfirm]=useState(null);
   const [recentEvents,setRecentEvents]=useState([]);
+  const [onlineMap,setOnlineMap]=useState({});
   const [showEventsDropdown,setShowEventsDropdown]=useState(false);
+
+  // Track cameras online via socket
+  useEffect(()=>{
+    if (!socket) return;
+    const onOnline  = ({deviceId})=>setOnlineMap(m=>({...m,[deviceId]:true}));
+    const onOffline = ({deviceId})=>setOnlineMap(m=>({...m,[deviceId]:false}));
+    socket.on('camera:online',  onOnline);
+    socket.on('camera:offline', onOffline);
+    return ()=>{ socket.off('camera:online',onOnline); socket.off('camera:offline',onOffline); };
+  },[socket]);
 
   // Refresh on focus + every 10s
   useFocusEffect(useCallback(()=>{
@@ -654,8 +679,12 @@ function DashboardScreen({ navigation, logout }) {
       {/* Stats row */}
       <View style={s.stats}>
         <View style={s.stat}><Text style={s.statN}>{devices.length}</Text><Text style={s.statL}>Cameras</Text></View>
-        <View style={s.stat}><Text style={s.statN}>{devices.filter(d=>d.is_active).length}</Text><Text style={s.statL}>Online</Text></View>
+        <View style={s.stat}><Text style={s.statN}>{devices.filter(d=>onlineMap[d.id]||d.is_active).length}</Text><Text style={s.statL}>Online</Text></View>
         <WiFiStat/>
+        <View style={s.stat}>
+          <Text style={[s.statN,{color:socket?.connected?'#00ff88':'#ff4444',fontSize:16}]}>{socket?.connected?'●':'○'}</Text>
+          <Text style={[s.statL,{color:socket?.connected?'#00ff88':'#888'}]}>{socket?.connected?'Live':'Offline'}</Text>
+        </View>
         {/* Events dropdown trigger */}
         <TouchableOpacity style={s.stat} onPress={()=>setShowEventsDropdown(v=>!v)}>
           <Text style={s.statN}>{recentEvents.length}</Text>
@@ -705,7 +734,7 @@ function DashboardScreen({ navigation, logout }) {
                 <TouchableOpacity style={s.card} onLongPress={()=>{ setEditingDevice(item); setEditName(item.name); setEditLocation(item.location||''); }} delayLongPress={400}>
                   <View style={{flexDirection:'row',justifyContent:'space-between',alignItems:'flex-start'}}>
                     <Text style={{fontSize:26}}>📷</Text>
-                    <View style={[s.dot,{backgroundColor:item.is_active?'#00ff88':'#666'}]}/>
+                    <View style={[s.dot,{backgroundColor:(onlineMap[item.id]||item.is_active)?'#00ff88':'#666'}]}/>
                   </View>
                   <Text style={s.cardName}>{item.name}</Text>
                   <Text style={s.cardLoc}>📍 {item.location||'No location'}</Text>
@@ -784,7 +813,7 @@ function DashboardScreen({ navigation, logout }) {
 }
 
 // ─── Camera Screen ───────────────────────────────────────────────
-function CameraScreen({ navigation, route }) {
+function CameraScreen({ navigation, route, socket }) {
   const { device, initialMode } = route.params || {};
 
   const [camPerm,       requestCamPerm]  = useCameraPermissions();
@@ -859,7 +888,29 @@ function CameraScreen({ navigation, route }) {
       else { const {status}=await MediaLibrary.requestPermissionsAsync(); setMediaPerm(status==='granted'); }
     })();
     if (initialMode==='dashcam') setTimeout(()=>setShowLoopPrompt(true),700);
-    return ()=>stopAll();
+
+    // Announce this camera as online via socket
+    if (socket && device?.id) {
+      AsyncStorage.getItem('accessToken').then(token=>{
+        if (!token) return;
+        try {
+          const payload = JSON.parse(atob(token.split('.')[1]));
+          socket.emit('auth',{
+            deviceId: device.id,
+            deviceName: device.name || 'Mobile Camera',
+            role: 'camera',
+            organizationId: payload.organizationId,
+            userId: payload.userId || payload.id,
+          });
+        } catch {}
+      });
+    }
+
+    return ()=>{
+      stopAll();
+      // Announce offline when leaving camera screen
+      if (socket && device?.id) socket.emit('camera:offline',{deviceId:device.id});
+    };
   },[]);
 
   const stopAll = () => {
@@ -1059,7 +1110,18 @@ function CameraScreen({ navigation, route }) {
       const filename=`clip_${mode}_${device?.id||'unknown'}_${ts}.mp4`;
       const dest=FileSystem.documentDirectory+filename;
       await FileSystem.moveAsync({from:uri,to:dest});
-      if (mediaPerm) await MediaLibrary.saveToLibraryAsync(dest);
+      if (mediaPerm) {
+        try {
+          // Save to a dedicated album — no "where to save" prompt
+          const asset = await MediaLibrary.createAssetAsync(dest);
+          let album = await MediaLibrary.getAlbumAsync('Real Security Camera');
+          if (!album) {
+            await MediaLibrary.createAlbumAsync('Real Security Camera', asset, false);
+          } else {
+            await MediaLibrary.addAssetsToAlbumAsync([asset], album, false);
+          }
+        } catch(e) { console.log('MediaLibrary album error:', e.message); }
+      }
       setClipCount(c=>c+1);
       if (!alertActiveRef.current) {
         setStatus('✅ Clip saved',14000);
@@ -1074,10 +1136,13 @@ function CameraScreen({ navigation, route }) {
         setStatus('✅ Clip saved — tap record again',14000);
         return;
       }
-      // Security: stop, release cooldown
+      // Security: stop recording — cooldown releases NOW (clip fully saved)
+      // Motion won't re-trigger until this point
       if (mode==='security') {
         isRecordingRef.current=false; setIsRecording(false); stopTimer();
-        setTimeout(()=>{ motionCoolRef.current=false; if(isArmedRef.current) setStatus('🟢 Armed — monitoring...'); },2000);
+        motionCoolRef.current=false;
+        alertActiveRef.current=false;
+        if (isArmedRef.current) setStatus('🟢 Armed — monitoring...');
       }
     } catch(e){ console.log('saveClip:',e.message); }
   };
@@ -1340,9 +1405,45 @@ function CameraScreen({ navigation, route }) {
 
 // ─── App Root ────────────────────────────────────────────────────
 function App() {
-  const [ready,setReady]=useState(false); const [token,setToken]=useState(null);
-  useEffect(()=>{ AsyncStorage.getItem('accessToken').then(t=>{ setToken(t); setReady(true); }); },[]);
-  const logout = async()=>{ await AsyncStorage.removeItem('accessToken'); setToken(null); };
+  const [ready,  setReady]  = useState(false);
+  const [token,  setToken]  = useState(null);
+  const [socket, setSocket] = useState(null);
+  const socketRef = useRef(null);
+
+  useEffect(()=>{
+    AsyncStorage.getItem('accessToken').then(t=>{ setToken(t); setReady(true); });
+  },[]);
+
+  // Connect socket when token available
+  useEffect(()=>{
+    if (!token) { if(socketRef.current){socketRef.current.disconnect();socketRef.current=null;setSocket(null);} return; }
+    const s = io(API_URL, { auth:{token}, transports:['websocket','polling'] });
+    s.on('connect', async()=>{
+      console.log('📡 Socket connected');
+      // Decode token to get user info
+      try {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        s.emit('auth',{
+          userId: payload.userId || payload.id,
+          organizationId: payload.organizationId,
+          role: 'viewer',
+          deviceName: 'Mobile App',
+        });
+      } catch(e){ console.log('Token decode error:', e.message); }
+    });
+    s.on('camera:online',  ({deviceId,deviceName})=>{ console.log('📷 Camera online:', deviceName); });
+    s.on('camera:offline', ({deviceId})=>{ console.log('📷 Camera offline:', deviceId); });
+    s.on('disconnect', ()=>{ console.log('📡 Socket disconnected'); });
+    socketRef.current = s;
+    setSocket(s);
+    return ()=>{ s.disconnect(); socketRef.current=null; };
+  },[token]);
+
+  const logout = async()=>{
+    await AsyncStorage.removeItem('accessToken');
+    setToken(null);
+    setSocket(null);
+  };
   if (!ready) return <View style={s.c}><Text style={s.appIcon}>🔒</Text><Text style={s.appName}>Real Security Camera</Text></View>;
   return (
     <NavigationContainer>
@@ -1351,8 +1452,8 @@ function App() {
           <Stack.Screen name="Login">{p=><LoginScreen {...p} setToken={setToken}/>}</Stack.Screen>
           <Stack.Screen name="Register">{p=><RegisterScreen {...p} setToken={setToken}/>}</Stack.Screen>
         </>):(<>
-          <Stack.Screen name="Dashboard">{p=><DashboardScreen {...p} logout={logout}/>}</Stack.Screen>
-          <Stack.Screen name="Camera" component={CameraScreen}/>
+          <Stack.Screen name="Dashboard">{p=><DashboardScreen {...p} logout={logout} socket={socket}/>}</Stack.Screen>
+          <Stack.Screen name="Camera">{p=><CameraScreen {...p} socket={socket}/>}</Stack.Screen>
           <Stack.Screen name="Clips" component={ClipsScreen}/>
           <Stack.Screen name="EventsLog" component={EventsLogScreen}/>
           <Stack.Screen name="Subscription" component={SubscriptionScreen}/>
