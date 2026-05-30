@@ -1124,7 +1124,21 @@ export default function App() {
     try { const res=await api.get('/api/devices'); setDevices(res.data.data||[]); } catch {}
   },[token]);
 
+  // Also fetch active streams to show socket-connected cameras
+  const loadStreams = useCallback(async()=>{
+    if (!token) return;
+    try {
+      const res = await api.get('/api/streaming/streams');
+      const streams = res.data.data || [];
+      // Mark any stream-connected cameras as online
+      streams.forEach(s=>{
+        if (s.online) setOnlineMap(m=>({...m,[s.deviceId]:{online:true,name:s.deviceName}}));
+      });
+    } catch {}
+  },[token]);
+
   useEffect(()=>{ loadDevices(); },[loadDevices]);
+  useEffect(()=>{ loadStreams(); const t=setInterval(loadStreams,10000); return()=>clearInterval(t); },[loadStreams]);
 
   useEffect(()=>{
     if (!token||!user) return;
@@ -1134,10 +1148,12 @@ export default function App() {
       showToast('Connected to streaming server');
     });
     s.on('camera:online', ({deviceId,deviceName})=>{
-      setOnlineMap(m=>({...m,[deviceId]:true}));
+      setOnlineMap(m=>({...m,[deviceId]:{online:true,name:deviceName}}));
       setEvents(ev=>[{type:'system',id:Date.now(),deviceName,time:new Date().toLocaleTimeString(),message:`${deviceName} came online`},...ev]);
     });
-    s.on('camera:offline',({deviceId})=>setOnlineMap(m=>({...m,[deviceId]:false})));
+    s.on('camera:offline',({deviceId})=>{
+      setOnlineMap(m=>({...m,[deviceId]:{...(m[deviceId]||{}),online:false}}));
+    });
     s.on('disconnect',()=>showToast('Disconnected from server'));
     setSocket(s);
     return ()=>s.disconnect();
@@ -1167,10 +1183,20 @@ export default function App() {
       <main style={st.main}>
         {/* Stats */}
         <div style={st.statRow}>
-          <div style={st.stat}><p style={st.statN}>{devices.length}</p><p style={st.statL}>Total Cameras</p></div>
+          <div style={st.stat}>
+            <p style={st.statN}>
+              {/* Count DB devices + any socket cameras not already in DB */}
+              {Math.max(devices.length, Object.values(onlineMap).filter(v=>v?.online||v===true).length + devices.filter(d=>!onlineMap[d.id]).length)}
+            </p>
+            <p style={st.statL}>Total Cameras</p>
+          </div>
           <div style={st.stat}>
             <p style={{...st.statN,color:C.green}}>
-              {devices.filter(d=>onlineMap[d.id]||d.is_active).length}
+              {/* Online = DB devices with socket activity OR socket-only cameras */}
+              {new Set([
+                ...devices.filter(d=>onlineMap[d.id]?.online||onlineMap[d.id]===true||d.is_active).map(d=>d.id),
+                ...Object.entries(onlineMap).filter(([,v])=>v?.online||v===true).map(([k])=>k)
+              ]).size}
             </p>
             <p style={st.statL}>Online Now</p>
           </div>
@@ -1207,7 +1233,7 @@ export default function App() {
             : <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(320px,1fr))',gap:16}}>
                 {devices.map(d=>(
                   <CameraCard key={d.id}
-                    device={{...d,online:onlineMap[d.id]||d.is_active}}
+                    device={{...d,online:onlineMap[d.id]?.online||onlineMap[d.id]===true||d.is_active}}
                     socket={socket}
                     onEvent={e=>setEvents(ev=>[e,...ev])}
                     settings={deviceSettings[d.id]}
