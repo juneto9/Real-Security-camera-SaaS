@@ -247,8 +247,19 @@ function CameraCard({ device, socket, onEvent, onSettings, settings }) {
 
   const cameraSocketIdRef = useRef(null); // store camera's socketId for ICE
 
+  // Auto-reconnect if stream drops
+  useEffect(()=>{
+    if (watching && !videoRef.current?.srcObject && socket && online) {
+      console.log('📺 Stream dropped, reconnecting...');
+      stopWatching();
+      setTimeout(()=>startWatching(), 500);
+    }
+  },[watching]);
+
   const startWatching = () => {
     if (!socket||!online) return;
+    // Clean up any existing connection first
+    if (pcRef.current) { pcRef.current.close(); pcRef.current=null; }
     const pc = new RTCPeerConnection({
       iceServers:[
         {urls:'stun:stun.l.google.com:19302'},
@@ -304,7 +315,8 @@ function CameraCard({ device, socket, onEvent, onSettings, settings }) {
       {/* Video */}
       <div style={st.videoBox}>
         {watching
-          ? <video ref={videoRef} style={st.videoEl} autoPlay playsInline controls/>
+          ? <video ref={videoRef} style={st.videoEl} autoPlay playsInline controls
+              onLoadedMetadata={e=>{ if(e.target.paused) e.target.play(); }}/>
           : <div style={{...st.videoEl,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',color:C.sub,position:'absolute',inset:0}}>
               <span style={{fontSize:40}}>📷</span>
               <span style={{marginTop:8,fontSize:13}}>{status}</span>
@@ -403,6 +415,23 @@ const CLIP_SIZES = [
 ];
 
 function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
+  // Dedicated camera socket — separate from viewer socket
+  // This lets same browser be both broadcaster AND viewer
+  const camSocketRef = useRef(null);
+  const [camSocket, setCamSocket] = useState(null);
+
+  useEffect(()=>{
+    const token = localStorage.getItem('accessToken');
+    if (!token) return;
+    const { io: ioClient } = require('socket.io-client');
+    const s = ioClient('https://whale-app-hxokg.ondigitalocean.app', {
+      auth:{ token }, transports:['websocket','polling']
+    });
+    s.on('connect', ()=>{ console.log('📡 Camera socket connected:', s.id); });
+    camSocketRef.current = s;
+    setCamSocket(s);
+    return ()=>{ s.disconnect(); camSocketRef.current=null; };
+  },[]);
   const videoRef   = useRef(null);
   const streamRef  = useRef(null);
   const pcsRef     = useRef({});
@@ -462,12 +491,14 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
 
   useEffect(()=>{
     if (!socket) return;
-    socket.on('viewer:request',async({viewerSocketId})=>{
+    const cs = camSocketRef.current;
+    if (!cs) return;
+    cs.on('viewer:request',async({viewerSocketId})=>{
       if (!streamRef.current) return;
-      const pc = new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}]});
+      const pc = new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}]});
       pcsRef.current[viewerSocketId]=pc;
       streamRef.current.getTracks().forEach(t=>pc.addTrack(t,streamRef.current));
-      pc.onicecandidate=e=>{ if(e.candidate) socket.emit('webrtc:ice',{targetSocketId:viewerSocketId,candidate:e.candidate}); };
+      pc.onicecandidate=e=>{ if(e.candidate) cs.emit('webrtc:ice',{targetSocketId:viewerSocketId,candidate:e.candidate}); };
       pc.onconnectionstatechange=()=>{
         if(pc.connectionState==='connected') setViewers(v=>v+1);
         if(pc.connectionState==='disconnected'||pc.connectionState==='closed'){ setViewers(v=>Math.max(0,v-1)); delete pcsRef.current[viewerSocketId]; }
@@ -476,10 +507,10 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
       await pc.setLocalDescription(offer);
       socket.emit('webrtc:offer',{targetSocketId:viewerSocketId,offer});
     });
-    socket.on('webrtc:answer',async({answer,fromSocketId})=>{ const pc=pcsRef.current[fromSocketId]; if(pc) await pc.setRemoteDescription(new RTCSessionDescription(answer)).catch(()=>{}); });
-    socket.on('webrtc:ice',async({candidate,fromSocketId})=>{ const pc=pcsRef.current[fromSocketId]; if(pc&&candidate) await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(()=>{}); });
-    return ()=>{ socket.off('viewer:request'); socket.off('webrtc:answer'); socket.off('webrtc:ice'); };
-  },[socket]);
+    cs.on('webrtc:answer',async({answer,fromSocketId})=>{ const pc=pcsRef.current[fromSocketId]; if(pc) await pc.setRemoteDescription(new RTCSessionDescription(answer)).catch(()=>{}); });
+    cs.on('webrtc:ice',async({candidate,fromSocketId})=>{ const pc=pcsRef.current[fromSocketId]; if(pc&&candidate) await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(()=>{}); });
+    return ()=>{ cs.off('viewer:request'); cs.off('webrtc:answer'); cs.off('webrtc:ice'); };
+  },[camSocket]);
 
   // ── Real pixel-diff motion detection ─────────────────────────
   const startMotionDetection = () => {
@@ -583,8 +614,12 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
       const { canvasStream, cleanup } = createTimestampedStream(stream);
       tsStreamRef.current = canvasStream;
       canvasCleanupRef.current = cleanup;
-      if (linkedDevice && socket) {
-        socket.emit('auth',{ deviceId:linkedDevice, deviceName:devices.find(d=>d.id===linkedDevice)?.name||'USB Camera', role:'camera', organizationId, userId });
+      if (linkedDevice && camSocketRef.current) {
+        const token = localStorage.getItem('accessToken');
+        const payload = token ? JSON.parse(atob(token.split('.')[1])) : {};
+        const orgId = payload.organizationId || payload.org_id || organizationId;
+        camSocketRef.current.emit('auth',{ deviceId:linkedDevice, deviceName:devices.find(d=>d.id===linkedDevice)?.name||'USB Camera', role:'camera', organizationId:orgId, userId:payload.userId||userId });
+        console.log('📡 Camera socket authed as:', devices.find(d=>d.id===linkedDevice)?.name, 'org:', orgId);
       }
     } catch(e) {
       if (e.name==='NotAllowedError') alert('Camera permission denied. Allow access in browser settings.');
@@ -607,7 +642,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
     setStreaming(false); setIsArmed(false); setIsRecording(false);
     setViewers(0); setStatusMsg('Ready'); setRecordingTime(0);
     isArmedRef.current=false; isRecordingRef.current=false;
-    if (linkedDevice&&socket) socket.emit('camera:offline',{deviceId:linkedDevice});
+    if (linkedDevice&&camSocketRef.current) camSocketRef.current.emit('camera:offline',{deviceId:linkedDevice});
   };
 
   const armCamera = () => {
@@ -1206,6 +1241,14 @@ export default function App() {
     {id:'sub',     label:'⭐ Subscription'},
   ];
 
+  const switchTab = (newTab) => {
+    // If switching away from cameras while watching, warn
+    if (tab==='cameras' && newTab!=='cameras') {
+      // Just switch — streams will reconnect when coming back
+    }
+    setTab(newTab);
+  };
+
   return (
     <div style={st.app}>
       <nav style={st.nav}>
@@ -1249,7 +1292,7 @@ export default function App() {
         {/* Tabs */}
         <div style={st.tabs}>
           {TABS.map(t=>(
-            <button key={t.id} onClick={()=>setTab(t.id)} style={{
+            <button key={t.id} onClick={()=>switchTab(t.id)} style={{
               ...st.tab,
               backgroundColor:tab===t.id?C.green:C.card,
               color:tab===t.id?'#000':C.text,
