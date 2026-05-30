@@ -330,9 +330,14 @@ function USBCameraPage({ socket, devices, userId, organizationId }) {
   const [isRecording,  setIsRecording] = useState(false);
   const [statusMsg,    setStatusMsg]   = useState('Ready');
   const [events,       setEvents]      = useState([]);
+  const [zoomLevel,    setZoomLevel]   = useState(1);
+  const [facingMode,   setFacingMode]  = useState('user');
+  const [hwZoomSupported, setHwZoomSupported] = useState(false);
+  const [hwZoomRange,  setHwZoomRange] = useState({min:1,max:1,step:0.1});
   const mediaRecRef    = useRef(null);
   const motionPollRef  = useRef(null);
   const alertActiveRef = useRef(false);
+  const imageCaptureRef = useRef(null);
 
   useEffect(()=>{
     // Enumerate without permission first — just to get count, not IDs
@@ -412,6 +417,20 @@ function USBCameraPage({ socket, devices, userId, organizationId }) {
       setStreaming(true);
       setStatusMsg('🟢 Broadcasting');
 
+      // Check for hardware zoom support via ImageCapture API
+      try {
+        const videoTrack = stream.getVideoTracks()[0];
+        if (typeof ImageCapture !== 'undefined') {
+          const ic = new ImageCapture(videoTrack);
+          imageCaptureRef.current = ic;
+          const caps = videoTrack.getCapabilities?.();
+          if (caps?.zoom) {
+            setHwZoomSupported(true);
+            setHwZoomRange({ min: caps.zoom.min, max: caps.zoom.max, step: caps.zoom.step || 0.1 });
+          }
+        }
+      } catch {}
+
       if (linkedDevice && socket) {
         socket.emit('auth', {
           deviceId: linkedDevice,
@@ -466,6 +485,37 @@ function USBCameraPage({ socket, devices, userId, organizationId }) {
     setIsRecording(false);
   };
 
+  const handleZoom = async (val) => {
+    const z = parseFloat(val);
+    setZoomLevel(z);
+    if (hwZoomSupported && streamRef.current) {
+      try {
+        const track = streamRef.current.getVideoTracks()[0];
+        await track.applyConstraints({ advanced: [{ zoom: z }] });
+      } catch {}
+    }
+    // CSS zoom always applied via videoRef style
+  };
+
+  const flipCamera = async () => {
+    if (!streaming) return;
+    const newFacing = facingMode === 'user' ? 'environment' : 'user';
+    try {
+      if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: newFacing },
+        audio: true,
+      });
+      streamRef.current = stream;
+      if (videoRef.current) videoRef.current.srcObject = stream;
+      setFacingMode(newFacing);
+    } catch {
+      // facingMode not supported on this device (e.g. desktop webcam)
+      setStatusMsg('⚠️ Camera flip not supported on this device');
+      setTimeout(() => setStatusMsg('🟢 Broadcasting'), 2000);
+    }
+  };
+
   return (
     <div>
       <h2 style={st.sectionHdr}>🖥️ USB / Webcam Camera</h2>
@@ -493,7 +543,12 @@ function USBCameraPage({ socket, devices, userId, organizationId }) {
           </div>
 
           <div style={st.videoBox}>
-            <video ref={videoRef} style={st.videoEl} autoPlay playsInline muted/>
+            <video ref={videoRef} style={{
+              ...st.videoEl,
+              transform: `scale(${zoomLevel})`,
+              transformOrigin: 'center center',
+              transition: 'transform 0.2s',
+            }} autoPlay playsInline muted/>
             {!streaming && <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',color:C.sub}}>
               <span style={{fontSize:48}}>🖥️</span><span style={{marginTop:8}}>No stream</span>
             </div>}
@@ -501,9 +556,35 @@ function USBCameraPage({ socket, devices, userId, organizationId }) {
               ● BROADCASTING • {viewers} viewer{viewers!==1?'s':''}
             </div>}
             {nightVision && <div style={{position:'absolute',inset:0,backgroundColor:'rgba(0,255,70,0.15)',pointerEvents:'none'}}/>}
-            {/* Status overlay */}
             <div style={{position:'absolute',bottom:8,left:8,backgroundColor:'rgba(0,0,0,0.6)',color:'#fff',padding:'3px 8px',borderRadius:6,fontSize:12}}>{statusMsg}</div>
           </div>
+
+          {/* Zoom + Flip controls */}
+          {streaming && (
+            <div style={{marginTop:10,backgroundColor:'#111',borderRadius:8,padding:10}}>
+              <div style={{...st.flexBetween,marginBottom:8}}>
+                <span style={{fontSize:12,color:C.sub}}>
+                  🔍 Zoom {zoomLevel.toFixed(1)}x
+                  {hwZoomSupported && <span style={{color:C.green,marginLeft:6,fontSize:10}}>HW</span>}
+                  {!hwZoomSupported && <span style={{color:C.sub,marginLeft:6,fontSize:10}}>CSS</span>}
+                </span>
+                <button style={{...st.btn,...st.btnGray,padding:'4px 10px',fontSize:12}} onClick={()=>handleZoom(1)}>Reset</button>
+              </div>
+              <input type="range"
+                min={hwZoomSupported ? hwZoomRange.min : 1}
+                max={hwZoomSupported ? hwZoomRange.max : 3}
+                step={hwZoomSupported ? hwZoomRange.step : 0.1}
+                value={zoomLevel}
+                onChange={e=>handleZoom(e.target.value)}
+                style={{width:'100%',accentColor:C.green,marginBottom:8}}
+              />
+              <div style={{display:'flex',gap:6}}>
+                <button style={{...st.btn,...st.btnGray,flex:1,fontSize:12}} onClick={()=>handleZoom(Math.max(1, zoomLevel-0.25))}>− Zoom Out</button>
+                <button style={{...st.btn,...st.btnGray,flex:1,fontSize:12}} onClick={flipCamera}>🔄 Flip Camera</button>
+                <button style={{...st.btn,...st.btnGray,flex:1,fontSize:12}} onClick={()=>handleZoom(Math.min(hwZoomSupported?hwZoomRange.max:3, zoomLevel+0.25))}>+ Zoom In</button>
+              </div>
+            </div>
+          )}
 
           {/* Action buttons */}
           <div style={{display:'flex',gap:6,marginTop:10}}>
@@ -641,40 +722,85 @@ function SubscriptionPage() {
     enterprise: { label:'Enterprise', price:'$24.99/mo',color:C.gold,  features:['Everything in Pro','Unlimited cameras','Cloud storage 500GB','Multi-admin (3 users)','Advanced analytics','API access','White-label option'] },
   };
   const [current,setCurrent]=useState(localStorage.getItem('subscription')||'free');
+
   const subscribe = (tier) => {
-    if (tier==='free') { localStorage.setItem('subscription','free'); setCurrent('free'); alert('Downgraded to Free.'); return; }
-    if (window.confirm(`Subscribe to ${TIERS[tier].label} for ${TIERS[tier].price}?\n\n(Test mode — no payment required)`)) {
-      localStorage.setItem('subscription',tier); setCurrent(tier);
-      alert(`✅ You now have ${TIERS[tier].label} access!`);
+    localStorage.setItem('subscription', tier);
+    setCurrent(tier);
+    if (tier === 'free') {
+      alert('Downgraded to Free plan.');
+    } else {
+      alert(`✅ ${TIERS[tier].label} activated!\n\nAll ${TIERS[tier].label} features are now unlocked.\n\nNote: In production this would process payment first.`);
     }
   };
+
   return (
     <div style={{maxWidth:900,margin:'0 auto'}}>
       <h2 style={{color:C.green,marginBottom:4}}>⭐ Subscription</h2>
-      <p style={{color:C.sub,marginBottom:24}}>Unlock the full power of Real Security Camera</p>
+      <p style={{color:C.sub,marginBottom:8}}>Unlock the full power of Real Security Camera</p>
+      <div style={{backgroundColor:'#ffd70015',border:`1px solid ${C.gold}`,borderRadius:8,padding:'10px 14px',marginBottom:20,fontSize:13,color:C.gold}}>
+        🧪 <strong>Test Mode:</strong> All tiers are freely activatable. Click any plan to switch instantly.
+      </div>
       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(260px,1fr))',gap:16}}>
         {Object.entries(TIERS).map(([key,tier])=>(
-          <div key={key} style={{...st.card, border:`2px solid ${current===key?tier.color:C.border}`}}>
-            <div style={{...st.flexBetween,marginBottom:8}}>
-              <div>
-                <div style={{fontSize:20,fontWeight:'bold',color:tier.color}}>{tier.label}</div>
-                <div style={{fontSize:16,color:C.text,marginTop:2}}>{tier.price}</div>
+          <div key={key} style={{...st.card, border:`2px solid ${current===key?tier.color:C.border}`, position:'relative'}}>
+            {current===key && (
+              <div style={{position:'absolute',top:-10,right:12,backgroundColor:tier.color,color:'#000',padding:'2px 10px',borderRadius:10,fontSize:11,fontWeight:'bold'}}>
+                ACTIVE
               </div>
-              {current===key && <span style={{...st.badge,backgroundColor:tier.color+'20',color:tier.color,border:`1px solid ${tier.color}`}}>CURRENT</span>}
+            )}
+            <div style={{marginBottom:12}}>
+              <div style={{fontSize:20,fontWeight:'bold',color:tier.color}}>{tier.label}</div>
+              <div style={{fontSize:18,color:C.text,marginTop:2,fontWeight:'bold'}}>{tier.price}</div>
             </div>
-            <ul style={{paddingLeft:16,margin:'12px 0',color:'rgba(255,255,255,0.8)',fontSize:13}}>
-              {tier.features.map((f,i)=><li key={i} style={{marginBottom:4}}>{f}</li>)}
+            <ul style={{paddingLeft:16,margin:'0 0 16px',color:'rgba(255,255,255,0.8)',fontSize:13}}>
+              {tier.features.map((f,i)=>(
+                <li key={i} style={{marginBottom:5}}>✓ {f}</li>
+              ))}
             </ul>
-            {current!==key && (
-              <button style={{...st.btn,width:'100%',padding:12,marginTop:8,backgroundColor:tier.color,color:key==='free'?C.text:'#000'}} onClick={()=>subscribe(key)}>
-                {key==='free'?'Downgrade to Free':`Subscribe — ${tier.price}`}
+            {current!==key ? (
+              <button style={{
+                ...st.btn, width:'100%', padding:12,
+                backgroundColor: tier.color,
+                color: key==='free' ? C.text : '#000',
+              }} onClick={()=>subscribe(key)}>
+                {key==='free' ? 'Switch to Free' : `Activate ${tier.label}`}
               </button>
+            ) : (
+              <div style={{textAlign:'center',padding:'10px',color:tier.color,fontWeight:'bold',fontSize:13}}>
+                ✓ Current Plan
+              </div>
             )}
           </div>
         ))}
       </div>
-      <p style={{color:'#444',fontSize:12,textAlign:'center',marginTop:20}}>
-        💡 Storage costs: Pro ~$0.02/GB/day · Enterprise ~$0.015/GB/day · Bandwidth $0.01/GB
+      <div style={{marginTop:24,backgroundColor:C.card,borderRadius:10,padding:16,border:`1px solid ${C.border}`}}>
+        <p style={{color:C.text,fontWeight:'bold',marginBottom:8}}>💰 Pricing Breakdown</p>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:12,fontSize:13}}>
+          <div style={{color:C.sub}}>
+            <div style={{color:C.text,marginBottom:4}}>Pro $9.99/mo covers:</div>
+            <div>• 50GB storage (~$1/mo)</div>
+            <div>• Server costs ~$2/mo</div>
+            <div>• Bandwidth ~$1/mo</div>
+            <div style={{color:C.green,marginTop:4}}>Margin: ~$6/mo</div>
+          </div>
+          <div style={{color:C.sub}}>
+            <div style={{color:C.text,marginBottom:4}}>Enterprise $24.99/mo covers:</div>
+            <div>• 500GB storage (~$10/mo)</div>
+            <div>• Server costs ~$4/mo</div>
+            <div>• Bandwidth ~$3/mo</div>
+            <div style={{color:C.gold,marginTop:4}}>Margin: ~$8/mo</div>
+          </div>
+          <div style={{color:C.sub}}>
+            <div style={{color:C.text,marginBottom:4}}>Storage rates:</div>
+            <div>• DO Spaces: $0.02/GB/mo</div>
+            <div>• Bandwidth: $0.01/GB</div>
+            <div>• 1hr 1080p ≈ 2GB</div>
+            <div style={{color:'#aaa',marginTop:4}}>Break-even: ~8 Pro users</div>
+          </div>
+        </div>
+      </div>
+      <p style={{color:'#444',fontSize:12,textAlign:'center',marginTop:16}}>
+        Payments via Stripe · Cancel anytime · Data retained 30 days after cancellation
       </p>
     </div>
   );
@@ -782,9 +908,20 @@ export default function App() {
         {/* Stats */}
         <div style={st.statRow}>
           <div style={st.stat}><p style={st.statN}>{devices.length}</p><p style={st.statL}>Total Cameras</p></div>
-          <div style={st.stat}><p style={{...st.statN,color:C.green}}>{Object.values(onlineMap).filter(Boolean).length}</p><p style={st.statL}>Online Now</p></div>
-          <div style={st.stat}><p style={{...st.statN,color:C.red}}>{events.filter(e=>e.type!=='system').length}</p><p style={st.statL}>Events Today</p></div>
-          <div style={st.stat}><p style={{...st.statN,color:socket?.connected?C.green:C.red}}>{socket?.connected?'●':'○'}</p><p style={st.statL}>{socket?.connected?'Connected':'Offline'}</p></div>
+          <div style={st.stat}>
+            <p style={{...st.statN,color:C.green}}>
+              {devices.filter(d=>onlineMap[d.id]||d.is_active).length}
+            </p>
+            <p style={st.statL}>Online Now</p>
+          </div>
+          <div style={st.stat}>
+            <p style={{...st.statN,color:C.red}}>{events.length}</p>
+            <p style={st.statL}>Events Today</p>
+          </div>
+          <div style={st.stat}>
+            <p style={{...st.statN,color:socket?.connected?C.green:C.red}}>{socket?.connected?'●':'○'}</p>
+            <p style={st.statL}>{socket?.connected?'Connected':'Offline'}</p>
+          </div>
         </div>
 
         {/* Tabs */}
