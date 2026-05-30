@@ -383,6 +383,8 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
   const [selectedDev,    setSelectedDev]    = useState('');
   const [camDevices,     setCamDevices]     = useState([]);
   const [linkedDevice,   setLinkedDevice]   = useState('');
+  // Auto-select first device when devices list loads
+  useEffect(()=>{ if(devices.length>0 && !linkedDevice) setLinkedDevice(devices[0].id); },[devices]);
   const [viewers,        setViewers]        = useState(0);
   const [nightVision,    setNightVision]    = useState(false);
   const [motionEnabled,  setMotionEnabled]  = useState(true);
@@ -1185,16 +1187,16 @@ export default function App() {
         <div style={st.statRow}>
           <div style={st.stat}>
             <p style={st.statN}>
-              {/* Count DB devices + any socket cameras not already in DB */}
-              {Math.max(devices.length, Object.values(onlineMap).filter(v=>v?.online||v===true).length + devices.filter(d=>!onlineMap[d.id]).length)}
+              {/* Total = DB devices + any socket cameras not in DB */}
+              {new Set([...devices.map(d=>d.id), ...Object.keys(onlineMap)]).size}
             </p>
             <p style={st.statL}>Total Cameras</p>
           </div>
           <div style={st.stat}>
             <p style={{...st.statN,color:C.green}}>
-              {/* Online = DB devices with socket activity OR socket-only cameras */}
+              {/* Online = anything in onlineMap that is online, plus active DB devices */}
               {new Set([
-                ...devices.filter(d=>onlineMap[d.id]?.online||onlineMap[d.id]===true||d.is_active).map(d=>d.id),
+                ...devices.filter(d=>d.is_active||onlineMap[d.id]?.online||onlineMap[d.id]===true).map(d=>d.id),
                 ...Object.entries(onlineMap).filter(([,v])=>v?.online||v===true).map(([k])=>k)
               ]).size}
             </p>
