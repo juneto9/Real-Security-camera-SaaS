@@ -313,51 +313,123 @@ function CameraCard({ device, socket, onEvent, onSettings, settings }) {
 }
 
 // ─── USB/Webcam Source ────────────────────────────────────────────
-function USBCameraPage({ socket, devices, userId, organizationId }) {
+// ─── Live Clock overlay for video ────────────────────────────────
+function VideoTimestamp() {
+  const [now, setNow] = useState(new Date());
+  useEffect(()=>{ const t=setInterval(()=>setNow(new Date()),1000); return()=>clearInterval(t); },[]);
+  const pad = n => String(n).padStart(2,'0');
+  return (
+    <div style={{position:'absolute',bottom:8,right:8,backgroundColor:'rgba(0,0,0,0.65)',
+      color:'rgba(255,255,255,0.9)',padding:'4px 8px',borderRadius:5,fontSize:12,
+      fontFamily:'monospace',fontWeight:'bold',pointerEvents:'none',zIndex:10}}>
+      {pad(now.getHours())}:{pad(now.getMinutes())}:{pad(now.getSeconds())}&nbsp;&nbsp;
+      {now.toLocaleDateString('en-US',{month:'short',day:'2-digit',year:'numeric'})}
+    </div>
+  );
+}
+
+// ─── Canvas timestamp burn-in for recordings ──────────────────────
+// Draws the camera stream + timestamp onto a canvas so recordings include the stamp
+function createTimestampedStream(sourceStream) {
+  const video = document.createElement('video');
+  video.srcObject = sourceStream;
+  video.muted = true;
+  video.play();
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 1280; canvas.height = 720;
+  const ctx = canvas.getContext('2d');
+
+  const draw = () => {
+    if (video.readyState >= 2) {
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const now = new Date();
+      const pad = n => String(n).padStart(2,'0');
+      const ts = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}  ${now.toLocaleDateString('en-US',{month:'short',day:'2-digit',year:'numeric'})}`;
+      ctx.font = 'bold 18px monospace';
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.fillRect(canvas.width-280, canvas.height-36, 276, 30);
+      ctx.fillStyle = 'rgba(255,255,255,0.92)';
+      ctx.textAlign = 'right';
+      ctx.fillText(ts, canvas.width-8, canvas.height-12);
+    }
+    requestAnimationFrame(draw);
+  };
+  draw();
+
+  // Combine canvas video with original audio
+  const canvasStream = canvas.captureStream(30);
+  sourceStream.getAudioTracks().forEach(t => canvasStream.addTrack(t));
+  return { canvasStream, cleanup: () => { video.pause(); video.srcObject = null; } };
+}
+
+const LOOP_OPTS = [
+  { label:'1 min',  value:60   },
+  { label:'5 min',  value:300  },
+  { label:'15 min', value:900  },
+  { label:'30 min', value:1800 },
+];
+const CLIP_SIZES = [
+  { label:'1 min', value:60  },
+  { label:'3 min', value:180 },
+  { label:'5 min', value:300 },
+];
+
+function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
   const videoRef   = useRef(null);
   const streamRef  = useRef(null);
   const pcsRef     = useRef({});
-  const [streaming,    setStreaming]    = useState(false);
-  const [selectedDev,  setSelectedDev] = useState('');
-  const [camDevices,   setCamDevices]  = useState([]);
-  const [linkedDevice, setLinkedDevice]= useState('');
-  const [viewers,      setViewers]     = useState(0);
-  const [camMode,      setCamMode]     = useState('dashcam');
-  const [nightVision,  setNightVision] = useState(false);
-  const [torch,        setTorch]       = useState(false);
-  const [motionEnabled,setMotionEnabled]=useState(true);
-  const [soundEnabled, setSoundEnabled]= useState(true);
-  const [isRecording,  setIsRecording] = useState(false);
-  const [statusMsg,    setStatusMsg]   = useState('Ready');
-  const [events,       setEvents]      = useState([]);
-  const [zoomLevel,    setZoomLevel]   = useState(1);
-  const [facingMode,   setFacingMode]  = useState('user');
-  const [hwZoomSupported, setHwZoomSupported] = useState(false);
-  const [hwZoomRange,  setHwZoomRange] = useState({min:1,max:1,step:0.1});
-  const mediaRecRef    = useRef(null);
-  const motionPollRef  = useRef(null);
-  const alertActiveRef = useRef(false);
-  const imageCaptureRef = useRef(null);
+  const [streaming,      setStreaming]      = useState(false);
+  const [selectedDev,    setSelectedDev]    = useState('');
+  const [camDevices,     setCamDevices]     = useState([]);
+  const [linkedDevice,   setLinkedDevice]   = useState('');
+  const [viewers,        setViewers]        = useState(0);
+  const [nightVision,    setNightVision]    = useState(false);
+  const [motionEnabled,  setMotionEnabled]  = useState(true);
+  const [soundEnabled,   setSoundEnabled]   = useState(true);
+  const [isRecording,    setIsRecording]    = useState(false);
+  const [isArmed,        setIsArmed]        = useState(false);
+  const [statusMsg,      setStatusMsg]      = useState('Ready');
+  const [events,         setEvents]         = useState([]);
+  const [zoomLevel,      setZoomLevel]      = useState(1);
+  const [hwZoomSupported,setHwZoomSupported]= useState(false);
+  const [hwZoomRange,    setHwZoomRange]    = useState({min:1,max:3,step:0.1});
+  // Recording mode
+  const [recordMode,     setRecordMode]     = useState('manual');  // manual | timed | loop
+  const [loopDuration,   setLoopDuration]   = useState(300);
+  const [clipSize,       setClipSize]       = useState(300);
+  const [showRecPrompt,  setShowRecPrompt]  = useState(false);
+  const [clipManagement, setClipManagement] = useState('download'); // download | cloud | both | ask
+  const [showClipPrompt, setShowClipPrompt] = useState(false);
+  const [recordingTime,  setRecordingTime]  = useState(0);
+  // Motion detection via pixel diff
+  const [sensitivity,    setSensitivity]    = useState(30); // 1-100
+  const motionCanvasRef  = useRef(null);
+  const prevFrameRef     = useRef(null);
+  const motionPollRef    = useRef(null);
+  const mediaRecRef      = useRef(null);
+  const loopTimerRef     = useRef(null);
+  const recTimerRef      = useRef(null);
+  const alertActiveRef   = useRef(false);
+  const isArmedRef       = useRef(false);
+  const isRecordingRef   = useRef(false);
+  const canvasCleanupRef = useRef(null);
+  const tsStreamRef      = useRef(null); // timestamped stream for recording
 
   useEffect(()=>{
-    // Enumerate without permission first — just to get count, not IDs
-    // Real labels + IDs only available after getUserMedia permission granted
     navigator.mediaDevices.enumerateDevices().then(devs=>{
       const vids = devs.filter(d=>d.kind==='videoinput');
       if (vids.length>0) {
-        // Only set deviceId if we have real labels (permission already granted)
-        const hasRealLabels = vids.some(d=>d.label && d.label.length>0);
-        if (hasRealLabels) {
-          setCamDevices(vids);
-          setSelectedDev(vids[0].deviceId);
-        } else {
-          // No permission yet — show placeholder, don't set a deviceId
-          setCamDevices([{deviceId:'', label:`${vids.length} camera${vids.length>1?'s':''} available`}]);
-          setSelectedDev(''); // empty = no constraint, browser picks best
-        }
+        const hasLabels = vids.some(d=>d.label&&d.label.length>0);
+        if (hasLabels) { setCamDevices(vids); setSelectedDev(vids[0].deviceId); }
+        else { setCamDevices([{deviceId:'',label:`${vids.length} camera${vids.length>1?'s':''} available`}]); setSelectedDev(''); }
       }
     });
   },[]);
+
+  useEffect(()=>{
+    isArmedRef.current = isArmed;
+  },[isArmed]);
 
   useEffect(()=>{
     if (!socket) return;
@@ -380,147 +452,236 @@ function USBCameraPage({ socket, devices, userId, organizationId }) {
     return ()=>{ socket.off('viewer:request'); socket.off('webrtc:answer'); socket.off('webrtc:ice'); };
   },[socket]);
 
-  // Motion polling (simulated via device movement - real impl needs CV)
-  useEffect(()=>{
-    if (streaming && motionEnabled && camMode==='security') {
-      motionPollRef.current = setInterval(()=>{
-        if (!alertActiveRef.current && Math.random()<0.02) triggerMotion();
-      },1000);
-    }
-    return ()=>clearInterval(motionPollRef.current);
-  },[streaming, motionEnabled, camMode]);
+  // ── Real pixel-diff motion detection ─────────────────────────
+  const startMotionDetection = () => {
+    if (!streamRef.current || !motionEnabled) return;
+    const video = videoRef.current;
+    const canvas = document.createElement('canvas');
+    canvas.width = 160; canvas.height = 90; // small for performance
+    const ctx = canvas.getContext('2d');
+    motionCanvasRef.current = canvas;
 
-  const triggerMotion = () => {
-    alertActiveRef.current=true;
-    const event = { type:'motion', time:new Date().toLocaleTimeString(), device: devices.find(d=>d.id===linkedDevice)?.name||'USB Camera' };
-    setEvents(ev=>[event,...ev].slice(0,20));
-    setStatusMsg('⚠️ Motion detected!');
-    setTimeout(()=>{ alertActiveRef.current=false; setStatusMsg('🟢 Monitoring...'); },5000);
+    motionPollRef.current = setInterval(()=>{
+      if (!isArmedRef.current || alertActiveRef.current || !motionEnabled) return;
+      if (!video || video.readyState < 2) return;
+      ctx.drawImage(video, 0, 0, 160, 90);
+      const current = ctx.getImageData(0, 0, 160, 90);
+      if (prevFrameRef.current) {
+        const prev = prevFrameRef.current.data;
+        const curr = current.data;
+        let diff = 0;
+        // Sample every 4th pixel for speed
+        for (let i = 0; i < curr.length; i += 16) {
+          diff += Math.abs(curr[i] - prev[i]);
+          diff += Math.abs(curr[i+1] - prev[i+1]);
+          diff += Math.abs(curr[i+2] - prev[i+2]);
+        }
+        const avgDiff = diff / (curr.length / 16);
+        const threshold = 100 - sensitivity; // higher sensitivity = lower threshold
+        if (avgDiff > threshold) {
+          console.log('Motion detected! avgDiff:', avgDiff.toFixed(1), 'threshold:', threshold);
+          triggerAlert('motion');
+        }
+      }
+      prevFrameRef.current = current;
+    }, 500); // check every 500ms
+  };
+
+  const stopMotionDetection = () => {
+    clearInterval(motionPollRef.current);
+    prevFrameRef.current = null;
+  };
+
+  // ── Sound detection via AudioContext analyser ─────────────────
+  const startSoundDetection = () => {
+    if (!streamRef.current || !soundEnabled) return;
+    try {
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const source = audioCtx.createMediaStreamSource(streamRef.current);
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 256;
+      source.connect(analyser);
+      const data = new Uint8Array(analyser.frequencyBinCount);
+      const checkSound = setInterval(()=>{
+        if (!isArmedRef.current || alertActiveRef.current) return;
+        analyser.getByteFrequencyData(data);
+        const avg = data.reduce((a,b)=>a+b,0)/data.length;
+        if (avg > 20) triggerAlert('sound');
+      }, 600);
+      return ()=>{ clearInterval(checkSound); audioCtx.close(); };
+    } catch(e) { console.log('Sound detection error:', e.message); }
+  };
+
+  const triggerAlert = (type) => {
+    if (alertActiveRef.current) return;
+    alertActiveRef.current = true;
+    const now = new Date();
+    const event = {
+      id: Date.now(), type,
+      time: now.toLocaleTimeString(),
+      date: now.toLocaleDateString('en-US',{month:'short',day:'2-digit',year:'numeric'}),
+      device: devices.find(d=>d.id===linkedDevice)?.name || 'USB Camera',
+      deviceName: devices.find(d=>d.id===linkedDevice)?.name || 'USB Camera',
+      camMode: 'security',
+    };
+    setEvents(ev=>[event,...ev].slice(0,50));
+    // Bubble up to main App stats
+    if (onEvent) onEvent(event);
+    setStatusMsg(`⚠️ ${type==='motion'?'Motion':'Sound'} detected!`);
+    if (!isRecordingRef.current) startRecording(true);
+    setTimeout(()=>{ alertActiveRef.current=false; setStatusMsg(isArmedRef.current?'🟢 Armed — monitoring...':'🟢 Broadcasting'); },5000);
   };
 
   const startStream = async () => {
     try {
-      // Always start with simple constraints — most compatible across browsers
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: true,
-        audio: true,
-      });
+      const stream = await navigator.mediaDevices.getUserMedia({ video:true, audio:true });
       streamRef.current = stream;
       if (videoRef.current) videoRef.current.srcObject = stream;
-
-      // After permission granted, enumerate real device names
       const devs = await navigator.mediaDevices.enumerateDevices();
-      const vids = devs.filter(d => d.kind === 'videoinput');
+      const vids = devs.filter(d=>d.kind==='videoinput');
       setCamDevices(vids);
-      if (vids.length > 0) setSelectedDev(vids[0].deviceId);
-
+      if (vids.length>0) setSelectedDev(vids[0].deviceId);
       setStreaming(true);
-      setStatusMsg('🟢 Broadcasting');
-
-      // Check for hardware zoom support via ImageCapture API
+      setStatusMsg('🟢 Broadcasting — select mode below');
+      // HW zoom
       try {
-        const videoTrack = stream.getVideoTracks()[0];
-        if (typeof ImageCapture !== 'undefined') {
-          const ic = new ImageCapture(videoTrack);
-          imageCaptureRef.current = ic;
-          const caps = videoTrack.getCapabilities?.();
-          if (caps?.zoom) {
-            setHwZoomSupported(true);
-            setHwZoomRange({ min: caps.zoom.min, max: caps.zoom.max, step: caps.zoom.step || 0.1 });
-          }
-        }
+        const vt = stream.getVideoTracks()[0];
+        const caps = vt.getCapabilities?.();
+        if (caps?.zoom) { setHwZoomSupported(true); setHwZoomRange({min:caps.zoom.min,max:caps.zoom.max,step:caps.zoom.step||0.1}); }
       } catch {}
-
+      // Build timestamped stream for recordings
+      const { canvasStream, cleanup } = createTimestampedStream(stream);
+      tsStreamRef.current = canvasStream;
+      canvasCleanupRef.current = cleanup;
       if (linkedDevice && socket) {
-        socket.emit('auth', {
-          deviceId: linkedDevice,
-          deviceName: devices.find(d => d.id === linkedDevice)?.name || 'USB Camera',
-          role: 'camera',
-          organizationId,
-          userId,
-        });
+        socket.emit('auth',{ deviceId:linkedDevice, deviceName:devices.find(d=>d.id===linkedDevice)?.name||'USB Camera', role:'camera', organizationId, userId });
       }
     } catch(e) {
-      console.error('Camera error:', e.name, e.message);
-      if (e.name === 'NotAllowedError') {
-        alert('Camera permission denied. Please allow camera access in your browser settings.');
-      } else if (e.name === 'NotFoundError') {
-        alert('No camera found. Please connect a camera and try again.');
-      } else if (e.name === 'NotReadableError') {
-        alert('Camera is in use by another application. Close other apps and try again.');
-      } else {
-        alert('Camera error: ' + (e.message || e.name || 'Unknown error'));
-      }
+      if (e.name==='NotAllowedError') alert('Camera permission denied. Allow access in browser settings.');
+      else if (e.name==='NotFoundError') alert('No camera found.');
+      else if (e.name==='NotReadableError') alert('Camera in use by another app.');
+      else alert('Camera error: '+(e.message||e.name));
     }
   };
 
   const stopStream = () => {
+    stopMotionDetection();
+    clearInterval(loopTimerRef.current);
+    clearInterval(recTimerRef.current);
+    if (mediaRecRef.current) { try { mediaRecRef.current.stop(); } catch {} mediaRecRef.current=null; }
     if (streamRef.current) streamRef.current.getTracks().forEach(t=>t.stop());
-    streamRef.current=null;
-    Object.values(pcsRef.current).forEach(pc=>pc.close());
-    pcsRef.current={};
+    if (canvasCleanupRef.current) { canvasCleanupRef.current(); canvasCleanupRef.current=null; }
+    streamRef.current=null; tsStreamRef.current=null;
+    Object.values(pcsRef.current).forEach(pc=>pc.close()); pcsRef.current={};
     if (videoRef.current) videoRef.current.srcObject=null;
-    setStreaming(false); setViewers(0); setStatusMsg('Ready');
+    setStreaming(false); setIsArmed(false); setIsRecording(false);
+    setViewers(0); setStatusMsg('Ready'); setRecordingTime(0);
+    isArmedRef.current=false; isRecordingRef.current=false;
     if (linkedDevice&&socket) socket.emit('camera:offline',{deviceId:linkedDevice});
   };
 
-  const startRecord = () => {
-    if (!streamRef.current) return;
-    const chunks=[];
-    const mr = new MediaRecorder(streamRef.current);
-    mr.ondataavailable=e=>{ if(e.data.size>0) chunks.push(e.data); };
-    mr.onstop=()=>{
-      const blob=new Blob(chunks,{type:'video/mp4'});
-      const url=URL.createObjectURL(blob);
-      const a=document.createElement('a');
-      a.href=url; a.download=`clip_${camMode}_${Date.now()}.mp4`; a.click();
-      setStatusMsg('✅ Clip saved');
-    };
-    mr.start(); mediaRecRef.current=mr;
-    setIsRecording(true); setStatusMsg('🔴 Recording...');
+  const armCamera = () => {
+    // Ask how to manage clips if not yet decided
+    if (clipManagement === 'ask') {
+      setShowClipPrompt(true);
+      return;
+    }
+    setIsArmed(true); isArmedRef.current=true;
+    setStatusMsg('🟢 Armed — monitoring...');
+    startMotionDetection();
+    if (soundEnabled) startSoundDetection();
   };
 
-  const stopRecord = () => {
-    if (mediaRecRef.current) { mediaRecRef.current.stop(); mediaRecRef.current=null; }
-    setIsRecording(false);
+  const armWithClipChoice = (choice) => {
+    setClipManagement(choice);
+    setShowClipPrompt(false);
+    setIsArmed(true); isArmedRef.current=true;
+    setStatusMsg('🟢 Armed — monitoring...');
+    startMotionDetection();
+    if (soundEnabled) startSoundDetection();
+  };
+
+  const disarmCamera = () => {
+    setIsArmed(false); isArmedRef.current=false;
+    stopMotionDetection();
+    if (isRecordingRef.current) stopRecording();
+    setStatusMsg('🟢 Broadcasting — select mode below');
+  };
+
+  const startRecording = (triggered=false) => {
+    const recStream = tsStreamRef.current || streamRef.current;
+    if (!recStream || isRecordingRef.current) return;
+    isRecordingRef.current=true; setIsRecording(true);
+    setStatusMsg(triggered?'🔴 Recording (triggered)':'🔴 Recording...');
+    setRecordingTime(0);
+    recTimerRef.current = setInterval(()=>setRecordingTime(t=>t+1),1000);
+    const chunks=[];
+    const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9' : 'video/webm';
+    const mr = new MediaRecorder(recStream, {mimeType});
+    mr.ondataavailable=e=>{ if(e.data.size>0) chunks.push(e.data); };
+    mr.onstop=()=>{
+      clearInterval(recTimerRef.current); setRecordingTime(0);
+      const blob=new Blob(chunks,{type:'video/webm'});
+      const devName = devices.find(d=>d.id===linkedDevice)?.name?.replace(/\s+/g,'-')||'usb';
+      const filename = `clip_security_${devName}_${Date.now()}.webm`;
+
+      if (clipManagement==='download' || clipManagement==='both') {
+        const url=URL.createObjectURL(blob);
+        const a=document.createElement('a');
+        a.href=url; a.download=filename; a.click();
+        URL.revokeObjectURL(url);
+      }
+      if (clipManagement==='cloud' || clipManagement==='both') {
+        // Upload to backend
+        const formData = new FormData();
+        formData.append('video', blob, filename);
+        formData.append('device_id', linkedDevice||'');
+        formData.append('filename', filename);
+        const token = localStorage.getItem('accessToken');
+        fetch(`${API}/api/recordings/upload`, {
+          method:'POST',
+          headers:{ Authorization:'Bearer '+token },
+          body: formData,
+        }).then(()=>setStatusMsg('☁️ Clip uploaded'))
+          .catch(()=>setStatusMsg('⚠️ Cloud upload failed'));
+      }
+
+      isRecordingRef.current=false; setIsRecording(false);
+      setStatusMsg(isArmedRef.current?'🟢 Armed — monitoring...':'🟢 Broadcasting');
+      if (recordMode==='loop' && isArmedRef.current) startRecording();
+    };
+    mr.start();
+    mediaRecRef.current=mr;
+    // Timed modes: stop after duration
+    if (recordMode==='timed'||triggered) {
+      const dur = triggered ? loopDuration : loopDuration;
+      loopTimerRef.current = setTimeout(()=>stopRecording(), dur*1000);
+    }
+  };
+
+  const stopRecording = () => {
+    clearTimeout(loopTimerRef.current);
+    if (mediaRecRef.current && mediaRecRef.current.state!=='inactive') {
+      mediaRecRef.current.stop();
+    }
   };
 
   const handleZoom = async (val) => {
-    const z = parseFloat(val);
-    setZoomLevel(z);
+    const z = parseFloat(val); setZoomLevel(z);
     if (hwZoomSupported && streamRef.current) {
-      try {
-        const track = streamRef.current.getVideoTracks()[0];
-        await track.applyConstraints({ advanced: [{ zoom: z }] });
-      } catch {}
+      try { await streamRef.current.getVideoTracks()[0].applyConstraints({advanced:[{zoom:z}]}); } catch {}
     }
-    // CSS zoom always applied via videoRef style
   };
 
-  const flipCamera = async () => {
-    if (!streaming) return;
-    const newFacing = facingMode === 'user' ? 'environment' : 'user';
-    try {
-      if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: newFacing },
-        audio: true,
-      });
-      streamRef.current = stream;
-      if (videoRef.current) videoRef.current.srcObject = stream;
-      setFacingMode(newFacing);
-    } catch {
-      // facingMode not supported on this device (e.g. desktop webcam)
-      setStatusMsg('⚠️ Camera flip not supported on this device');
-      setTimeout(() => setStatusMsg('🟢 Broadcasting'), 2000);
-    }
-  };
+  const pad = n => String(Math.floor(n)).padStart(2,'0');
+  const fmtTime = s => `${pad(s/60)}:${pad(s%60)}`;
 
   return (
     <div>
-      <h2 style={st.sectionHdr}>🖥️ USB / Webcam Camera</h2>
+      <h2 style={st.sectionHdr}>🔒 USB / Webcam — Security Camera</h2>
       <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:20}}>
-        {/* Camera feed + controls */}
+
+        {/* LEFT: Feed */}
         <div style={st.card}>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:12}}>
             <div>
@@ -528,7 +689,7 @@ function USBCameraPage({ socket, devices, userId, organizationId }) {
               <select style={st.input} value={selectedDev} onChange={e=>setSelectedDev(e.target.value)}>
                 {camDevices.map((d,i)=>(
                   <option key={d.deviceId||i} value={d.deviceId||''}>
-                    {d.label && d.label.length>0 ? d.label : `Camera ${i+1}`}
+                    {d.label&&d.label.length>0?d.label:`Camera ${i+1}`}
                   </option>
                 ))}
               </select>
@@ -542,116 +703,214 @@ function USBCameraPage({ socket, devices, userId, organizationId }) {
             </div>
           </div>
 
+          {/* Video with timestamp overlay */}
           <div style={st.videoBox}>
             <video ref={videoRef} style={{
               ...st.videoEl,
-              transform: `scale(${zoomLevel})`,
-              transformOrigin: 'center center',
-              transition: 'transform 0.2s',
+              transform:`scale(${zoomLevel})`,
+              transformOrigin:'center center',
+              transition:'transform 0.15s',
             }} autoPlay playsInline muted/>
             {!streaming && <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',color:C.sub}}>
-              <span style={{fontSize:48}}>🖥️</span><span style={{marginTop:8}}>No stream</span>
+              <span style={{fontSize:48}}>🔒</span><span style={{marginTop:8}}>No stream</span>
             </div>}
-            {streaming && <div style={{position:'absolute',top:8,left:8,backgroundColor:'rgba(204,0,0,0.9)',color:'#fff',padding:'2px 8px',borderRadius:4,fontSize:11,fontWeight:'bold'}}>
-              ● BROADCASTING • {viewers} viewer{viewers!==1?'s':''}
-            </div>}
-            {nightVision && <div style={{position:'absolute',inset:0,backgroundColor:'rgba(0,255,70,0.15)',pointerEvents:'none'}}/>}
-            <div style={{position:'absolute',bottom:8,left:8,backgroundColor:'rgba(0,0,0,0.6)',color:'#fff',padding:'3px 8px',borderRadius:6,fontSize:12}}>{statusMsg}</div>
+            {streaming && <>
+              {/* Top left: broadcast status */}
+              <div style={{position:'absolute',top:8,left:8,backgroundColor:isRecording?'rgba(204,0,0,0.9)':'rgba(0,100,0,0.85)',color:'#fff',padding:'2px 8px',borderRadius:4,fontSize:11,fontWeight:'bold'}}>
+                {isRecording?`● REC ${fmtTime(recordingTime)}`:`● LIVE • ${viewers}v`}
+              </div>
+              {/* Armed badge */}
+              {isArmed && !isRecording && <div style={{position:'absolute',top:8,right:8,backgroundColor:'rgba(0,80,0,0.85)',color:C.green,padding:'2px 8px',borderRadius:4,fontSize:11,fontWeight:'bold'}}>🟢 ARMED</div>}
+              {/* Night vision overlay */}
+              {nightVision && <div style={{position:'absolute',inset:0,backgroundColor:'rgba(0,255,70,0.15)',pointerEvents:'none'}}/>}
+              {/* Date/time stamp — bottom right */}
+              <VideoTimestamp/>
+              {/* Status bar */}
+              <div style={{position:'absolute',bottom:8,left:8,backgroundColor:'rgba(0,0,0,0.65)',color:'#fff',padding:'3px 8px',borderRadius:6,fontSize:12}}>{statusMsg}</div>
+            </>}
           </div>
 
-          {/* Zoom + Flip controls */}
+          {/* Zoom controls */}
           {streaming && (
-            <div style={{marginTop:10,backgroundColor:'#111',borderRadius:8,padding:10}}>
-              <div style={{...st.flexBetween,marginBottom:8}}>
-                <span style={{fontSize:12,color:C.sub}}>
-                  🔍 Zoom {zoomLevel.toFixed(1)}x
-                  {hwZoomSupported && <span style={{color:C.green,marginLeft:6,fontSize:10}}>HW</span>}
-                  {!hwZoomSupported && <span style={{color:C.sub,marginLeft:6,fontSize:10}}>CSS</span>}
-                </span>
-                <button style={{...st.btn,...st.btnGray,padding:'4px 10px',fontSize:12}} onClick={()=>handleZoom(1)}>Reset</button>
+            <div style={{marginTop:8,backgroundColor:'#0d0d0d',borderRadius:8,padding:8}}>
+              <div style={{...st.flexBetween,marginBottom:6}}>
+                <span style={{fontSize:12,color:C.sub}}>🔍 {zoomLevel.toFixed(1)}x {hwZoomSupported&&<span style={{color:C.green,fontSize:10}}>HW</span>}</span>
+                <button style={{...st.btn,...st.btnGray,padding:'3px 8px',fontSize:11}} onClick={()=>handleZoom(1)}>Reset</button>
               </div>
-              <input type="range"
-                min={hwZoomSupported ? hwZoomRange.min : 1}
-                max={hwZoomSupported ? hwZoomRange.max : 3}
-                step={hwZoomSupported ? hwZoomRange.step : 0.1}
-                value={zoomLevel}
-                onChange={e=>handleZoom(e.target.value)}
-                style={{width:'100%',accentColor:C.green,marginBottom:8}}
-              />
-              <div style={{display:'flex',gap:6}}>
-                <button style={{...st.btn,...st.btnGray,flex:1,fontSize:12}} onClick={()=>handleZoom(Math.max(1, zoomLevel-0.25))}>− Zoom Out</button>
-                <button style={{...st.btn,...st.btnGray,flex:1,fontSize:12}} onClick={flipCamera}>🔄 Flip Camera</button>
-                <button style={{...st.btn,...st.btnGray,flex:1,fontSize:12}} onClick={()=>handleZoom(Math.min(hwZoomSupported?hwZoomRange.max:3, zoomLevel+0.25))}>+ Zoom In</button>
-              </div>
+              <input type="range" min={1} max={hwZoomSupported?hwZoomRange.max:3} step={hwZoomSupported?hwZoomRange.step:0.1}
+                value={zoomLevel} onChange={e=>handleZoom(e.target.value)}
+                style={{width:'100%',accentColor:C.green}}/>
             </div>
           )}
 
-          {/* Action buttons */}
-          <div style={{display:'flex',gap:6,marginTop:10}}>
+          {/* Main buttons */}
+          <div style={{display:'flex',gap:6,marginTop:8}}>
             {!streaming
               ? <button style={{...st.btn,...st.btnGreen,flex:1}} onClick={startStream}>📡 Start Broadcasting</button>
               : <>
-                  <button style={{...st.btn,...st.btnRed,flex:1}} onClick={stopStream}>⏹ Stop</button>
-                  {!isRecording
-                    ? <button style={{...st.btn,...st.btnBlue}} onClick={startRecord}>⏺ Record</button>
-                    : <button style={{...st.btn,...st.btnRed}} onClick={stopRecord}>⏹ Stop Rec</button>
+                  {/* Monitoring toggle */}
+                  {!isArmed
+                    ? <button style={{...st.btn,flex:2,backgroundColor:'rgba(0,255,136,0.15)',color:C.green,border:`2px solid ${C.green}`,fontWeight:'bold'}}
+                        onClick={()=>{ setClipManagement('ask'); armCamera(); }}>
+                        🟢 Start Monitoring
+                      </button>
+                    : <button style={{...st.btn,flex:2,backgroundColor:'rgba(255,68,68,0.15)',color:C.red,border:`2px solid ${C.red}`,fontWeight:'bold'}}
+                        onClick={disarmCamera}>
+                        🔴 Stop Monitoring
+                      </button>
                   }
+                  {isArmed && <>
+                    {!isRecording
+                      ? <button style={{...st.btn,...st.btnBlue}} onClick={()=>startRecording()}>⏺ Record</button>
+                      : <button style={{...st.btn,...st.btnRed}} onClick={stopRecording}>⏹ Stop</button>
+                    }
+                  </>}
+                  <button style={{...st.btn,...st.btnRed,padding:'8px 10px'}} onClick={stopStream} title="Stop Broadcasting">■</button>
                 </>
             }
           </div>
+
+          {/* Clip management setting shown when armed */}
+          {isArmed && (
+            <div style={{marginTop:8,backgroundColor:'#0d0d0d',borderRadius:8,padding:'8px 10px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+              <span style={{fontSize:12,color:C.sub}}>
+                📼 Clips: <span style={{color:C.green}}>
+                  {clipManagement==='download'?'⬇️ Download'
+                   :clipManagement==='cloud'?'☁️ Cloud'
+                   :clipManagement==='both'?'⬇️+☁️ Both'
+                   :'Not set'}
+                </span>
+              </span>
+              <button style={{...st.btn,...st.btnGray,padding:'3px 8px',fontSize:11}}
+                onClick={()=>setShowClipPrompt(true)}>Change</button>
+            </div>
+          )}
         </div>
 
-        {/* Settings */}
+        {/* RIGHT: Settings */}
         <div style={st.card}>
-          <p style={{fontWeight:'bold',marginBottom:12,color:C.text}}>⚙️ Camera Settings</p>
+          <p style={{fontWeight:'bold',marginBottom:12,color:C.text,fontSize:15}}>⚙️ Security Settings</p>
 
-          <p style={st.settingSection}>Mode</p>
-          <div style={{display:'flex',gap:6,marginBottom:8}}>
-            {['dashcam','security'].map(m=>(
-              <button key={m} onClick={()=>setCamMode(m)} style={{
-                ...st.btn, flex:1,
-                backgroundColor:camMode===m?(m==='dashcam'?C.green:C.blue):C.card,
-                color:camMode===m?'#000':C.text,
-                border:`1px solid ${camMode===m?(m==='dashcam'?C.green:C.blue):C.border}`,
-              }}>{m==='dashcam'?'🚗 Dash Cam':'🔒 Security Cam'}</button>
+          {/* Recording mode */}
+          <p style={st.settingSection}>🎬 Recording Mode</p>
+          <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:8}}>
+            {[
+              {id:'manual',  label:'⏺ Manual'},
+              {id:'timed',   label:'⏱ Timed'},
+              {id:'loop',    label:'♾️ Loop'},
+            ].map(m=>(
+              <button key={m.id} onClick={()=>setRecordMode(m.id)} style={{
+                ...st.btn,
+                backgroundColor:recordMode===m.id?C.blue:C.card,
+                color:recordMode===m.id?'#fff':C.text,
+                border:`1px solid ${recordMode===m.id?C.blue:C.border}`,
+                fontSize:12,
+              }}>{m.label}</button>
             ))}
           </div>
 
-          <p style={st.settingSection}>Security Detection</p>
+          {/* Duration picker for timed/loop */}
+          {(recordMode==='timed'||recordMode==='loop') && <>
+            <p style={st.settingSection}>⏱ Clip Duration</p>
+            <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:8}}>
+              {LOOP_OPTS.map(o=>(
+                <button key={o.value} onClick={()=>setLoopDuration(o.value)} style={{
+                  ...st.btn, fontSize:12,
+                  backgroundColor:loopDuration===o.value?C.green:C.card,
+                  color:loopDuration===o.value?'#000':C.text,
+                  border:`1px solid ${loopDuration===o.value?C.green:C.border}`,
+                }}>{o.label}</button>
+              ))}
+            </div>
+          </>}
+
+          {/* Motion detection */}
+          <p style={st.settingSection}>🔒 Detection</p>
           <div style={st.toggle}>
-            <div><div style={st.toggleLabel}>Motion Detection</div></div>
+            <div>
+              <div style={st.toggleLabel}>Motion Detection</div>
+              <div style={st.toggleNote}>Real pixel-diff analysis of video feed</div>
+            </div>
             <Toggle value={motionEnabled} onChange={setMotionEnabled}/>
           </div>
+          {motionEnabled && (
+            <div style={{padding:'8px 0'}}>
+              <div style={{...st.flexBetween,marginBottom:4}}>
+                <span style={{fontSize:12,color:C.sub}}>Sensitivity</span>
+                <span style={{fontSize:12,color:C.green}}>{sensitivity}%</span>
+              </div>
+              <input type="range" min={5} max={95} step={5} value={sensitivity}
+                onChange={e=>setSensitivity(parseInt(e.target.value))}
+                style={{width:'100%',accentColor:C.green}}/>
+              <div style={{display:'flex',justifyContent:'space-between',fontSize:10,color:C.sub}}>
+                <span>Less sensitive</span><span>More sensitive</span>
+              </div>
+            </div>
+          )}
           <div style={st.toggle}>
-            <div><div style={st.toggleLabel}>Sound Detection</div></div>
+            <div>
+              <div style={st.toggleLabel}>Sound Detection</div>
+              <div style={st.toggleNote}>Audio level monitoring</div>
+            </div>
             <Toggle value={soundEnabled} onChange={setSoundEnabled}/>
           </div>
 
-          <p style={st.settingSection}>Night Vision</p>
+          {/* Night vision */}
+          <p style={st.settingSection}>🌙 Night Vision</p>
           <div style={st.toggle}>
-            <div>
-              <div style={st.toggleLabel}>Night Mode</div>
-              <div style={st.toggleNote}>Green tint overlay</div>
-            </div>
+            <div><div style={st.toggleLabel}>Night Mode</div><div style={st.toggleNote}>Green tint overlay</div></div>
             <Toggle value={nightVision} onChange={setNightVision}/>
           </div>
 
-          {/* Events log */}
+          {/* Recent events */}
           {events.length>0 && <>
-            <p style={st.settingSection}>Recent Events</p>
-            <div style={{maxHeight:120,overflowY:'auto'}}>
-              {events.slice(0,5).map((e,i)=>(
-                <div key={i} style={{fontSize:12,padding:'4px 0',borderBottom:`1px solid ${C.border}`,color:C.text}}>
-                  👁 {e.device} — {e.time}
+            <p style={st.settingSection}>🚨 Recent Events ({events.length})</p>
+            <div style={{maxHeight:150,overflowY:'auto'}}>
+              {events.slice(0,8).map((e)=>(
+                <div key={e.id} style={{display:'flex',gap:8,fontSize:12,padding:'4px 0',borderBottom:`1px solid ${C.border}`,alignItems:'center'}}>
+                  <span>{e.type==='motion'?'👁':'🔊'}</span>
+                  <div style={{flex:1}}>
+                    <span style={{color:C.text}}>{e.device}</span>
+                    <span style={{color:C.sub,marginLeft:6}}>{e.time}</span>
+                  </div>
                 </div>
               ))}
             </div>
           </>}
         </div>
-      </div>
+
+      {/* Clip Management Prompt Modal */}
+      {showClipPrompt && (
+        <div style={st.modal} onClick={()=>setShowClipPrompt(false)}>
+          <div style={{...st.modalBox,maxWidth:420}} onClick={e=>e.stopPropagation()}>
+            <h2 style={{margin:'0 0 8px',color:C.green}}>📼 How should clips be saved?</h2>
+            <p style={{color:C.sub,fontSize:13,marginBottom:20}}>Choose where recorded clips are stored when motion or sound is detected.</p>
+            {[
+              { id:'download', icon:'⬇️', title:'Download to this computer', desc:'Clips automatically download to your browser downloads folder.' },
+              { id:'cloud',    icon:'☁️', title:'Upload to cloud storage',    desc:'Clips upload to DigitalOcean Spaces. Requires Pro subscription.' },
+              { id:'both',     icon:'⬇️☁️', title:'Both — download + cloud', desc:'Save locally AND upload to cloud for redundancy.' },
+            ].map(opt=>(
+              <button key={opt.id} onClick={()=>armWithClipChoice(opt.id)} style={{
+                display:'flex', alignItems:'center', gap:14, width:'100%',
+                backgroundColor: clipManagement===opt.id ? '#1a2a1a' : C.card,
+                border:`1.5px solid ${clipManagement===opt.id?C.green:C.border}`,
+                borderRadius:10, padding:14, marginBottom:10, cursor:'pointer', textAlign:'left',
+              }}>
+                <span style={{fontSize:28}}>{opt.icon}</span>
+                <div>
+                  <div style={{color:C.text,fontWeight:'bold',fontSize:14}}>{opt.title}</div>
+                  <div style={{color:C.sub,fontSize:12,marginTop:3}}>{opt.desc}</div>
+                </div>
+              </button>
+            ))}
+            <button style={{...st.btn,...st.btnGray,width:'100%',marginTop:4}} onClick={()=>setShowClipPrompt(false)}>Cancel</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
 
 // ─── Events Panel ─────────────────────────────────────────────────
 function EventsPanel({ events }) {
@@ -957,7 +1216,7 @@ export default function App() {
               </div>
         )}
 
-        {tab==='usb'    && <USBCameraPage socket={socket} devices={devices} userId={user?.userId} organizationId={user?.organizationId}/>}
+        {tab==='usb'    && <USBCameraPage socket={socket} devices={devices} userId={user?.userId} organizationId={user?.organizationId} onEvent={e=>setEvents(ev=>[e,...ev])}/>}
         {tab==='events' && <EventsPanel events={events}/>}
         {tab==='sub'    && <SubscriptionPage/>}
       </main>
