@@ -836,6 +836,7 @@ function CameraScreen({ navigation, route, socket }) {
   const [cloudUpload,   setCloudUpload]  = useState(true);
   const [motionEnabled, setMotionEnabled]= useState(true);
   const [soundEnabled,  setSoundEnabled] = useState(true);
+  const [sensitivity,   setSensitivity]  = useState(50); // 1-100, maps to accel threshold
   const [activePopup,   setActivePopup]  = useState(null);
   const [showSettings,  setShowSettings] = useState(false);
   const [showLoopPrompt,setShowLoopPrompt]=useState(false);
@@ -865,11 +866,13 @@ function CameraScreen({ navigation, route, socket }) {
   const camPermRef       = useRef(false);
   const micPermRef       = useRef(false);
   const motionCoolRef    = useRef(false);
+  const sensitivityRef   = useRef(50);
   // Accelerometer baseline
   const accelBaseRef     = useRef(null);
   const accelLastRef     = useRef({x:0,y:0,z:0});
 
   useEffect(()=>{ motionEnabledRef.current=motionEnabled; },[motionEnabled]);
+  useEffect(()=>{ sensitivityRef.current=sensitivity; },[sensitivity]);
   useEffect(()=>{ soundEnabledRef.current=soundEnabled;   },[soundEnabled]);
   useEffect(()=>{ loopForeverRef.current=loopForever;     },[loopForever]);
   useEffect(()=>{ loopDurationRef.current=loopDuration;   },[loopDuration]);
@@ -896,14 +899,17 @@ function CameraScreen({ navigation, route, socket }) {
           if (!token) return;
           try {
             const payload = JSON.parse(atob(token.split('.')[1]));
+            const orgId = payload.organizationId || payload.org_id || payload.organization_id;
+            const userId = payload.userId || payload.user_id || payload.id || payload.sub;
+            console.log('📷 Auth payload:', JSON.stringify({orgId, userId, role:'camera'}));
             socket.emit('auth',{
               deviceId: device.id,
               deviceName: device.name || 'Mobile Camera',
               role: 'camera',
-              organizationId: payload.organizationId,
-              userId: payload.userId || payload.id,
+              organizationId: orgId,
+              userId: userId,
             });
-            console.log('📷 Announced camera online:', device.name);
+            console.log('📷 Announced camera online:', device.name, 'org:', orgId);
           } catch(e) { console.log('Socket auth error:', e.message); }
         });
       }
@@ -954,8 +960,9 @@ function CameraScreen({ navigation, route, socket }) {
         Math.pow(data.z-prev.z,2)
       );
       accelLastRef.current = data;
-      // Threshold: 0.15g delta = significant movement detected
-      if (delta > 0.15) {
+      // Threshold: maps sensitivity 1-100 to 0.40-0.05g (higher sensitivity = easier trigger)
+      const threshold = 0.45 - (sensitivityRef.current / 100) * 0.40;
+      if (delta > threshold) {
         console.log('📱 Accelerometer motion detected, delta:', delta.toFixed(3));
         triggerAlert('motion');
       }
@@ -1338,8 +1345,41 @@ function CameraScreen({ navigation, route, socket }) {
         <View style={cs.modalOverlay}><ScrollView><View style={cs.modalContent}>
           <Text style={cs.modalTitle}>⚙️ Camera Settings</Text>
           <Text style={cs.settingSection}>🔒 Security Detection</Text>
-          <View style={cs.settingRow}><Text style={cs.settingLabel}>Motion (Accelerometer)</Text><Switch value={motionEnabled} onValueChange={setMotionEnabled} trackColor={{true:'#00ff88'}} thumbColor="#fff"/></View>
-          <View style={cs.settingRow}><Text style={cs.settingLabel}>Sound Detection</Text><Switch value={soundEnabled} onValueChange={setSoundEnabled} trackColor={{true:'#00ff88'}} thumbColor="#fff"/></View>
+          <View style={cs.settingRow}>
+            <Text style={cs.settingLabel}>Motion Detection</Text>
+            <Switch value={motionEnabled} onValueChange={setMotionEnabled} trackColor={{true:'#00ff88'}} thumbColor="#fff"/>
+          </View>
+          {motionEnabled && (
+            <View style={{paddingVertical:8,borderBottomWidth:1,borderBottomColor:'#222'}}>
+              <View style={{flexDirection:'row',justifyContent:'space-between',marginBottom:6}}>
+                <Text style={cs.settingLabel}>Sensitivity</Text>
+                <Text style={{color:'#00ff88',fontSize:13,fontWeight:'bold'}}>{sensitivity}%</Text>
+              </View>
+              <View style={{flexDirection:'row',alignItems:'center',gap:8}}>
+                <Text style={{color:'#666',fontSize:10}}>Low</Text>
+                <View style={{flex:1,height:4,backgroundColor:'#333',borderRadius:2}}>
+                  <View style={{width:`${sensitivity}%`,height:'100%',backgroundColor:'#00ff88',borderRadius:2}}/>
+                </View>
+                <Text style={{color:'#666',fontSize:10}}>High</Text>
+              </View>
+              <View style={{flexDirection:'row',justifyContent:'space-between',marginTop:8,gap:6}}>
+                {[10,25,50,75,90].map(v=>(
+                  <TouchableOpacity key={v} onPress={()=>setSensitivity(v)} style={{
+                    flex:1,paddingVertical:5,borderRadius:6,alignItems:'center',
+                    backgroundColor:sensitivity===v?'#00ff8820':'#1a1a1a',
+                    borderWidth:1,borderColor:sensitivity===v?'#00ff88':'#333',
+                  }}>
+                    <Text style={{color:sensitivity===v?'#00ff88':'#666',fontSize:11,fontWeight:'bold'}}>{v}%</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <Text style={cs.settingNote}>Higher = detects smaller movements</Text>
+            </View>
+          )}
+          <View style={cs.settingRow}>
+            <Text style={cs.settingLabel}>Sound Detection</Text>
+            <Switch value={soundEnabled} onValueChange={setSoundEnabled} trackColor={{true:'#00ff88'}} thumbColor="#fff"/>
+          </View>
           <Text style={cs.settingSection}>🌙 Night Vision</Text>
           <View style={cs.settingRow}>
             <View><Text style={cs.settingLabel}>Night Mode</Text><Text style={cs.settingNote}>Brightness boost (free)</Text></View>
@@ -1430,9 +1470,12 @@ function App() {
       // Decode token to get user info
       try {
         const payload = JSON.parse(atob(token.split('.')[1]));
+        const orgId = payload.organizationId || payload.org_id || payload.organization_id;
+        const userId = payload.userId || payload.user_id || payload.id || payload.sub;
+        console.log('📡 Viewer auth payload org:', orgId);
         s.emit('auth',{
-          userId: payload.userId || payload.id,
-          organizationId: payload.organizationId,
+          userId,
+          organizationId: orgId,
           role: 'viewer',
           deviceName: 'Mobile App',
         });
