@@ -889,27 +889,34 @@ function CameraScreen({ navigation, route, socket }) {
     })();
     if (initialMode==='dashcam') setTimeout(()=>setShowLoopPrompt(true),700);
 
-    // Announce this camera as online via socket
-    if (socket && device?.id) {
-      AsyncStorage.getItem('accessToken').then(token=>{
-        if (!token) return;
-        try {
-          const payload = JSON.parse(atob(token.split('.')[1]));
-          socket.emit('auth',{
-            deviceId: device.id,
-            deviceName: device.name || 'Mobile Camera',
-            role: 'camera',
-            organizationId: payload.organizationId,
-            userId: payload.userId || payload.id,
-          });
-        } catch {}
-      });
-    }
+    // Announce online after a short delay to ensure socket is stable
+    const announceTimer = setTimeout(()=>{
+      if (socket && device?.id) {
+        AsyncStorage.getItem('accessToken').then(token=>{
+          if (!token) return;
+          try {
+            const payload = JSON.parse(atob(token.split('.')[1]));
+            socket.emit('auth',{
+              deviceId: device.id,
+              deviceName: device.name || 'Mobile Camera',
+              role: 'camera',
+              organizationId: payload.organizationId,
+              userId: payload.userId || payload.id,
+            });
+            console.log('📷 Announced camera online:', device.name);
+          } catch(e) { console.log('Socket auth error:', e.message); }
+        });
+      }
+    }, 1000);
 
     return ()=>{
+      clearTimeout(announceTimer);
       stopAll();
       // Announce offline when leaving camera screen
-      if (socket && device?.id) socket.emit('camera:offline',{deviceId:device.id});
+      if (socket && device?.id) {
+        socket.emit('camera:offline',{deviceId:device.id});
+        console.log('📷 Announced camera offline:', device.name);
+      }
     };
   },[]);
 
