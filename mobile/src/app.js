@@ -383,17 +383,47 @@ function USBCameraPage({ socket, devices, userId, organizationId }) {
 
   const startStream = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video:{ deviceId:selectedDev?{exact:selectedDev}:undefined, width:{ideal:1280}, height:{ideal:720} },
-        audio:true
-      });
-      streamRef.current=stream;
-      if (videoRef.current) videoRef.current.srcObject=stream;
-      setStreaming(true); setStatusMsg('🟢 Broadcasting');
+      // First request with no deviceId to trigger permission prompt
+      const constraints = {
+        video: selectedDev
+          ? { deviceId:{ exact:selectedDev }, width:{ideal:1280}, height:{ideal:720} }
+          : { width:{ideal:1280}, height:{ideal:720} },
+        audio: true,
+      };
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      streamRef.current = stream;
+      if (videoRef.current) videoRef.current.srcObject = stream;
+
+      // Re-enumerate devices now that permission is granted (labels now visible)
+      const devs = await navigator.mediaDevices.enumerateDevices();
+      const vids = devs.filter(d=>d.kind==='videoinput');
+      setCamDevices(vids);
+      if (!selectedDev && vids.length>0) setSelectedDev(vids[0].deviceId);
+
+      setStreaming(true);
+      setStatusMsg('🟢 Broadcasting');
+
       if (linkedDevice && socket) {
-        socket.emit('auth',{ deviceId:linkedDevice, deviceName:devices.find(d=>d.id===linkedDevice)?.name||'USB Camera', role:'camera', organizationId, userId });
+        socket.emit('auth',{
+          deviceId: linkedDevice,
+          deviceName: devices.find(d=>d.id===linkedDevice)?.name || 'USB Camera',
+          role: 'camera',
+          organizationId,
+          userId,
+        });
       }
-    } catch(e) { alert('Camera access failed: '+e.message); }
+    } catch(e) {
+      console.error('Camera error:', e);
+      if (e.name === 'NotAllowedError') {
+        alert('Camera permission denied. Please allow camera access in your browser settings and refresh the page.');
+      } else if (e.name === 'NotFoundError') {
+        alert('No camera found. Please connect a camera and try again.');
+      } else if (e.name === 'NotReadableError') {
+        alert('Camera is in use by another app. Close other apps using the camera and try again.');
+      } else {
+        alert('Camera error: ' + e.message);
+      }
+    }
   };
 
   const stopStream = () => {
