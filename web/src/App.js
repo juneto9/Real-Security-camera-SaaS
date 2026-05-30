@@ -529,7 +529,8 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
     if (onEvent) onEvent(event);
     setStatusMsg(`⚠️ ${type==='motion'?'Motion':'Sound'} detected!`);
     if (!isRecordingRef.current) startRecording(true);
-    setTimeout(()=>{ alertActiveRef.current=false; setStatusMsg(isArmedRef.current?'🟢 Armed — monitoring...':'🟢 Broadcasting'); },5000);
+    // alertActiveRef is released in the recording onstop handler, not on a timer
+    // This prevents re-triggering during an active clip
   };
 
   const startStream = async () => {
@@ -647,6 +648,8 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
       }
 
       isRecordingRef.current=false; setIsRecording(false);
+      // Release cooldown NOW — clip is saved, detection can re-trigger
+      alertActiveRef.current=false;
       setStatusMsg(isArmedRef.current?'🟢 Armed — monitoring...':'🟢 Broadcasting');
       if (recordMode==='loop' && isArmedRef.current) startRecording();
     };
