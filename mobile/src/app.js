@@ -335,10 +335,22 @@ function USBCameraPage({ socket, devices, userId, organizationId }) {
   const alertActiveRef = useRef(false);
 
   useEffect(()=>{
+    // Enumerate without permission first — just to get count, not IDs
+    // Real labels + IDs only available after getUserMedia permission granted
     navigator.mediaDevices.enumerateDevices().then(devs=>{
       const vids = devs.filter(d=>d.kind==='videoinput');
-      setCamDevices(vids);
-      if (vids.length>0) setSelectedDev(vids[0].deviceId);
+      if (vids.length>0) {
+        // Only set deviceId if we have real labels (permission already granted)
+        const hasRealLabels = vids.some(d=>d.label && d.label.length>0);
+        if (hasRealLabels) {
+          setCamDevices(vids);
+          setSelectedDev(vids[0].deviceId);
+        } else {
+          // No permission yet — show placeholder, don't set a deviceId
+          setCamDevices([{deviceId:'', label:`${vids.length} camera${vids.length>1?'s':''} available`}]);
+          setSelectedDev(''); // empty = no constraint, browser picks best
+        }
+      }
     });
   },[]);
 
@@ -383,10 +395,11 @@ function USBCameraPage({ socket, devices, userId, organizationId }) {
 
   const startStream = async () => {
     try {
-      // First request with no deviceId to trigger permission prompt
+      // Never use exact deviceId — use ideal so browser picks best match
+      // and doesn't throw NotFoundError if deviceId is stale
       const constraints = {
         video: selectedDev
-          ? { deviceId:{ exact:selectedDev }, width:{ideal:1280}, height:{ideal:720} }
+          ? { deviceId:{ ideal:selectedDev }, width:{ideal:1280}, height:{ideal:720} }
           : { width:{ideal:1280}, height:{ideal:720} },
         audio: true,
       };
