@@ -247,15 +247,6 @@ function CameraCard({ device, socket, onEvent, onSettings, settings }) {
 
   const cameraSocketIdRef = useRef(null); // store camera's socketId for ICE
 
-  // Auto-reconnect if stream drops
-  useEffect(()=>{
-    if (watching && !videoRef.current?.srcObject && socket && online) {
-      console.log('📺 Stream dropped, reconnecting...');
-      stopWatching();
-      setTimeout(()=>startWatching(), 500);
-    }
-  },[watching]);
-
   const startWatching = () => {
     if (!socket||!online) return;
     // Clean up any existing connection first
@@ -422,15 +413,17 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
 
   useEffect(()=>{
     const token = localStorage.getItem('accessToken');
-    if (!token) return;
-    const { io: ioClient } = require('socket.io-client');
-    const s = ioClient('https://whale-app-hxokg.ondigitalocean.app', {
+    if (!token || camSocketRef.current) return; // only create once
+    // Use the globally imported io
+    const s = io('https://whale-app-hxokg.ondigitalocean.app', {
       auth:{ token }, transports:['websocket','polling']
     });
     s.on('connect', ()=>{ console.log('📡 Camera socket connected:', s.id); });
+    s.on('disconnect', ()=>{ console.log('📡 Camera socket disconnected'); });
     camSocketRef.current = s;
     setCamSocket(s);
-    return ()=>{ s.disconnect(); camSocketRef.current=null; };
+    // Don't clean up on unmount — keep alive while page is open
+    return ()=>{};
   },[]);
   const videoRef   = useRef(null);
   const streamRef  = useRef(null);
