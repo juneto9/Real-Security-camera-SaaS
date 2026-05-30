@@ -278,6 +278,7 @@ function CameraCard({ device, socket, onEvent, onSettings, settings }) {
     };
     pc.addTransceiver('video',{direction:'recvonly'});
     pc.addTransceiver('audio',{direction:'recvonly'});
+    console.log('📺 Sending viewer:watch for device:', device.id, 'socket:', socket.id);
     socket.emit('viewer:watch',{deviceId:device.id});
     setWatching(true); setStatus('Connecting...');
   };
@@ -487,7 +488,8 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
     const cs = camSocketRef.current;
     if (!cs) return;
     cs.on('viewer:request',async({viewerSocketId})=>{
-      if (!streamRef.current) return;
+      console.log('📺 Camera received viewer:request from:', viewerSocketId, 'stream ready:', !!streamRef.current);
+      if (!streamRef.current) { console.log('📺 No stream available yet!'); return; }
       const pc = new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}]});
       pcsRef.current[viewerSocketId]=pc;
       streamRef.current.getTracks().forEach(t=>pc.addTrack(t,streamRef.current));
@@ -498,7 +500,8 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
       };
       const offer=await pc.createOffer();
       await pc.setLocalDescription(offer);
-      socket.emit('webrtc:offer',{targetSocketId:viewerSocketId,offer});
+      console.log('📺 Camera sending offer to viewer:', viewerSocketId);
+      cs.emit('webrtc:offer',{targetSocketId:viewerSocketId,offer});
     });
     cs.on('webrtc:answer',async({answer,fromSocketId})=>{ const pc=pcsRef.current[fromSocketId]; if(pc) await pc.setRemoteDescription(new RTCSessionDescription(answer)).catch(()=>{}); });
     cs.on('webrtc:ice',async({candidate,fromSocketId})=>{ const pc=pcsRef.current[fromSocketId]; if(pc&&candidate) await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(()=>{}); });
