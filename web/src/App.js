@@ -331,7 +331,7 @@ function CameraCard({ device, socket, onEvent, onSettings, settings }) {
     if (videoRef.current) videoRef.current.srcObject=null;
     if (localMicRef.current) { localMicRef.current.getTracks().forEach(t=>t.stop()); localMicRef.current=null; }
     setWatching(false); setStatus(online?'Online':'Offline');
-    setZoom(1); setTalkback(false);
+    setZoom(1); setTalkback(false); setArmed(false);
   };
 
   const reconnect = () => {
@@ -677,6 +677,11 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
   const canvasCleanupRef  = useRef(null);
   const tsStreamRef       = useRef(null);
   const triggerEventIdRef = useRef(null);
+  // Function refs — allow socket closure to call functions defined later in component
+  const startMotionDetRef = useRef(null);
+  const startSoundDetRef  = useRef(null);
+  const stopMotionDetRef  = useRef(null);
+  const stopRecordingRef  = useRef(null);
 
   const autoStartRef = useRef(false);
 
@@ -747,15 +752,18 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
         if (streamRef.current) {
           setIsArmed(true); isArmedRef.current=true;
           setStatusMsg('🟢 Armed — monitoring...');
-          startMotionDetection();
-          if (soundEnabled) startSoundDetection();
+          // Use refs — arrow functions not hoisted, unavailable in closure at registration time
+          if (startMotionDetRef.current) startMotionDetRef.current();
+          if (startSoundDetRef.current) startSoundDetRef.current();
+        } else {
+          console.log('📡 Arm command received but no stream yet');
         }
       }
       if (command === 'disarm') {
         console.log('📡 Remote disarm — stopping monitoring');
         setIsArmed(false); isArmedRef.current=false;
-        stopMotionDetection();
-        if (isRecordingRef.current) stopRecording();
+        if (stopMotionDetRef.current) stopMotionDetRef.current();
+        if (isRecordingRef.current && stopRecordingRef.current) stopRecordingRef.current();
         setStatusMsg('🟢 Broadcasting');
       }
     });
@@ -812,6 +820,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
   },[camSocket]);
 
   const startMotionDetection = () => {
+    startMotionDetRef.current = startMotionDetection; // keep ref current
     if (!streamRef.current || !motionEnabled) return;
     const video = videoRef.current;
     const canvas = document.createElement('canvas');
@@ -848,8 +857,10 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
     clearInterval(motionPollRef.current);
     prevFrameRef.current = null;
   };
+  stopMotionDetRef.current = stopMotionDetection;
 
   const startSoundDetection = () => {
+    startSoundDetRef.current = startSoundDetection;
     if (!streamRef.current || !soundEnabled) return;
     try {
       const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
