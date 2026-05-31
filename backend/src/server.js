@@ -69,6 +69,33 @@ app.get('/health', (req, res) => {
 });
 
 // ── Routes (all AFTER cors) ──────────────────────────────────────
+// Ensure tables exist on startup
+const { Pool: StartupPool } = require('pg');
+const startupPool = new StartupPool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
+startupPool.query(`
+  CREATE TABLE IF NOT EXISTS recordings (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    organization_id UUID,
+    device_id UUID,
+    filename TEXT,
+    url TEXT,
+    size BIGINT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+  );
+  CREATE TABLE IF NOT EXISTS enrollment_tokens (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    token TEXT UNIQUE NOT NULL,
+    organization_id UUID NOT NULL,
+    created_by UUID NOT NULL,
+    camera_name TEXT,
+    location TEXT,
+    expires_at TIMESTAMPTZ NOT NULL,
+    used BOOLEAN DEFAULT FALSE,
+    device_id UUID,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+  );
+`).then(()=>console.log('Tables ready')).catch(e=>console.log('Table init error:', e.message));
+
 app.use('/api/auth', authRoutes);
 app.use('/api/devices', deviceRoutes);
 app.use('/api/recordings', authMiddleware, recordingRoutes);
