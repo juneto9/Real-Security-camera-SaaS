@@ -793,8 +793,11 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
       // Don't call functions directly — set state so useEffect can execute
       // with all current function references available
       if (command === 'arm' || command === 'disarm') {
-        console.log('📡 Received command:', command, params);
-        setPendingCommand({command, params: params || {}});
+        console.log('📡 [DIRECT] Setting pendingCommand:', command, params);
+        setPendingCommand(prev => {
+          console.log('📡 [DIRECT] pendingCommand setter called, prev:', prev, 'new:', command);
+          return {command, params: params || {}};
+        });
       }
     });
 
@@ -1241,7 +1244,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
           )}
 
           <div style={{display:'flex',gap:6,marginTop:8}}>
-            {!streaming
+            {(!streaming && !streamRef.current && !videoRef.current?.srcObject)
               ? <button style={{...st.btn,...st.btnGreen,flex:1}} onClick={startStream}>📡 Start Broadcasting</button>
               : <>
                   {!isArmed
