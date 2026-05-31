@@ -719,13 +719,13 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
       deviceName: devices.find(d=>d.id===linkedDevice)?.name || 'USB Camera',
       camMode: 'security',
     };
-    setEvents(ev=>[event,...ev].slice(0,50));
-    // Bubble up to main App stats
-    if (onEvent) onEvent(event);
+    // Store event with pending clip - will be updated when clip is ready
+    const eventWithClip = {...event, clip_url: null, clip_pending: true};
+    setEvents(ev=>[eventWithClip,...ev].slice(0,50));
+    if (onEvent) onEvent(eventWithClip);
     setStatusMsg(`⚠️ ${type==='motion'?'Motion':'Sound'} detected!`);
-    if (!isRecordingRef.current) startRecording(true);
-    // alertActiveRef is released in the recording onstop handler, not on a timer
-    // This prevents re-triggering during an active clip
+    if (!isRecordingRef.current) startRecording(true, event.id);
+    // alertActiveRef released in recording onstop
   };
 
   const startStream = async () => {
@@ -803,7 +803,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
     setStatusMsg('🟢 Broadcasting — select mode below');
   };
 
-  const startRecording = (triggered=false) => {
+  const startRecording = (triggered=false, triggerEventId=null) => {
     const recStream = tsStreamRef.current || streamRef.current;
     if (!recStream || isRecordingRef.current) return;
     isRecordingRef.current=true; setIsRecording(true);
@@ -844,8 +844,13 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
       }
 
       isRecordingRef.current=false; setIsRecording(false);
-      // Release cooldown NOW — clip is saved, detection can re-trigger
+      // Release cooldown NOW — clip is saved
       alertActiveRef.current=false;
+      // Update event with clip URL so Events tab can play it
+      if (triggerEventId && url) {
+        setEvents(ev=>ev.map(e=>e.id===triggerEventId ? {...e, clip_url:url, clip_pending:false} : e));
+        if (onEvent) onEvent({type:'clip_ready', eventId:triggerEventId, clip_url:url});
+      }
       setStatusMsg(isArmedRef.current?'🟢 Armed — monitoring...':'🟢 Broadcasting');
       if (recordMode==='loop' && isArmedRef.current) startRecording();
     };
@@ -1251,31 +1256,54 @@ function ClipsPage({ devices }) {
 }
 
 function EventsPanel({ events }) {
+  const [playingUrl, setPlayingUrl] = useState(null);
+  const nonSystem = events.filter(e=>e.type!=='system'&&e.type!=='clip_ready');
   return (
     <div style={st.card}>
       <div style={{...st.flexBetween,marginBottom:12}}>
         <span style={{fontWeight:'bold',fontSize:14}}>🚨 All Events</span>
-        <span style={{...st.badge,backgroundColor:'#ff444420',color:C.red,border:`1px solid ${C.red}`}}>{events.length}</span>
+        <span style={{...st.badge,backgroundColor:'#ff444420',color:C.red,border:`1px solid ${C.red}`}}>{nonSystem.length}</span>
       </div>
-      {events.length===0 && <div style={{color:C.sub,fontSize:13,textAlign:'center',padding:'40px 0'}}>No events yet — arm a camera to start monitoring</div>}
+      {nonSystem.length===0 && <div style={{color:C.sub,fontSize:13,textAlign:'center',padding:'40px 0'}}>No events yet — arm a camera to start monitoring</div>}
       <div style={{maxHeight:500,overflowY:'auto'}}>
-        {events.map(e=>(
+        {nonSystem.map(e=>(
           <div key={e.id} style={{display:'flex',gap:10,padding:'10px 0',borderBottom:`1px solid ${C.border}`,alignItems:'center'}}>
             <span style={{fontSize:22}}>{e.type==='motion'?'👁':'🔊'}</span>
             <div style={{flex:1}}>
               <div style={{fontWeight:'bold',fontSize:13}}>{e.type==='motion'?'Motion Detected':'Sound Detected'}</div>
               <div style={{color:C.green,fontSize:12}}>{e.deviceName}</div>
-              <div style={{color:C.sub,fontSize:11}}>{e.time} • {e.date} • {e.camMode==='security'?'Security Cam':'Dash Cam'}</div>
+              <div style={{color:C.sub,fontSize:11}}>{e.time} • {e.date||''}</div>
             </div>
+            {/* Play clip button if recording is available */}
+            {e.clip_url
+              ? <button style={{...st.btn,...st.btnGreen,padding:'5px 10px',fontSize:11}} onClick={()=>setPlayingUrl(e.clip_url)}>▶ Play</button>
+              : e.clip_pending
+                ? <span style={{fontSize:11,color:C.sub}}>⏳ Recording...</span>
+                : <span style={{fontSize:11,color:'#333'}}>No clip</span>
+            }
             <span style={{
               ...st.badge,
               backgroundColor:e.camMode==='security'?'#4488ff20':'#00ff8820',
               color:e.camMode==='security'?C.blue:C.green,
               border:`1px solid ${e.camMode==='security'?C.blue+'60':C.green+'60'}`,
-            }}>{e.camMode==='security'?'SEC CAM':'DASH'}</span>
+              fontSize:10,
+            }}>{e.camMode==='security'?'SEC':'DASH'}</span>
           </div>
         ))}
       </div>
+
+      {/* Video player modal */}
+      {playingUrl && (
+        <div style={st.modal} onClick={()=>setPlayingUrl(null)}>
+          <div style={{...st.modalBox,maxWidth:800,backgroundColor:'#000'}} onClick={e=>e.stopPropagation()}>
+            <div style={{...st.flexBetween,marginBottom:8}}>
+              <span style={{color:C.text,fontSize:12}}>Event Recording</span>
+              <button style={{...st.btn,...st.btnGray,padding:'3px 10px'}} onClick={()=>setPlayingUrl(null)}>✕</button>
+            </div>
+            <video src={playingUrl} controls autoPlay style={{width:'100%',borderRadius:6,backgroundColor:'#000'}}/>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

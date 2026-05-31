@@ -78,6 +78,11 @@ const initTables = async (attempts = 0) => {
       organization_id UUID, device_id UUID, filename TEXT,
       url TEXT, size BIGINT, created_at TIMESTAMPTZ DEFAULT NOW()
     )`);
+    // Add missing columns if table already exists with old schema
+    await db.query(`ALTER TABLE recordings ADD COLUMN IF NOT EXISTS filename TEXT`).catch(()=>{});
+    await db.query(`ALTER TABLE recordings ADD COLUMN IF NOT EXISTS device_id UUID`).catch(()=>{});
+    await db.query(`ALTER TABLE recordings ADD COLUMN IF NOT EXISTS size BIGINT`).catch(()=>{});
+    await db.query(`ALTER TABLE recordings ADD COLUMN IF NOT EXISTS url TEXT`).catch(()=>{});
     await db.query(`CREATE TABLE IF NOT EXISTS enrollment_tokens (
       id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
       token TEXT UNIQUE NOT NULL, organization_id UUID NOT NULL,
