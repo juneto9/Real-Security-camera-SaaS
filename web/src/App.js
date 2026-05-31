@@ -645,8 +645,16 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
       console.log('📡 Camera socket disconnected — will auto-reconnect');
       setCamSocket(null);
     });
+
+    // Register camera:command directly on 's' — bypasses camSocket state delay
+    // This ensures arm/disarm commands always arrive regardless of state timing
+    s.on('camera:command', ({command, params}) => {
+      console.log('📡 [DIRECT] camera:command received on s:', command, params);
+      setPendingCommand({command, params: params || {}});
+    });
+
     camSocketRef.current = s;
-    return ()=>{};
+    return ()=>{ s.off('camera:command'); };
   },[]);
 
   const videoRef   = useRef(null);
