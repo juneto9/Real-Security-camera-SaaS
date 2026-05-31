@@ -97,10 +97,11 @@ function initSignaling(httpServer, corsOrigins) {
     socket.on('auth', (data) => {
       const { role, deviceId, deviceName, organizationId, userId } = data || {};
 
-      // Prefer org from JWT, fall back to what client sends
-      const orgId = socket.jwtPayload?.organizationId
+      // Use client-provided orgId first (camera sends it explicitly),
+      // fall back to JWT, then 'default'
+      const orgId = organizationId
+        || socket.jwtPayload?.organizationId
         || socket.jwtPayload?.org_id
-        || organizationId
         || 'default';
 
       const meta = {
@@ -191,9 +192,19 @@ function initSignaling(httpServer, corsOrigins) {
     // Viewer sends a command to a camera (start, stop, arm, etc.)
     socket.on('camera:command', ({ deviceId, command, params }) => {
       const cameraSocketId = deviceSocketMap.get(deviceId);
-      if (!cameraSocketId) return;
+      logger.info('camera:command received', {
+        deviceId, command,
+        cameraSocketId: cameraSocketId || 'NOT FOUND',
+        fromSocket: socket.id,
+        deviceMapSize: deviceSocketMap.size,
+        allDevices: Array.from(deviceSocketMap.keys()),
+      });
+      if (!cameraSocketId) {
+        logger.warn('camera:command — no camera socket for deviceId', { deviceId });
+        return;
+      }
       io.to(cameraSocketId).emit('camera:command', { command, params, fromSocketId: socket.id });
-      logger.info('Camera command', { deviceId, command });
+      logger.info('Camera command relayed', { deviceId, command, cameraSocketId });
     });
 
     // ── motion:detected ──────────────────────────────────────
