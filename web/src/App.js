@@ -1827,7 +1827,7 @@ export default function App() {
       setOnlineMap(m=>({...m,[deviceId]:{...(m[deviceId]||{}),online:false}}));
     });
     s.on('disconnect',()=>showToast('Disconnected — reconnecting...'));
-    s.io.on('reconnect',()=>{ doAuth(); showToast('Reconnected'); });
+    s.on('connect',()=>doAuth()); // re-auth on every connect/reconnect
     setSocket(s);
     return ()=>s.disconnect();
   },[token,user]);
