@@ -708,8 +708,23 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
     cs.on('camera:command', ({command}) => {
       console.log('📡 Received camera:command:', command);
       if (command === 'start' && !streamRef.current) {
-        console.log('📡 Remote start triggered — starting stream');
-        startStream();
+        // Check if camera permission already granted
+        if (navigator.permissions) {
+          navigator.permissions.query({name:'camera'}).then(perm => {
+            if (perm.state === 'granted') {
+              console.log('📡 Permission granted — auto-starting stream');
+              startStream();
+            } else {
+              // Permission not yet granted — switch to USB tab so user can click
+              console.log('📡 Permission needed — switching to USB tab');
+              document.querySelectorAll('[data-tab]').forEach(t=>{
+                if(t.dataset.tab==='usb') t.click();
+              });
+            }
+          }).catch(()=>startStream()); // permissions API unsupported — try anyway
+        } else {
+          startStream();
+        }
       }
     });
 
@@ -1378,7 +1393,13 @@ function EventsPanel({ events }) {
       {nonSystem.length===0 && <div style={{color:C.sub,fontSize:13,textAlign:'center',padding:'40px 0'}}>No events yet — arm a camera to start monitoring</div>}
       <div style={{maxHeight:500,overflowY:'auto'}}>
         {nonSystem.map(e=>(
-          <div key={e.id} style={{display:'flex',gap:10,padding:'10px 0',borderBottom:`1px solid ${C.border}`,alignItems:'center'}}>
+          <div key={e.id}
+            style={{display:'flex',gap:10,padding:'10px 0',borderBottom:`1px solid ${C.border}`,alignItems:'center',
+              cursor: e.clip_url ? 'pointer' : 'default',
+              backgroundColor: 'transparent',
+            }}
+            onClick={()=>{ if(e.clip_url) setPlayingUrl(e.clip_url); }}
+          >
             <span style={{fontSize:22}}>{e.type==='motion'?'👁':'🔊'}</span>
             <div style={{flex:1}}>
               <div style={{fontWeight:'bold',fontSize:13}}>{e.type==='motion'?'Motion Detected':'Sound Detected'}</div>
@@ -1386,10 +1407,11 @@ function EventsPanel({ events }) {
               <div style={{color:C.sub,fontSize:11}}>{e.time} • {e.date||''}</div>
             </div>
             {e.clip_url
-              ? <button style={{...st.btn,...st.btnGreen,padding:'5px 10px',fontSize:11}} onClick={()=>setPlayingUrl(e.clip_url)}>▶ Play</button>
+              ? <button style={{...st.btn,...st.btnGreen,padding:'5px 10px',fontSize:11}}
+                  onClick={ev=>{ev.stopPropagation(); setPlayingUrl(e.clip_url);}}>▶ Play</button>
               : e.clip_pending
                 ? <span style={{fontSize:11,color:C.sub}}>⏳ Recording...</span>
-                : <span style={{fontSize:11,color:'#333'}}>No clip</span>
+                : <span style={{fontSize:11,color:'#444'}}>No clip</span>
             }
             <span style={{
               ...st.badge,
