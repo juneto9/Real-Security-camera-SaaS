@@ -1883,47 +1883,16 @@ export default function App() {
         } catch {}
       }, 2000);
     });
-   s.on('camera:offline',({deviceId})=>{
-  setOnlineMap(m=>({...m,[deviceId]:{...(m[deviceId]||{}),online:false}}));
-});
-
-// ── Socket listeners for motion/sound events from cameras ──
-s.on('motion:detected', ({deviceId, deviceName, timestamp}) => {
-  console.log('🎥 Motion detected from socket:', deviceName);
-  const event = {
-    id: Date.now(),
-    type: 'motion',
-    deviceId,
-    deviceName: deviceName || 'Unknown Camera',
-    time: new Date().toLocaleTimeString(),
-    date: new Date().toLocaleDateString('en-US', {month:'short', day:'2-digit', year:'numeric'}),
-    clip_url: null,
-    clip_pending: false,
-    camMode: 'security',
-  };
-  setEvents(ev => [event, ...ev].slice(0, 100));
-  localStorage.setItem('recentEvents', JSON.stringify([event, ...events].slice(0, 100)));
-});
-
-s.on('sound:detected', ({deviceId, deviceName, timestamp}) => {
-  console.log('🎤 Sound detected from socket:', deviceName);
-  const event = {
-    id: Date.now(),
-    type: 'sound',
-    deviceId,
-    deviceName: deviceName || 'Unknown Camera',
-    time: new Date().toLocaleTimeString(),
-    date: new Date().toLocaleDateString('en-US', {month:'short', day:'2-digit', year:'numeric'}),
-    clip_url: null,
-    clip_pending: false,
-    camMode: 'security',
-  };
-  setEvents(ev => [event, ...ev].slice(0, 100));
-  localStorage.setItem('recentEvents', JSON.stringify([event, ...events].slice(0, 100)));
-});
-
-s.on('disconnect',()=>showToast('Disconnected — reconnecting...'));
-s.on('connect',()=>doAuth());
+    s.on('camera:online', ({deviceId,deviceName})=>{
+      console.log('📷 Web received camera:online:', deviceName, deviceId);
+      setOnlineMap(m=>({...m,[deviceId]:{online:true,name:deviceName}}));
+      setEvents(ev=>[{type:'system',id:Date.now(),deviceName,time:new Date().toLocaleTimeString(),message:`${deviceName} came online`},...ev]);
+    });
+    s.on('camera:offline',({deviceId})=>{
+      setOnlineMap(m=>({...m,[deviceId]:{...(m[deviceId]||{}),online:false}}));
+    });
+    s.on('disconnect',()=>showToast('Disconnected — reconnecting...'));
+    s.on('connect',()=>doAuth());
     setSocket(s);
     return ()=>s.disconnect();
   },[token,user]);
