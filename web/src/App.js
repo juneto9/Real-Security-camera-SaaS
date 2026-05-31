@@ -46,7 +46,7 @@ const st = {
   tab:         { padding:'8px 16px', borderRadius:6, cursor:'pointer', fontSize:13, fontWeight:'bold', border:'none' },
   modal:       { position:'fixed', inset:0, backgroundColor:'rgba(0,0,0,0.85)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:200, padding:16 },
   modalBox:    { backgroundColor:C.surface, borderRadius:12, padding:24, width:'100%', maxWidth:520, border:`1px solid ${C.border}`, maxHeight:'90vh', overflowY:'auto' },
-  toast:       { position:'fixed', bottom:20, right:20, backgroundColor:C.green, color:'#000', padding:'10px 16px', borderRadius:8, fontWeight:'bold', zIndex:300, fontSize:13 },
+  toast:       { position:'fixed', bottom:20, right:20, backgroundColor:C.green, color:'#000', padding:'12px 20px', borderRadius:10, fontWeight:'bold', zIndex:300, fontSize:14, boxShadow:'0 4px 20px rgba(0,255,136,0.4)', maxWidth:340 },
   toggle:      { display:'flex', alignItems:'center', justifyContent:'space-between', padding:'10px 0', borderBottom:`1px solid ${C.border}` },
   toggleLabel: { fontSize:14, color:C.text },
   toggleNote:  { fontSize:11, color:C.sub, marginTop:2 },
@@ -72,10 +72,10 @@ function Toggle({ value, onChange, color='#00ff88' }) {
 // ─── Camera Settings Panel ────────────────────────────────────────
 function CameraSettingsPanel({ device, settings, onChange, onClose }) {
   const [s, setS] = useState(settings || {
-    camMode: 'dashcam',
+    camMode: 'security',
     loopForever: false,
-    loopDuration: 300,
-    clipSize: 300,
+    loopDuration: 60,
+    clipSize: 60,
     motionEnabled: true,
     soundEnabled: true,
     nightVision: false,
@@ -356,7 +356,7 @@ function CameraCard({ device, socket, onEvent, onSettings, settings }) {
     return ()=>clearInterval(frozenTimer);
   },[watching]);
 
-  const camMode   = settings?.camMode || 'dashcam';
+  const camMode   = settings?.camMode || 'security';
   const modeColor = camMode==='dashcam' ? C.green : C.blue;
   const modeLabel = camMode==='dashcam' ? '🚗 Dash Cam' : '🔒 Security Cam';
 
@@ -893,7 +893,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
     const eventWithClip = {...event, clip_url: null, clip_pending: true};
     setEvents(ev=>[eventWithClip,...ev].slice(0,50));
     if (onEvent) onEvent(eventWithClip);
-    setStatusMsg(`⚠️ ${type==='motion'?'Motion':'Sound'} detected!`);
+    setStatusMsg(`⚠️ ${type==='motion'?'Motion':'Sound'} detected! — Recording...`);
     if (!isRecordingRef.current) startRecording(true, event.id);
   };
 
@@ -1100,10 +1100,15 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
     if (!pendingCommand) return;
     const {command, params} = pendingCommand;
     setPendingCommand(null); // clear immediately
+    console.log('📡 Executing command:', command, '| stream:', !!streamRef.current, '| videoRef:', !!videoRef.current?.srcObject);
 
     if (command === 'arm') {
+      // Recover stream from videoRef if needed
+      if (!streamRef.current && videoRef.current?.srcObject) {
+        streamRef.current = videoRef.current.srcObject;
+      }
       if (!streamRef.current) {
-        console.log('📡 Arm: no stream yet');
+        console.log('📡 Arm: no stream — cannot arm without active broadcast');
         return;
       }
       // Apply settings from admin
@@ -1372,6 +1377,8 @@ function ClipsPage({ devices }) {
   const [playingUrl, setPlayingUrl] = React.useState(null);
   const [playingName,setPlayingName]= React.useState('');
   const [totalSize,  setTotalSize]  = React.useState(0);
+  const [selected,   setSelected]   = React.useState(new Set());
+  const [selectMode, setSelectMode] = React.useState(false);
   const retDays = parseInt(localStorage.getItem('retentionDays')||'14');
 
   const loadClips = async () => {
@@ -1390,6 +1397,24 @@ function ClipsPage({ devices }) {
   const deleteClip = async (id) => {
     if (!window.confirm('Delete this clip?')) return;
     try { await api.delete('/api/recordings/'+id); setClips(c=>c.filter(x=>x.id!==id)); } catch {}
+  };
+
+  const deleteSelected = async () => {
+    if (!window.confirm(`Delete ${selected.size} clips?`)) return;
+    for (const id of selected) {
+      try { await api.delete('/api/recordings/'+id); } catch {}
+    }
+    setClips(c=>c.filter(x=>!selected.has(x.id)));
+    setSelected(new Set());
+    setSelectMode(false);
+  };
+
+  const toggleSelect = (id) => {
+    setSelected(s=>{ const n=new Set(s); n.has(id)?n.delete(id):n.add(id); return n; });
+  };
+
+  const selectAll = () => {
+    setSelected(new Set(filtered.map(c=>c.id)));
   };
 
   const fmtSize = b => !b ? '-' : b<1048576 ? (b/1024).toFixed(1)+' KB' : b<1073741824 ? (b/1048576).toFixed(1)+' MB' : (b/1073741824).toFixed(2)+' GB';
@@ -1427,6 +1452,23 @@ function ClipsPage({ devices }) {
             <option value="oldest">Oldest First</option>
           </select>
           <button style={{...st.btn,...st.btnGray,fontSize:12}} onClick={loadClips}>↻ Refresh</button>
+          <button style={{...st.btn,fontSize:12,
+            backgroundColor:selectMode?C.blue:C.card,
+            color:selectMode?'#fff':C.text,
+            border:`1px solid ${selectMode?C.blue:C.border}`
+          }} onClick={()=>{ setSelectMode(s=>!s); setSelected(new Set()); }}>
+            {selectMode?'✕ Cancel':'☑ Select'}
+          </button>
+          {selectMode && selected.size>0 && (
+            <button style={{...st.btn,...st.btnRed,fontSize:12}} onClick={deleteSelected}>
+              🗑 Delete {selected.size}
+            </button>
+          )}
+          {selectMode && (
+            <button style={{...st.btn,...st.btnGray,fontSize:12}} onClick={selectAll}>
+              Select All
+            </button>
+          )}
         </div>
       </div>
 
@@ -1463,9 +1505,18 @@ function ClipsPage({ devices }) {
           </div>
           <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))',gap:12}}>
             {dclips.map(clip=>(
-              <div key={clip.id||clip.filename} style={{...st.card,padding:12}}>
+              <div key={clip.id||clip.filename} style={{...st.card,padding:12,
+                border: selectMode&&selected.has(clip.id) ? `2px solid ${C.green}` : `1px solid ${C.border}`
+              }}>
+                {selectMode && (
+                  <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
+                    <input type="checkbox" checked={selected.has(clip.id)} onChange={()=>toggleSelect(clip.id)}
+                      style={{width:16,height:16,cursor:'pointer',accentColor:C.green}}/>
+                    <span style={{fontSize:12,color:C.sub}}>Select</span>
+                  </div>
+                )}
                 <div style={{backgroundColor:'#000',borderRadius:6,aspectRatio:'16/9',marginBottom:8,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',color:C.sub,position:'relative'}}
-                  onClick={()=>{ setPlayingUrl(clip.url); setPlayingName(clip.filename); }}>
+                  onClick={()=>{ if(selectMode){toggleSelect(clip.id);}else{setPlayingUrl(clip.url); setPlayingName(clip.filename);} }}>
                   <span style={{fontSize:32}}>▶</span>
                   <span style={{fontSize:11,marginTop:4}}>Click to play</span>
                   <span style={{position:'absolute',bottom:4,right:6,fontSize:11,color:'rgba(255,255,255,0.7)',backgroundColor:'rgba(0,0,0,0.5)',padding:'1px 5px',borderRadius:3}}>{fmtSize(clip.size)}</span>
@@ -1932,7 +1983,18 @@ export default function App() {
   const [token,      setToken]      = useState(localStorage.getItem('accessToken'));
   const [socket,     setSocket]     = useState(null);
   const [devices,    setDevices]    = useState([]);
-  const [events,     setEvents]     = useState([]);
+  const [events,     setEvents]     = useState(()=>{
+    // Restore today's events from localStorage
+    try {
+      const saved = localStorage.getItem('securityEvents');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        const today = new Date().toDateString();
+        return parsed.filter(e => new Date(e.savedAt||e.id).toDateString()===today);
+      }
+    } catch {}
+    return [];
+  });
   const [tab,        setTab]        = useState('cameras');
   const [showAdd,    setShowAdd]    = useState(false);
   const [toast,      setToast]      = useState('');
@@ -1944,7 +2006,21 @@ export default function App() {
   const [showAdmins,   setShowAdmins]   = useState(false);
   const [usbStatus,    setUsbStatus]    = useState(''); // 'armed' | 'recording' | ''
 
-  const showToast = msg => { setToast(msg); setTimeout(()=>setToast(''),3000); };
+  const showToast = (msg, duration=3000) => { setToast(msg); setTimeout(()=>setToast(''),duration); };
+  // Persist events to localStorage (today only)
+  const addEvent = (e) => {
+    setEvents(ev => {
+      const updated = [e,...ev].slice(0,100);
+      try { localStorage.setItem('securityEvents', JSON.stringify(
+        updated.map(x=>({...x, savedAt: x.savedAt||Date.now()}))
+      )); } catch {}
+      return updated;
+    });
+    // Show 14-second toast for motion/sound events
+    if (e.type==='motion'||e.type==='sound') {
+      showToast(`🚨 ${e.type==='motion'?'Motion':'Sound'} detected — ${e.deviceName||'Camera'}`, 14000);
+    }
+  };
 
   useEffect(()=>{
     if (!token) return;
@@ -2089,7 +2165,7 @@ export default function App() {
                   <CameraCard key={d.id}
                     device={{...d,online:onlineMap[d.id]?.online||onlineMap[d.id]===true||d.is_active}}
                     socket={socket}
-                    onEvent={e=>setEvents(ev=>[e,...ev])}
+                    onEvent={e=>addEvent(e)}
                     settings={deviceSettings[d.id]}
                     onSettings={()=>setSettingsFor(d)}
                   />
@@ -2101,12 +2177,15 @@ export default function App() {
         <div style={{display: tab==='usb' ? 'block' : 'none'}}>
           <USBCameraPage socket={socket} devices={devices} userId={user?.userId} organizationId={user?.organizationId} onUsbStatus={setUsbStatus} onEvent={e=>{
             if (e.type==='clip_ready') {
-              // Update existing event with clip_url rather than adding new entry
-              setEvents(ev=>ev.map(existing=>
-                existing.id===e.eventId ? {...existing, clip_url:e.clip_url, clip_pending:false} : existing
-              ));
+              setEvents(ev=>{
+                const updated = ev.map(existing=>
+                  existing.id===e.eventId ? {...existing, clip_url:e.clip_url, clip_pending:false} : existing
+                );
+                try { localStorage.setItem('securityEvents', JSON.stringify(updated)); } catch {}
+                return updated;
+              });
             } else {
-              setEvents(ev=>[e,...ev]);
+              addEvent(e);
             }
           }}/>
         </div>
