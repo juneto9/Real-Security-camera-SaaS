@@ -597,28 +597,8 @@ const CLIP_SIZES = [
 
 function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
   const camSocketRef = useRef(null);
-  const [camSocket, setCamSocket] = useState(null);
-
-  useEffect(()=>{
-    const token = localStorage.getItem('accessToken');
-    if (!token || camSocketRef.current) return;
-    const API_URL = 'https://whale-app-hxokg.ondigitalocean.app';
-    const s = io(API_URL, {
-      auth:{ token }, transports:['websocket','polling']
-    });
-    s.on('connect', ()=>{
-      console.log('📡 Camera socket connected:', s.id);
-      camSocketRef.current = s;
-      setCamSocket(null);
-      setTimeout(()=>setCamSocket(s), 10);
-    });
-    s.on('disconnect', ()=>{
-      console.log('📡 Camera socket disconnected — will auto-reconnect');
-      setCamSocket(null);
-    });
-    camSocketRef.current = s;
-    return ()=>{};
-  },[]);
+  // NOTE: No camSocket state — all socket ops use camSocketRef directly
+  // This avoids closure staleness: refs always have current value
 
   const videoRef   = useRef(null);
   const streamRef  = useRef(null);
@@ -688,65 +668,34 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
     isArmedRef.current = isArmed;
   },[isArmed]);
 
+  // ── Single socket init — all handlers registered once inside connect ──
   useEffect(()=>{
-    const cs = camSocket;
-    if (!cs || !cs.id) { return; }
-    console.log('📺 Registering handlers on camera socket:', cs.id);
-
-    // Auth as camera in standby immediately — even before broadcasting
-    // This allows the signaling server to route camera:command to us
     const token = localStorage.getItem('accessToken');
-    const payload = token ? JSON.parse(atob(token.split('.')[1])) : {};
-    const orgId = payload.organizationId || payload.org_id || organizationId;
-    const currentLinkedDevice = sessionStorage.getItem('usbLinkedDevice') || linkedDevice || (devices[0]?.id);
-    if (currentLinkedDevice) {
-      const devName = devices.find(d=>d.id===currentLinkedDevice)?.name || 'PC Camera';
-      cs.emit('auth', {
-        deviceId: currentLinkedDevice,
-        deviceName: devName,
-        role: 'camera',
-        organizationId: orgId,
-        userId: payload.userId || userId,
-      });
-      console.log('📡 Camera socket standby auth:', devName, currentLinkedDevice);
-    }
+    if (!token || camSocketRef.current) return;
+    const API_URL = 'https://whale-app-hxokg.ondigitalocean.app';
+    const s = io(API_URL, { auth:{ token }, transports:['websocket','polling'] });
 
-    // Remote start — viewer clicked Watch Live on Cameras tab
-    cs.on('camera:command', ({command}) => {
-      console.log('📡 Received camera:command:', command);
-      if (command === 'start' && !streamRef.current) {
-        console.log('📡 Remote start — checking camera permission');
-        // Check if camera permission already granted (no user gesture needed)
-        navigator.permissions.query({name:'camera'}).then(perm => {
-          if (perm.state === 'granted') {
-            // Permission already granted — can start silently
-            console.log('📡 Camera permission granted — auto-starting');
-            startStream();
-          } else {
-            // Need user gesture — show a prominent banner on the USB tab
-            console.log('📡 Camera permission needed — showing banner');
-            setRemoteStartPending(true);
-            // Switch to USB tab so user sees the banner
-            const tabs = document.querySelectorAll('[data-tab]');
-            tabs.forEach(t=>{ if(t.dataset.tab==='usb') t.click(); });
-          }
-        }).catch(()=>{
-          // permissions API not supported — try directly, may work if previously granted
-          startStream();
-        });
-      }
-    });
+    const doAuth = () => {
+      const payload = token ? JSON.parse(atob(token.split('.')[1])) : {};
+      const orgId = payload.organizationId || payload.org_id || organizationId;
+      const devId = sessionStorage.getItem('usbLinkedDevice') || camSocketRef.current?._linkedDevice;
+      if (!devId) return;
+      const devName = camSocketRef.current?._linkedName || 'PC Camera';
+      s.emit('auth', { deviceId:devId, deviceName:devName, role:'camera', organizationId:orgId, userId:payload.userId||userId });
+      console.log('📡 Camera socket auth:', devName, devId);
+    };
 
-    // Helper: create WebRTC peer connection and send offer to a viewer
+    // Helper — uses refs so always has current stream
     const connectViewerToPeer = async (viewerSocketId) => {
-      if (!streamRef.current) return false;
+      const stream = streamRef.current;
+      if (!stream) return false;
       const pc = new RTCPeerConnection({iceServers:[
         {urls:'stun:stun.l.google.com:19302'},
         {urls:'stun:stun1.l.google.com:19302'},
       ]});
       pcsRef.current[viewerSocketId] = pc;
-      streamRef.current.getTracks().forEach(t => pc.addTrack(t, streamRef.current));
-      pc.onicecandidate = e => { if(e.candidate) cs.emit('webrtc:ice',{targetSocketId:viewerSocketId,candidate:e.candidate}); };
+      stream.getTracks().forEach(t => pc.addTrack(t, stream));
+      pc.onicecandidate = e => { if(e.candidate) s.emit('webrtc:ice',{targetSocketId:viewerSocketId,candidate:e.candidate}); };
       pc.onconnectionstatechange = () => {
         if(pc.connectionState==='connected') setViewers(v=>v+1);
         if(pc.connectionState==='disconnected'||pc.connectionState==='closed'){
@@ -755,45 +704,74 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
       };
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
-      console.log('📺 Camera sending offer to viewer:', viewerSocketId);
-      cs.emit('webrtc:offer',{targetSocketId:viewerSocketId,offer});
+      s.emit('webrtc:offer',{targetSocketId:viewerSocketId,offer});
+      console.log('📺 Offer sent to viewer:', viewerSocketId);
       return true;
     };
 
-    cs.on('viewer:request', async ({viewerSocketId}) => {
-      console.log('📺 viewer:request from:', viewerSocketId, '— stream ready:', !!streamRef.current);
+    s.on('connect', () => {
+      console.log('📡 Camera socket connected:', s.id);
+      camSocketRef.current = s;
+      doAuth();
+    });
+
+    s.on('disconnect', () => {
+      console.log('📡 Camera socket disconnected');
+    });
+
+    // Remote start command from viewer clicking Watch Live
+    s.on('camera:command', ({command}) => {
+      console.log('📡 camera:command received:', command);
+      if (command === 'start' && !streamRef.current) {
+        navigator.permissions.query({name:'camera'}).then(perm => {
+          if (perm.state === 'granted') {
+            startStream();
+          } else {
+            setRemoteStartPending(true);
+            document.querySelectorAll('[data-tab]').forEach(t=>{ if(t.dataset.tab==='usb') t.click(); });
+          }
+        }).catch(()=>startStream());
+      }
+    });
+
+    // Viewer wants this camera's stream
+    s.on('viewer:request', async ({viewerSocketId}) => {
+      console.log('📺 viewer:request from:', viewerSocketId, '| stream ready:', !!streamRef.current);
       if (streamRef.current) {
-        // Stream already running — connect immediately
         connectViewerToPeer(viewerSocketId);
       } else {
-        // Stream not ready yet — queue viewer and retry every 500ms for 10s
-        console.log('📺 Stream not ready — queuing viewer, will retry');
+        // Queue and retry every 500ms for 10s
         pendingViewersRef.current.push(viewerSocketId);
-        let attempts = 0;
-        const retry = setInterval(async () => {
-          attempts++;
+        let tries = 0;
+        const poll = setInterval(() => {
+          tries++;
           if (streamRef.current) {
-            clearInterval(retry);
-            const idx = pendingViewersRef.current.indexOf(viewerSocketId);
-            if (idx > -1) {
-              pendingViewersRef.current.splice(idx, 1);
-              console.log('📺 Stream now ready — connecting queued viewer:', viewerSocketId);
-              connectViewerToPeer(viewerSocketId);
-            }
-          } else if (attempts >= 20) {
-            // 10 seconds elapsed — give up
-            clearInterval(retry);
-            const idx = pendingViewersRef.current.indexOf(viewerSocketId);
-            if (idx > -1) pendingViewersRef.current.splice(idx, 1);
-            console.log('📺 Stream never started for viewer:', viewerSocketId);
+            clearInterval(poll);
+            const i = pendingViewersRef.current.indexOf(viewerSocketId);
+            if (i > -1) { pendingViewersRef.current.splice(i,1); connectViewerToPeer(viewerSocketId); }
+          } else if (tries >= 20) {
+            clearInterval(poll);
+            const i = pendingViewersRef.current.indexOf(viewerSocketId);
+            if (i > -1) pendingViewersRef.current.splice(i,1);
+            console.log('📺 Gave up waiting for stream for viewer:', viewerSocketId);
           }
         }, 500);
       }
     });
-    cs.on('webrtc:answer',async({answer,fromSocketId})=>{ const pc=pcsRef.current[fromSocketId]; if(pc) await pc.setRemoteDescription(new RTCSessionDescription(answer)).catch(()=>{}); });
-    cs.on('webrtc:ice',async({candidate,fromSocketId})=>{ const pc=pcsRef.current[fromSocketId]; if(pc&&candidate) await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(()=>{}); });
-    return ()=>{ cs.off('viewer:request'); cs.off('webrtc:answer'); cs.off('webrtc:ice'); };
-  },[camSocket]);
+
+    s.on('webrtc:answer', async ({answer,fromSocketId}) => {
+      const pc = pcsRef.current[fromSocketId];
+      if (pc) await pc.setRemoteDescription(new RTCSessionDescription(answer)).catch(()=>{});
+    });
+
+    s.on('webrtc:ice', async ({candidate,fromSocketId}) => {
+      const pc = pcsRef.current[fromSocketId];
+      if (pc && candidate) await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(()=>{});
+    });
+
+    camSocketRef.current = s;
+    return () => { s.disconnect(); camSocketRef.current = null; };
+  },[]);
 
   const startMotionDetection = () => {
     if (!streamRef.current || !motionEnabled) return;
@@ -895,35 +873,24 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
       }
       streamRef.current = stream;
       if (videoRef.current) videoRef.current.srcObject = stream;
+      // Store on ref so doAuth() inside socket useEffect can find it
+      if (camSocketRef.current) {
+        const devName = devices.find(d=>d.id===linkedDevice)?.name || 'PC Camera';
+        camSocketRef.current._linkedDevice = linkedDevice;
+        camSocketRef.current._linkedName = devName;
+        // Re-auth now that we have a linked device
+        const token = localStorage.getItem('accessToken');
+        const payload = token ? JSON.parse(atob(token.split('.')[1])) : {};
+        const orgId = payload.organizationId || payload.org_id || organizationId;
+        camSocketRef.current.emit('auth',{deviceId:linkedDevice,deviceName:devName,role:'camera',organizationId:orgId,userId:payload.userId||userId});
+        console.log('📡 Re-authed after stream start:', devName);
+      }
 
-      // Flush any viewers that were waiting for the stream to start
+      // Flush any viewers queued while stream was starting
       if (pendingViewersRef.current.length > 0) {
         console.log('📺 Flushing', pendingViewersRef.current.length, 'pending viewer(s)');
-        // Short delay to ensure tracks are fully ready
-        setTimeout(async () => {
-          for (const viewerSocketId of [...pendingViewersRef.current]) {
-            const pc = new RTCPeerConnection({iceServers:[
-              {urls:'stun:stun.l.google.com:19302'},
-              {urls:'stun:stun1.l.google.com:19302'},
-            ]});
-            pcsRef.current[viewerSocketId] = pc;
-            streamRef.current.getTracks().forEach(t => pc.addTrack(t, streamRef.current));
-            pc.onicecandidate = e => {
-              if(e.candidate && camSocketRef.current)
-                camSocketRef.current.emit('webrtc:ice',{targetSocketId:viewerSocketId,candidate:e.candidate});
-            };
-            pc.onconnectionstatechange = () => {
-              if(pc.connectionState==='connected') setViewers(v=>v+1);
-              if(pc.connectionState==='disconnected'||pc.connectionState==='closed'){
-                setViewers(v=>Math.max(0,v-1)); delete pcsRef.current[viewerSocketId];
-              }
-            };
-            const offer = await pc.createOffer();
-            await pc.setLocalDescription(offer);
-            camSocketRef.current.emit('webrtc:offer',{targetSocketId:viewerSocketId,offer});
-          }
-          pendingViewersRef.current = [];
-        }, 300);
+        // pendingViewers will be drained by the poll intervals already running
+        // (they check streamRef.current every 500ms — now it's set, they'll connect)
       }
 
       // PATCH 1: Enumerate devices HERE — after permission granted, labels are available
