@@ -420,9 +420,12 @@ function CameraCard({ device, socket, onEvent, onSettings, settings }) {
                 {online?'▶ Watch Live':'Offline'}
               </button>
               {!online && <button style={{...st.btn,flex:1,fontSize:11,backgroundColor:'#4488ff20',color:C.blue,border:`1px solid ${C.blue}`}} onClick={()=>{
+                // Switch to USB tab and auto-start broadcasting
                 sessionStorage.setItem('autoStartBroadcast','1');
-                document.querySelector('[data-tab="usb"]')?.click();
-              }}>📡 Start Feed</button>}
+                // Find and click the USB/Webcam tab
+                const tabs = document.querySelectorAll('[data-tab]');
+                tabs.forEach(t=>{ if(t.dataset.tab==='usb') t.click(); });
+              }}>📡 Go to Broadcast</button>}
             </>
           : <>
               <button style={{...st.btn,...st.btnRed,flex:1}} onClick={stopWatching}>⏹ Stop</button>
@@ -643,8 +646,9 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
   const alertActiveRef   = useRef(false);
   const isArmedRef       = useRef(false);
   const isRecordingRef   = useRef(false);
-  const canvasCleanupRef = useRef(null);
-  const tsStreamRef      = useRef(null); // timestamped stream for recording
+  const canvasCleanupRef  = useRef(null);
+  const tsStreamRef       = useRef(null); // timestamped stream for recording
+  const triggerEventIdRef = useRef(null); // track which event triggered current recording
 
   // Auto-start broadcasting on mount if previously active
   const autoStartRef = useRef(false);
@@ -860,6 +864,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
   };
 
   const startRecording = (triggered=false, triggerEventId=null) => {
+    if (triggerEventId) triggerEventIdRef.current = triggerEventId;
     const recStream = tsStreamRef.current || streamRef.current;
     if (!recStream || isRecordingRef.current) return;
     isRecordingRef.current=true; setIsRecording(true);
@@ -898,9 +903,11 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
             setStatusMsg('☁️ Clip uploaded');
             const data = await r.json().catch(()=>({}));
             const clipUrl = data?.data?.url;
-            if (triggerEventId && clipUrl) {
-              setEvents(ev=>ev.map(e=>e.id===triggerEventId?{...e,clip_url:clipUrl,clip_pending:false}:e));
-              if (onEvent) onEvent({type:'clip_ready',eventId:triggerEventId,clip_url:clipUrl});
+            const evId = triggerEventIdRef.current;
+            if (evId && clipUrl) {
+              setEvents(ev=>ev.map(e=>e.id===evId?{...e,clip_url:clipUrl,clip_pending:false}:e));
+              if (onEvent) onEvent({type:'clip_ready',eventId:evId,clip_url:clipUrl});
+              triggerEventIdRef.current = null;
             }
           } else {
             console.warn('Upload failed:', r.status);

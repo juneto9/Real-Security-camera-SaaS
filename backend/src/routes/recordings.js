@@ -80,7 +80,7 @@ router.post('/upload', upload.single('video'), async (req, res) => {
         Key:         key,
         Body:        req.file.buffer,
         ContentType: req.file.mimetype || 'video/webm',
-        ACL:         'private',
+        ACL:         'public-read',
       }));
       url = `https://${bucket}.${region}.digitaloceanspaces.com/${key}`;
       console.log('Uploaded to Spaces:', url);
@@ -114,6 +114,21 @@ router.post('/upload', upload.single('video'), async (req, res) => {
     }
   } catch (e) {
     console.error('Upload error:', e.message);
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+// GET /api/recordings/:id/url — get presigned URL for private clip
+router.get('/:id/url', async (req, res) => {
+  try {
+    const result = await req.app.get('db').query(
+      'SELECT url, filename FROM recordings WHERE id = $1 AND organization_id = $2',
+      [req.params.id, req.user.organizationId]
+    );
+    if (!result.rows[0]) return res.status(404).json({ success:false, message:'Not found' });
+    // Return the URL directly - clips are now public-read
+    res.json({ success: true, data: { url: result.rows[0].url } });
+  } catch(e) {
     res.status(500).json({ success: false, message: e.message });
   }
 });
