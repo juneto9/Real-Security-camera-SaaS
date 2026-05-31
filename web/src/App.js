@@ -220,9 +220,9 @@ function CameraCard({ device, socket, onEvent, onSettings, settings }) {
   const canvasRef       = useRef(null);
   const audioCtxRef     = useRef(null);
   const localMicRef     = useRef(null);
-  const [online,        setOnline]       = useState(device.is_active || false);
+  const [online,        setOnline]       = useState(device.online || false);
   const [watching,      setWatching]     = useState(false);
-  const [status,        setStatus]       = useState(device.is_active ? 'Online' : 'Offline');
+  const [status,        setStatus]       = useState(device.online ? 'Online' : 'Offline');
   const [zoom,          setZoom]         = useState(1);
   const [muted,         setMuted]        = useState(true);
   const [nvMode,        setNvMode]       = useState('off');
@@ -945,7 +945,9 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
         const payload = token ? JSON.parse(atob(token.split('.')[1])) : {};
         const orgId = payload.organizationId || payload.org_id || organizationId;
         camSocketRef.current.emit('auth',{deviceId:linkedDevice,deviceName:devName,role:'camera',organizationId:orgId,userId:payload.userId||userId});
-        console.log('📡 Re-authed after stream start:', devName);
+        // Tell all viewers this camera is now live and ready
+        camSocketRef.current.emit('camera:online',{deviceId:linkedDevice,deviceName:devName});
+        console.log('📡 Re-authed + camera:online emitted:', devName);
       }
 
       // Flush any viewers queued while stream was starting
@@ -1018,7 +1020,9 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
     setStreaming(false); setIsArmed(false); setIsRecording(false);
     setViewers(0); setStatusMsg('Ready'); setRecordingTime(0);
     isArmedRef.current=false; isRecordingRef.current=false;
-    if (linkedDevice&&camSocketRef.current) camSocketRef.current.emit('camera:offline',{deviceId:linkedDevice});
+    if (linkedDevice&&camSocketRef.current) {
+      camSocketRef.current.emit('camera:offline',{deviceId:linkedDevice});
+    }
   };
 
   const armCamera = () => {
@@ -2031,7 +2035,7 @@ export default function App() {
           <div style={st.stat}>
             <p style={{...st.statN,color:C.green}}>
               {new Set([
-                ...devices.filter(d=>d.is_active||onlineMap[d.id]?.online||onlineMap[d.id]===true).map(d=>d.id),
+                ...devices.filter(d=>onlineMap[d.id]?.online||onlineMap[d.id]===true).map(d=>d.id),
                 ...Object.entries(onlineMap).filter(([,v])=>v?.online||v===true).map(([k])=>k)
               ]).size}
             </p>
@@ -2072,7 +2076,7 @@ export default function App() {
             : <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(320px,1fr))',gap:16}}>
                 {devices.map(d=>(
                   <CameraCard key={d.id}
-                    device={{...d,online:onlineMap[d.id]?.online||onlineMap[d.id]===true||d.is_active}}
+                    device={{...d,online:onlineMap[d.id]?.online||onlineMap[d.id]===true}}
                     socket={socket}
                     onEvent={e=>setEvents(ev=>[e,...ev])}
                     settings={deviceSettings[d.id]}
