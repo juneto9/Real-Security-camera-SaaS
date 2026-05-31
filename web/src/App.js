@@ -646,11 +646,19 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
       setCamSocket(null);
     });
 
-    // Register camera:command directly on 's' — bypasses camSocket state delay
-    // This ensures arm/disarm commands always arrive regardless of state timing
+    // Register camera:command directly on 's'
     s.on('camera:command', ({command, params}) => {
-      console.log('📡 [DIRECT] camera:command received on s:', command, params);
-      setPendingCommand({command, params: params || {}});
+      console.log('📡 [DIRECT] camera:command on s:', command, params);
+      if (command === 'arm' || command === 'disarm') {
+        if (executeCommandRef.current) {
+          executeCommandRef.current(command, params || {});
+        } else if (window.__executeCommand) {
+          window.__executeCommand(command, params || {});
+        } else {
+          window.__pendingSocketCommand = {command, params: params || {}};
+          console.log('📡 Stored pending command:', command);
+        }
+      }
     });
 
     camSocketRef.current = s;
