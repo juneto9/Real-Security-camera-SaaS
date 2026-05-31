@@ -231,6 +231,7 @@ function CameraCard({ device, socket, onEvent, onSettings, settings }) {
   const [brightness,    setBrightness]   = useState(100);
   const [contrast,      setContrast]     = useState(100);
   const [snapshot,      setSnapshot]     = useState(null);
+  const [armed,         setArmed]        = useState(false);
 
   useEffect(()=>{
     if (!socket) return;
@@ -456,6 +457,23 @@ function CameraCard({ device, socket, onEvent, onSettings, settings }) {
             </>
         }
         {watching && <>
+          {/* Monitoring arm/disarm — sends command to camera via socket */}
+          <button
+            title={armed?'Stop Monitoring':'Start Monitoring'}
+            style={{...st.btn, padding:'6px 10px',
+              backgroundColor: armed ? 'rgba(255,68,68,0.2)' : 'rgba(0,255,136,0.15)',
+              color: armed ? C.red : C.green,
+              border: `1px solid ${armed ? C.red : C.green}`,
+              fontSize:11, fontWeight:'bold',
+            }}
+            onClick={()=>{
+              const cmd = armed ? 'disarm' : 'arm';
+              if (socket) socket.emit('camera:command',{deviceId:device.id,command:cmd});
+              setArmed(a=>!a);
+            }}
+          >
+            {armed ? '🔴 Disarm' : '🟢 Monitor'}
+          </button>
           <button title={muted?'Unmute':'Mute'} style={{...st.btn,...st.btnGray,padding:'6px 10px'}} onClick={()=>{ if(videoRef.current) videoRef.current.muted=!muted; setMuted(m=>!m); }}>
             {muted?'🔇':'🔊'}
           </button>
@@ -708,32 +726,48 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
     cs.on('camera:command', ({command}) => {
       console.log('📡 Received camera:command:', command);
       if (command === 'start' && !streamRef.current) {
-        // Check if camera permission already granted
         if (navigator.permissions) {
           navigator.permissions.query({name:'camera'}).then(perm => {
             if (perm.state === 'granted') {
               console.log('📡 Permission granted — auto-starting stream');
               startStream();
             } else {
-              // Permission not yet granted — switch to USB tab so user can click
               console.log('📡 Permission needed — switching to USB tab');
               document.querySelectorAll('[data-tab]').forEach(t=>{
                 if(t.dataset.tab==='usb') t.click();
               });
             }
-          }).catch(()=>startStream()); // permissions API unsupported — try anyway
+          }).catch(()=>startStream());
         } else {
           startStream();
         }
       }
+      if (command === 'arm') {
+        console.log('📡 Remote arm — starting monitoring');
+        if (streamRef.current) {
+          setIsArmed(true); isArmedRef.current=true;
+          setStatusMsg('🟢 Armed — monitoring...');
+          startMotionDetection();
+          if (soundEnabled) startSoundDetection();
+        }
+      }
+      if (command === 'disarm') {
+        console.log('📡 Remote disarm — stopping monitoring');
+        setIsArmed(false); isArmedRef.current=false;
+        stopMotionDetection();
+        if (isRecordingRef.current) stopRecording();
+        setStatusMsg('🟢 Broadcasting');
+      }
     });
 
-    cs.on('viewer:request',async({viewerSocketId})=>{
-      console.log('📺 Camera received viewer:request from:', viewerSocketId, 'stream ready:', !!streamRef.current);
-      if (!streamRef.current) { console.log('📺 No stream available yet!'); return; }
+    const sendOfferToViewer = async (viewerSocketId) => {
+      // Always read stream from videoRef as fallback — works even if streamRef closure is stale
+      const stream = streamRef.current || videoRef.current?.srcObject || window.__activeCameraStream;
+      if (!stream) return false;
+      if (!streamRef.current) streamRef.current = stream; // heal the ref
       const pc = new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}]});
       pcsRef.current[viewerSocketId]=pc;
-      streamRef.current.getTracks().forEach(t=>pc.addTrack(t,streamRef.current));
+      stream.getTracks().forEach(t=>pc.addTrack(t,stream));
       pc.onicecandidate=e=>{ if(e.candidate) cs.emit('webrtc:ice',{targetSocketId:viewerSocketId,candidate:e.candidate}); };
       pc.onconnectionstatechange=()=>{
         if(pc.connectionState==='connected') setViewers(v=>v+1);
@@ -743,6 +777,34 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
       await pc.setLocalDescription(offer);
       console.log('📺 Camera sending offer to viewer:', viewerSocketId);
       cs.emit('webrtc:offer',{targetSocketId:viewerSocketId,offer});
+      return true;
+    };
+
+    cs.on('viewer:request',async({viewerSocketId})=>{
+      // Try all stream sources — streamRef may be stale if socket registered before startStream ran
+      const stream = streamRef.current || videoRef.current?.srcObject || window.__activeCameraStream;
+      if (stream && !streamRef.current) streamRef.current = stream;
+      console.log('📺 viewer:request from:', viewerSocketId, '| stream ready:', !!stream);
+      if (stream) {
+        sendOfferToViewer(viewerSocketId);
+      } else {
+        // Stream not started yet — poll every 500ms up to 15s
+        console.log('📺 Waiting for stream...');
+        let tries = 0;
+        const poll = setInterval(()=>{
+          tries++;
+          const s = streamRef.current || videoRef.current?.srcObject || window.__activeCameraStream;
+          if (s) {
+            clearInterval(poll);
+            if (!streamRef.current) streamRef.current = s;
+            console.log('📺 Stream appeared — connecting viewer:', viewerSocketId);
+            sendOfferToViewer(viewerSocketId);
+          } else if (tries >= 30) {
+            clearInterval(poll);
+            console.log('📺 Stream never started for viewer:', viewerSocketId);
+          }
+        }, 500);
+      }
     });
     cs.on('webrtc:answer',async({answer,fromSocketId})=>{ const pc=pcsRef.current[fromSocketId]; if(pc) await pc.setRemoteDescription(new RTCSessionDescription(answer)).catch(()=>{}); });
     cs.on('webrtc:ice',async({candidate,fromSocketId})=>{ const pc=pcsRef.current[fromSocketId]; if(pc&&candidate) await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(()=>{}); });
@@ -848,6 +910,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
         }, 1500);
       }
       streamRef.current = stream;
+      window.__activeCameraStream = stream; // global fallback for stale closures
       if (videoRef.current) videoRef.current.srcObject = stream;
 
       // PATCH 1: Enumerate devices HERE — after permission granted, labels are available
@@ -906,7 +969,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
     if (mediaRecRef.current) { try { mediaRecRef.current.stop(); } catch {} mediaRecRef.current=null; }
     if (streamRef.current) streamRef.current.getTracks().forEach(t=>t.stop());
     if (canvasCleanupRef.current) { canvasCleanupRef.current(); canvasCleanupRef.current=null; }
-    streamRef.current=null; tsStreamRef.current=null;
+    streamRef.current=null; tsStreamRef.current=null; window.__activeCameraStream=null;
     Object.values(pcsRef.current).forEach(pc=>pc.close()); pcsRef.current={};
     if (videoRef.current) videoRef.current.srcObject=null;
     setStreaming(false); setIsArmed(false); setIsRecording(false);
@@ -1972,7 +2035,16 @@ export default function App() {
         </div>
 
         <div style={{display: tab==='usb' ? 'block' : 'none'}}>
-          <USBCameraPage socket={socket} devices={devices} userId={user?.userId} organizationId={user?.organizationId} onEvent={e=>setEvents(ev=>[e,...ev])}/>
+          <USBCameraPage socket={socket} devices={devices} userId={user?.userId} organizationId={user?.organizationId} onEvent={e=>{
+            if (e.type==='clip_ready') {
+              // Update existing event with clip_url rather than adding new entry
+              setEvents(ev=>ev.map(existing=>
+                existing.id===e.eventId ? {...existing, clip_url:e.clip_url, clip_pending:false} : existing
+              ));
+            } else {
+              setEvents(ev=>[e,...ev]);
+            }
+          }}/>
         </div>
         <div style={{display: tab==='clips' ? 'block' : 'none'}}>
           <ClipsPage devices={devices}/>
