@@ -215,11 +215,22 @@ function CameraSettingsPanel({ device, settings, onChange, onClose }) {
 
 // ─── Camera Viewer Card ───────────────────────────────────────────
 function CameraCard({ device, socket, onEvent, onSettings, settings }) {
-  const videoRef   = useRef(null);
-  const pcRef      = useRef(null);
-  const [online,   setOnline]   = useState(device.is_active || false);
-  const [watching, setWatching] = useState(false);
-  const [status,   setStatus]   = useState(device.is_active ? 'Online' : 'Offline');
+  const videoRef        = useRef(null);
+  const pcRef           = useRef(null);
+  const canvasRef       = useRef(null);
+  const audioCtxRef     = useRef(null);
+  const localMicRef     = useRef(null);
+  const [online,        setOnline]       = useState(device.is_active || false);
+  const [watching,      setWatching]     = useState(false);
+  const [status,        setStatus]       = useState(device.is_active ? 'Online' : 'Offline');
+  const [zoom,          setZoom]         = useState(1);
+  const [muted,         setMuted]        = useState(true);
+  const [nvMode,        setNvMode]       = useState('off'); // off | green | thermal | bright
+  const [showControls,  setShowControls] = useState(false);
+  const [talkback,      setTalkback]     = useState(false);
+  const [brightness,    setBrightness]   = useState(100);
+  const [contrast,      setContrast]     = useState(100);
+  const [snapshot,      setSnapshot]     = useState(null);
 
   useEffect(()=>{
     if (!socket) return;
@@ -289,12 +300,56 @@ function CameraCard({ device, socket, onEvent, onSettings, settings }) {
     setWatching(false); setStatus(online?'Online':'Offline');
   };
 
-  const camMode = settings?.camMode || 'dashcam';
+  const camMode   = settings?.camMode || 'dashcam';
   const modeColor = camMode==='dashcam' ? C.green : C.blue;
   const modeLabel = camMode==='dashcam' ? '🚗 Dash Cam' : '🔒 Security Cam';
 
+  // Night vision CSS filter
+  const nvFilter = {
+    off:     'none',
+    bright:  'brightness(1.8) contrast(1.3)',
+    green:   'brightness(1.5) contrast(1.4) sepia(1) hue-rotate(80deg) saturate(4)',
+    thermal: 'brightness(1.2) contrast(1.5) sepia(1) hue-rotate(330deg) saturate(5)',
+  }[nvMode] || 'none';
+
+  // Combined CSS filter with brightness/contrast sliders
+  const videoFilter = [
+    nvFilter !== 'none' ? nvFilter : `brightness(${brightness}%) contrast(${contrast}%)`,
+  ].join(' ');
+
+  const takeSnapshot = () => {
+    if (!videoRef.current) return;
+    const canvas = document.createElement('canvas');
+    canvas.width  = videoRef.current.videoWidth  || 1280;
+    canvas.height = videoRef.current.videoHeight || 720;
+    canvas.getContext('2d').drawImage(videoRef.current, 0, 0);
+    const url = canvas.toDataURL('image/jpeg', 0.95);
+    setSnapshot(url);
+    // Auto-download
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `snapshot_${device.name}_${Date.now()}.jpg`;
+    a.click();
+  };
+
+  const toggleTalkback = async () => {
+    if (talkback) {
+      if (localMicRef.current) { localMicRef.current.getTracks().forEach(t=>t.stop()); localMicRef.current=null; }
+      setTalkback(false);
+    } else {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({audio:true,video:false});
+        localMicRef.current = stream;
+        // Add audio track to existing peer connection
+        if (pcRef.current) stream.getAudioTracks().forEach(t=>pcRef.current.addTrack(t,stream));
+        setTalkback(true);
+      } catch(e) { alert('Microphone access denied: '+e.message); }
+    }
+  };
+
   return (
     <div style={st.card}>
+      {/* Header */}
       <div style={{...st.flexBetween, marginBottom:4}}>
         <span style={{fontWeight:'bold',fontSize:15}}>{device.name}</span>
         <div style={{...st.flex, gap:6}}>
@@ -302,12 +357,19 @@ function CameraCard({ device, socket, onEvent, onSettings, settings }) {
           <div style={{width:8,height:8,borderRadius:'50%',backgroundColor:online?C.green:C.sub}}/>
         </div>
       </div>
-      <div style={{color:C.sub,fontSize:12,marginBottom:10}}>📍 {device.location||'—'}</div>
+      <div style={{color:C.sub,fontSize:12,marginBottom:8}}>📍 {device.location||'—'}</div>
 
       {/* Video */}
       <div style={st.videoBox}>
         {watching
-          ? <video ref={videoRef} style={st.videoEl} autoPlay playsInline controls
+          ? <video ref={videoRef} style={{
+              ...st.videoEl,
+              filter: videoFilter,
+              transform: `scale(${zoom})`,
+              transformOrigin: 'center center',
+              transition: 'transform 0.15s',
+            }} autoPlay playsInline
+              muted={muted}
               onLoadedMetadata={e=>{ if(e.target.paused) e.target.play(); }}/>
           : <div style={{...st.videoEl,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',color:C.sub,position:'absolute',inset:0}}>
               <span style={{fontSize:40}}>📷</span>
@@ -315,24 +377,97 @@ function CameraCard({ device, socket, onEvent, onSettings, settings }) {
             </div>
         }
         {watching && <div style={{position:'absolute',top:8,left:8,backgroundColor:'rgba(204,0,0,0.9)',color:'#fff',padding:'2px 8px',borderRadius:4,fontSize:11,fontWeight:'bold'}}>● LIVE</div>}
-        {settings?.nightVisionPro && watching && <div style={{position:'absolute',inset:0,backgroundColor:'rgba(0,255,70,0.15)',pointerEvents:'none'}}/>}
-        {settings?.nightVision && !settings?.nightVisionPro && watching && <div style={{position:'absolute',inset:0,backgroundColor:'rgba(255,255,200,0.06)',pointerEvents:'none'}}/>}
+        {talkback  && <div style={{position:'absolute',top:8,right:8,backgroundColor:'rgba(0,150,255,0.9)',color:'#fff',padding:'2px 8px',borderRadius:4,fontSize:11,fontWeight:'bold'}}>🎤 TALK</div>}
+        {nvMode!=='off' && watching && (
+          <div style={{position:'absolute',bottom:8,left:8,fontSize:10,color:nvMode==='green'?C.green:nvMode==='thermal'?'#ff6600':'#fff',backgroundColor:'rgba(0,0,0,0.6)',padding:'2px 6px',borderRadius:3}}>
+            {nvMode==='green'?'🟢 NV':'nvMode'==='thermal'?'🔴 THERMAL':'☀️ BRIGHT'}
+          </div>
+        )}
       </div>
 
-      {/* Controls */}
-      <div style={{display:'flex',gap:6,marginTop:10}}>
+      {/* Main controls row */}
+      <div style={{display:'flex',gap:5,marginTop:8,flexWrap:'wrap'}}>
         {!watching
           ? <button style={{...st.btn,...(online?st.btnGreen:st.btnGray),flex:2}} onClick={startWatching} disabled={!online}>
               {online?'▶ Watch Live':'Offline'}
             </button>
           : <button style={{...st.btn,...st.btnRed,flex:2}} onClick={stopWatching}>⏹ Stop</button>
         }
-        <button style={{...st.btn,...st.btnGray}} onClick={onSettings} title="Settings">⚙️</button>
+        {watching && <>
+          <button title={muted?'Unmute':'Mute'} style={{...st.btn,...st.btnGray,padding:'6px 10px'}} onClick={()=>{ if(videoRef.current) videoRef.current.muted=!muted; setMuted(m=>!m); }}>
+            {muted?'🔇':'🔊'}
+          </button>
+          <button title="Talkback" style={{...st.btn,padding:'6px 10px',backgroundColor:talkback?'#4488ff':C.card,border:`1px solid ${talkback?C.blue:C.border}`}} onClick={toggleTalkback}>
+            🎤
+          </button>
+          <button title="Snapshot" style={{...st.btn,...st.btnGray,padding:'6px 10px'}} onClick={takeSnapshot}>📸</button>
+          <button title="Camera Controls" style={{...st.btn,...st.btnGray,padding:'6px 10px',backgroundColor:showControls?C.blue:C.card,border:`1px solid ${showControls?C.blue:C.border}`}}
+            onClick={()=>setShowControls(s=>!s)}>🎛</button>
+        </>}
+        <button style={{...st.btn,...st.btnGray,padding:'6px 10px'}} onClick={onSettings} title="Settings">⚙️</button>
       </div>
 
-      {/* Status bar */}
+      {/* Expanded admin controls */}
+      {watching && showControls && (
+        <div style={{marginTop:8,backgroundColor:'#0d0d0d',borderRadius:8,padding:10,border:`1px solid ${C.border}`}}>
+          {/* Zoom */}
+          <div style={{marginBottom:10}}>
+            <div style={{...st.flexBetween,marginBottom:4}}>
+              <span style={{fontSize:12,color:C.sub}}>🔍 Zoom {zoom.toFixed(1)}x</span>
+              <button style={{...st.btn,...st.btnGray,padding:'2px 8px',fontSize:11}} onClick={()=>setZoom(1)}>Reset</button>
+            </div>
+            <input type="range" min={1} max={4} step={0.1} value={zoom}
+              onChange={e=>setZoom(parseFloat(e.target.value))}
+              style={{width:'100%',accentColor:C.green}}/>
+            <div style={{display:'flex',gap:4,marginTop:4}}>
+              {[1,1.5,2,3,4].map(z=>(
+                <button key={z} onClick={()=>setZoom(z)} style={{...st.btn,...st.btnGray,flex:1,fontSize:10,padding:'3px',backgroundColor:zoom===z?C.green:C.card,color:zoom===z?'#000':C.text}}>
+                  {z}x
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Night Vision */}
+          <div style={{marginBottom:10}}>
+            <div style={{fontSize:12,color:C.sub,marginBottom:6}}>🌙 Night Vision / Image Enhancement</div>
+            <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
+              {[
+                {id:'off',     label:'Off',      color:C.sub},
+                {id:'bright',  label:'☀️ Bright', color:'#ffcc44'},
+                {id:'green',   label:'🟢 NV',     color:C.green},
+                {id:'thermal', label:'🔴 Thermal',color:'#ff6600'},
+              ].map(m=>(
+                <button key={m.id} onClick={()=>setNvMode(m.id)} style={{
+                  ...st.btn, flex:1, fontSize:11, padding:'5px 4px',
+                  backgroundColor: nvMode===m.id ? m.color+'30' : C.card,
+                  color: nvMode===m.id ? m.color : C.sub,
+                  border: `1px solid ${nvMode===m.id ? m.color : C.border}`,
+                }}>{m.label}</button>
+              ))}
+            </div>
+          </div>
+
+          {/* Brightness / Contrast (when NV off) */}
+          {nvMode==='off' && (
+            <div style={{marginBottom:8}}>
+              <div style={{...st.flexBetween,marginBottom:4}}>
+                <span style={{fontSize:12,color:C.sub}}>☀️ Brightness {brightness}%</span>
+                <span style={{fontSize:12,color:C.sub}}>◑ Contrast {contrast}%</span>
+              </div>
+              <div style={{display:'flex',gap:8}}>
+                <input type="range" min={50} max={200} value={brightness} onChange={e=>setBrightness(parseInt(e.target.value))} style={{flex:1,accentColor:'#ffcc44'}}/>
+                <input type="range" min={50} max={200} value={contrast}   onChange={e=>setContrast(parseInt(e.target.value))}   style={{flex:1,accentColor:'#88aaff'}}/>
+              </div>
+              <button style={{...st.btn,...st.btnGray,width:'100%',marginTop:4,fontSize:11}} onClick={()=>{setBrightness(100);setContrast(100);}}>Reset Image</button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Status badges */}
       {settings && (
-        <div style={{marginTop:8,display:'flex',gap:6,flexWrap:'wrap'}}>
+        <div style={{marginTop:6,display:'flex',gap:5,flexWrap:'wrap'}}>
           {settings.motionEnabled && <span style={{fontSize:10,color:C.green,border:`1px solid ${C.green}40`,padding:'1px 6px',borderRadius:4}}>👁 Motion</span>}
           {settings.soundEnabled  && <span style={{fontSize:10,color:C.blue, border:`1px solid ${C.blue}40`, padding:'1px 6px',borderRadius:4}}>🔊 Sound</span>}
           {settings.nightVision   && <span style={{fontSize:10,color:'#aaa', border:`1px solid #aaa40`,    padding:'1px 6px',borderRadius:4}}>🌙 NV</span>}
@@ -975,6 +1110,146 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
     </div>
   );
 }
+
+// ─── Clips / Recordings Page ──────────────────────────────────────
+function ClipsPage({ devices }) {
+  const [clips,      setClips]      = React.useState([]);
+  const [loading,    setLoading]    = React.useState(true);
+  const [filter,     setFilter]     = React.useState('all');
+  const [sortBy,     setSortBy]     = React.useState('newest');
+  const [playingUrl, setPlayingUrl] = React.useState(null);
+  const [playingName,setPlayingName]= React.useState('');
+  const [totalSize,  setTotalSize]  = React.useState(0);
+  const retDays = parseInt(localStorage.getItem('retentionDays')||'11');
+
+  const loadClips = async () => {
+    setLoading(true);
+    try {
+      const res = await api.get('/api/recordings');
+      const data = res.data.data || [];
+      setClips(data);
+      setTotalSize(data.reduce((a,c)=>a+(c.size||0),0));
+    } catch(e) { console.error('Clips load error:', e.message); }
+    setLoading(false);
+  };
+
+  React.useEffect(()=>{ loadClips(); },[]);
+
+  const deleteClip = async (id) => {
+    if (!window.confirm('Delete this clip?')) return;
+    try { await api.delete('/api/recordings/'+id); setClips(c=>c.filter(x=>x.id!==id)); } catch {}
+  };
+
+  const fmtSize = b => !b ? '-' : b<1048576 ? (b/1024).toFixed(1)+' KB' : b<1073741824 ? (b/1048576).toFixed(1)+' MB' : (b/1073741824).toFixed(2)+' GB';
+
+  const fmtDate = s => {
+    if (!s) return '-';
+    const d = new Date(s);
+    return d.toLocaleDateString('en-US',{month:'short',day:'2-digit',year:'numeric'})+' '+d.toLocaleTimeString();
+  };
+
+  const getDeviceName = id => devices.find(x=>x.id===id)?.name || (id||'').slice(0,8) || 'Unknown';
+
+  const filtered = clips
+    .filter(c=> filter==='all' || c.device_id===filter)
+    .sort((a,b)=> sortBy==='newest' ? new Date(b.created_at)-new Date(a.created_at) : new Date(a.created_at)-new Date(b.created_at));
+
+  const grouped = filtered.reduce((acc,c)=>{ const k=c.device_id||'unknown'; if(!acc[k]) acc[k]=[]; acc[k].push(c); return acc; },{});
+
+  const RETENTION_OPTIONS = [{label:'11 days (Free)',value:11},{label:'30 days (Pro)',value:30},{label:'90 days (Pro)',value:90},{label:'1 year (Enterprise)',value:365}];
+
+  return (
+    <div>
+      <div style={{...st.flexBetween,marginBottom:16,flexWrap:'wrap',gap:10}}>
+        <div>
+          <h2 style={{margin:0,color:C.green}}>🎬 Recorded Clips</h2>
+          <p style={{color:C.sub,fontSize:12,margin:'4px 0 0'}}>{clips.length} clips · {fmtSize(totalSize)} · {retDays}-day retention</p>
+        </div>
+        <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+          <select style={{...st.input,width:'auto',fontSize:12,padding:'6px 10px'}} value={filter} onChange={e=>setFilter(e.target.value)}>
+            <option value="all">All Cameras</option>
+            {devices.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}
+          </select>
+          <select style={{...st.input,width:'auto',fontSize:12,padding:'6px 10px'}} value={sortBy} onChange={e=>setSortBy(e.target.value)}>
+            <option value="newest">Newest First</option>
+            <option value="oldest">Oldest First</option>
+          </select>
+          <button style={{...st.btn,...st.btnGray,fontSize:12}} onClick={loadClips}>↻ Refresh</button>
+        </div>
+      </div>
+
+      <div style={{backgroundColor:'#1a1a0a',border:'1px solid #ffd70040',borderRadius:8,padding:'10px 14px',marginBottom:16,display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:8}}>
+        <span style={{fontSize:13,color:C.gold}}>🗓️ Retention: clips older than {retDays} days auto-deleted</span>
+        <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
+          {RETENTION_OPTIONS.map(o=>(
+            <button key={o.value} onClick={()=>{ localStorage.setItem('retentionDays',String(o.value)); window.location.reload(); }}
+              style={{...st.btn,fontSize:11,padding:'4px 8px',backgroundColor:retDays===o.value?C.gold:C.card,color:retDays===o.value?'#000':C.sub,border:'1px solid '+(retDays===o.value?C.gold:C.border)}}>
+              {o.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {loading && <div style={{textAlign:'center',padding:40,color:C.sub}}>⏳ Loading clips...</div>}
+
+      {!loading && clips.length===0 && (
+        <div style={{...st.card,textAlign:'center',padding:40}}>
+          <div style={{fontSize:48}}>🎬</div>
+          <div style={{color:C.sub,marginTop:12}}>No clips yet — start monitoring and clips will appear here</div>
+        </div>
+      )}
+
+      {!loading && Object.entries(grouped).map(([deviceId, dclips])=>(
+        <div key={deviceId} style={{marginBottom:24}}>
+          <div style={{...st.flexBetween,marginBottom:10}}>
+            <div style={{display:'flex',alignItems:'center',gap:8}}>
+              <span style={{fontSize:16}}>📷</span>
+              <span style={{fontWeight:'bold',color:C.text}}>{getDeviceName(deviceId)}</span>
+              <span style={{...st.badge,backgroundColor:'#00ff8820',color:C.green,border:'1px solid #00ff8840'}}>{dclips.length} clips</span>
+            </div>
+            <span style={{color:C.sub,fontSize:12}}>{fmtSize(dclips.reduce((a,c)=>a+(c.size||0),0))}</span>
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))',gap:12}}>
+            {dclips.map(clip=>(
+              <div key={clip.id||clip.filename} style={{...st.card,padding:12}}>
+                <div style={{backgroundColor:'#000',borderRadius:6,aspectRatio:'16/9',marginBottom:8,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',color:C.sub,position:'relative'}}
+                  onClick={()=>{ setPlayingUrl(clip.url); setPlayingName(clip.filename); }}>
+                  <span style={{fontSize:32}}>▶</span>
+                  <span style={{fontSize:11,marginTop:4}}>Click to play</span>
+                  <span style={{position:'absolute',bottom:4,right:6,fontSize:11,color:'rgba(255,255,255,0.7)',backgroundColor:'rgba(0,0,0,0.5)',padding:'1px 5px',borderRadius:3}}>{fmtSize(clip.size)}</span>
+                </div>
+                <div style={{fontSize:12,color:C.sub,marginBottom:8}}>
+                  <div style={{color:C.text,fontWeight:'bold',marginBottom:2,fontSize:11,wordBreak:'break-all',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                    {(clip.filename||'clip.webm').replace(/^clip_(security|dashcam)_[^_]+_/,'').replace(/_\d+\.webm$/,'.webm')}
+                  </div>
+                  <div>🕐 {fmtDate(clip.created_at)}</div>
+                </div>
+                <div style={{display:'flex',gap:6}}>
+                  <button style={{...st.btn,...st.btnGreen,flex:1,fontSize:11,padding:'6px 8px'}} onClick={()=>{ setPlayingUrl(clip.url); setPlayingName(clip.filename); }}>▶ Play</button>
+                  <a href={clip.url} download={clip.filename} target="_blank" rel="noreferrer" style={{...st.btn,...st.btnGray,flex:1,fontSize:11,padding:'6px 8px',textDecoration:'none',textAlign:'center',display:'block'}}>⬇ Save</a>
+                  <button style={{...st.btn,...st.btnRed,padding:'6px 10px',fontSize:12}} onClick={()=>deleteClip(clip.id)}>🗑</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+
+      {playingUrl && (
+        <div style={st.modal} onClick={()=>setPlayingUrl(null)}>
+          <div style={{...st.modalBox,maxWidth:860,backgroundColor:'#000',border:'1px solid #333'}} onClick={e=>e.stopPropagation()}>
+            <div style={{...st.flexBetween,marginBottom:8,padding:'0 4px'}}>
+              <span style={{color:C.text,fontSize:12}}>{playingName}</span>
+              <button style={{...st.btn,...st.btnGray,padding:'3px 10px'}} onClick={()=>setPlayingUrl(null)}>✕</button>
+            </div>
+            <video src={playingUrl} controls autoPlay style={{width:'100%',borderRadius:6,backgroundColor:'#000',maxHeight:'70vh'}}/>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function EventsPanel({ events }) {
   return (
     <div style={st.card}>
@@ -1239,6 +1514,7 @@ export default function App() {
   const TABS = [
     {id:'cameras', label:'📷 Cameras'},
     {id:'usb',     label:'🖥️ USB/Webcam'},
+    {id:'clips',   label:'🎬 Clips'},
     {id:'events',  label:'🚨 Events'},
     {id:'sub',     label:'⭐ Subscription'},
   ];
@@ -1328,6 +1604,9 @@ export default function App() {
 
         <div style={{display: tab==='usb' ? 'block' : 'none'}}>
           <USBCameraPage socket={socket} devices={devices} userId={user?.userId} organizationId={user?.organizationId} onEvent={e=>setEvents(ev=>[e,...ev])}/>
+        </div>
+        <div style={{display: tab==='clips' ? 'block' : 'none'}}>
+          <ClipsPage devices={devices}/>
         </div>
         <div style={{display: tab==='events' ? 'block' : 'none'}}>
           <EventsPanel events={events}/>
