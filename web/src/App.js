@@ -1133,7 +1133,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
   useEffect(()=>{
     if (!pendingCommand) return;
     const {command, params} = pendingCommand;
-    setPendingCommand(null); // clear immediately
+    // Don't clear yet — clear after state updates to avoid batching conflict
     console.log('📡 Executing command:', command, '| stream:', !!streamRef.current, '| videoRef:', !!videoRef.current?.srcObject);
 
     if (command === 'arm') {
@@ -1169,6 +1169,9 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
       setStatusMsg('🟢 Broadcasting');
       if (onUsbStatus) onUsbStatus('');
     }
+
+    // Clear AFTER all state updates
+    setPendingCommand(null);
   },[pendingCommand]);
 
   const handleZoom = async (val) => {
