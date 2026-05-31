@@ -656,6 +656,8 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
   const [selectedDev,    setSelectedDev]    = useState('');
   const [camDevices,     setCamDevices]     = useState([]);
   const [linkedDevice,   setLinkedDevice]   = useState('');
+  const linkedDeviceRef = useRef(''); // always current linkedDevice for socket closures
+
   useEffect(()=>{ 
     if(devices.length>0 && !linkedDevice) {
       setLinkedDevice(devices[0].id);
@@ -663,18 +665,6 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
     }
   },[devices]);
   useEffect(()=>{ linkedDeviceRef.current = linkedDevice; },[linkedDevice]);
-
-  // Re-auth camera socket whenever linkedDevice or devices list changes
-  // This ensures server has correct deviceId→socketId mapping for camera:command routing
-  useEffect(()=>{
-    if (!linkedDevice || !camSocketRef.current?.connected) return;
-    const token = localStorage.getItem('accessToken');
-    const payload = token ? JSON.parse(atob(token.split('.')[1])) : {};
-    const orgId = payload.organizationId || payload.org_id || organizationId;
-    const devName = devices.find(d=>d.id===linkedDevice)?.name || 'PC Camera';
-    camSocketRef.current.emit('auth',{deviceId:linkedDevice,deviceName:devName,role:'camera',organizationId:orgId,userId:payload.userId||userId});
-    console.log('📡 Re-auth — deviceId:', linkedDevice, '| name:', devName, '| socketId:', camSocketRef.current.id);
-  },[linkedDevice, devices]);
   const [viewers,        setViewers]        = useState(0);
   const [nightVision,    setNightVision]    = useState(false);
   const [motionEnabled,  setMotionEnabled]  = useState(true);
@@ -734,6 +724,17 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
   useEffect(()=>{
     isArmedRef.current = isArmed;
   },[isArmed]);
+
+  // Re-auth camera socket when linkedDevice or devices changes
+  useEffect(()=>{
+    if (!linkedDevice || !camSocketRef.current?.connected) return;
+    const token = localStorage.getItem('accessToken');
+    const payload = token ? JSON.parse(atob(token.split('.')[1])) : {};
+    const orgId = payload.organizationId || payload.org_id || organizationId;
+    const devName = devices.find(d=>d.id===linkedDevice)?.name || 'PC Camera';
+    camSocketRef.current.emit('auth',{deviceId:linkedDevice,deviceName:devName,role:'camera',organizationId:orgId,userId:payload.userId||userId});
+    console.log('📡 Re-auth — deviceId:', linkedDevice, 'name:', devName);
+  },[linkedDevice, devices]);
 
   useEffect(()=>{
     const cs = camSocket;
