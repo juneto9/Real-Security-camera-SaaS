@@ -99,7 +99,13 @@ router.post('/upload', upload.single('video'), async (req, res) => {
         [orgId, deviceId, filename, url, req.file.size]
       );
     } catch(dbErr) {
-      console.error('DB insert error:', dbErr.message);
+      console.error('DB insert error:', dbErr.message, dbErr.code);
+      // Try to create table and retry
+      try {
+        await pool.query(`CREATE TABLE IF NOT EXISTS recordings (id UUID DEFAULT gen_random_uuid() PRIMARY KEY, organization_id UUID, device_id UUID, filename TEXT, url TEXT, size BIGINT, created_at TIMESTAMPTZ DEFAULT NOW())`);
+        await pool.query(`INSERT INTO recordings (organization_id, device_id, filename, url, size, created_at) VALUES ($1, $2, $3, $4, $5, NOW())`, [orgId, deviceId, filename, url, req.file.size]);
+        console.log('DB insert retry succeeded');
+      } catch(retryErr) { console.error('DB retry error:', retryErr.message); }
     }
 
     if (url) {
