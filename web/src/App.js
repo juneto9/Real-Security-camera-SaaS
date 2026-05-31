@@ -420,12 +420,18 @@ function CameraCard({ device, socket, onEvent, onSettings, settings }) {
                 {online?'▶ Watch Live':'Offline'}
               </button>
               {!online && <button style={{...st.btn,flex:1,fontSize:11,backgroundColor:'#4488ff20',color:C.blue,border:`1px solid ${C.blue}`}} onClick={()=>{
-                // Switch to USB tab and auto-start broadcasting
                 sessionStorage.setItem('autoStartBroadcast','1');
-                // Find and click the USB/Webcam tab
+                sessionStorage.setItem('autoLinkDevice', device.id);
+                sessionStorage.setItem('returnToCameras','1');
                 const tabs = document.querySelectorAll('[data-tab]');
                 tabs.forEach(t=>{ if(t.dataset.tab==='usb') t.click(); });
-              }}>📡 Go to Broadcast</button>}
+              }}>📡 Start Feed</button>}
+              {online && !watching && <button style={{...st.btn,flex:1,fontSize:11,backgroundColor:'#00ff8820',color:C.green,border:`1px solid ${C.green}`}} onClick={()=>{
+                // Send remote start command via socket
+                if (socket) socket.emit('camera:command', {deviceId: device.id, command: 'start'});
+                // Also start watching immediately
+                setTimeout(()=>startWatching(), 500);
+              }}>▶ Watch + Start</button>}
             </>
           : <>
               <button style={{...st.btn,...st.btnRed,flex:1}} onClick={stopWatching}>⏹ Stop</button>
@@ -596,14 +602,16 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
     });
     s.on('connect', ()=>{
       console.log('📡 Camera socket connected:', s.id);
-      setCamSocket(s); // set real socket on connect
+      camSocketRef.current = s;
+      setCamSocket(null); // force re-render cycle
+      setTimeout(()=>setCamSocket(s), 10); // then set with valid ID
     });
     s.on('disconnect', ()=>{
       console.log('📡 Camera socket disconnected — will auto-reconnect');
-      // Socket.io auto-reconnects by default
+      setCamSocket(null);
     });
     camSocketRef.current = s;
-    setCamSocket(s);
+    // Don't set camSocket here — wait for connect event so s.id is valid
     // Don't clean up on unmount — keep alive while page is open
     return ()=>{};
   },[]);
@@ -672,6 +680,9 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
       if (savedDevice) setLinkedDevice(savedDevice);
       setTimeout(()=>{ if (!autoStartRef.current) { autoStartRef.current=true; startStream(); } }, 1000);
     }
+    // Auto-link device if coming from Cameras tab
+    const autoLink = sessionStorage.getItem('autoLinkDevice');
+    if (autoLink) { setLinkedDevice(autoLink); sessionStorage.removeItem('autoLinkDevice'); }
   },[]);
 
   useEffect(()=>{
@@ -679,8 +690,8 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
   },[isArmed]);
 
   useEffect(()=>{
-    const cs = camSocket; // use state not ref so effect re-runs when socket connects
-    if (!cs) { console.log('📺 No camera socket yet'); return; }
+    const cs = camSocket;
+    if (!cs || !cs.id) { return; } // wait until socket has real ID
     console.log('📺 Registering viewer:request handler on camera socket:', cs.id);
     cs.on('viewer:request',async({viewerSocketId})=>{
       console.log('📺 Camera received viewer:request from:', viewerSocketId, 'stream ready:', !!streamRef.current);
@@ -789,6 +800,14 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
       const stream = await navigator.mediaDevices.getUserMedia({ video:true, audio:true });
       sessionStorage.setItem('usbBroadcasting', '1');
       sessionStorage.setItem('usbLinkedDevice', linkedDevice||'');
+      // If started from Cameras tab, switch back after short delay
+      if (sessionStorage.getItem('returnToCameras')==='1') {
+        sessionStorage.removeItem('returnToCameras');
+        setTimeout(()=>{
+          const tabs = document.querySelectorAll('[data-tab]');
+          tabs.forEach(t=>{ if(t.dataset.tab==='cameras') t.click(); });
+        }, 1500);
+      }
       streamRef.current = stream;
       if (videoRef.current) videoRef.current.srcObject = stream;
       const devs = await navigator.mediaDevices.enumerateDevices();
@@ -1968,4 +1987,3 @@ export default function App() {
     </div>
   );
 }
-
