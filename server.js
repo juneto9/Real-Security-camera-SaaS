@@ -91,6 +91,47 @@ const startServer = async () => {
     // Initialize Socket.io signaling — shares same port as Express
     const { io, getActiveStreams } = initSignaling(httpServer, corsOrigins);
 
+    // ── Upload recording clip to Spaces + DB ──────────────────
+    const multer = require('multer');
+    const { uploadFile } = require('./spacesClient');
+    const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 500*1024*1024 } });
+
+    app.post('/api/recordings/upload', authMiddleware, upload.single('clip'), async (req, res) => {
+      try {
+        if (!req.file) return res.status(400).json({ success: false, message: 'No file' });
+        const { deviceId, organizationId, filename, eventId } = req.body;
+        const orgId = organizationId || req.user.organizationId;
+        const key = `recordings/${orgId}/${deviceId}/${filename || req.file.originalname}`;
+        const url = await uploadFile(req.file.buffer, key, req.file.mimetype || 'video/webm');
+        console.log('Uploaded to Spaces:', url);
+
+        // Insert with start_time to satisfy not-null constraint
+        try {
+          await db.query(
+            `INSERT INTO recordings (organization_id, device_id, filename, url, size, start_time, created_at)
+             VALUES ($1, $2, $3, $4, $5, NOW(), NOW())`,
+            [orgId, deviceId, filename || req.file.originalname, url, req.file.size]
+          );
+        } catch (dbErr) {
+          console.error('DB insert error:', dbErr.message, dbErr.code);
+          // Retry with end_time too in case schema needs both
+          try {
+            await db.query(
+              `INSERT INTO recordings (organization_id, device_id, filename, url, size, start_time, end_time, created_at)
+               VALUES ($1, $2, $3, $4, $5, NOW(), NOW(), NOW())`,
+              [orgId, deviceId, filename || req.file.originalname, url, req.file.size]
+            );
+            console.log('DB insert retry succeeded');
+          } catch (e2) { console.error('DB retry also failed:', e2.message); }
+        }
+
+        res.json({ success: true, url, eventId });
+      } catch (err) {
+        logger.error('Upload error', { error: err.message });
+        res.status(500).json({ success: false, message: err.message });
+      }
+    });
+
     // Active-streams REST endpoint — needs getActiveStreams closure
     app.get('/api/streaming/streams', authMiddleware, (req, res) => {
       try {
