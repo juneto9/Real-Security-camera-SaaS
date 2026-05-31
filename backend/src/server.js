@@ -71,8 +71,10 @@ app.get('/health', (req, res) => {
 // ── Routes (all AFTER cors) ──────────────────────────────────────
 // Ensure tables exist — retry until DB is ready
 const initTables = async (attempts = 0) => {
+  const { Pool: InitPool } = require('pg');
+  const initPool = new InitPool({ connectionString: process.env.DATABASE_URL, ssl:{ rejectUnauthorized:false } });
   try {
-    await db.query(`CREATE TABLE IF NOT EXISTS recordings (
+    await initPool.query(`CREATE TABLE IF NOT EXISTS recordings (
       id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
       organization_id UUID, device_id UUID, filename TEXT,
       url TEXT, size BIGINT, created_at TIMESTAMPTZ DEFAULT NOW()
@@ -85,8 +87,10 @@ const initTables = async (attempts = 0) => {
       device_id UUID, created_at TIMESTAMPTZ DEFAULT NOW()
     )`);
     console.log('Tables ready');
+    initPool.end();
   } catch(e) {
     console.log('Table init error:', e.message, '- attempt', attempts+1);
+    initPool.end();
     if (attempts < 10) setTimeout(()=>initTables(attempts+1), 5000);
   }
 };

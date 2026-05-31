@@ -3,10 +3,25 @@ const express  = require('express');
 const router   = express.Router();
 const multer   = require('multer');
 const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
-const { Pool } = require('pg');
 const path     = require('path');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 500 * 1024 * 1024 } });
+
+// Reuse app's database pool via app locals or create compatible pool
+let _pool = null;
+const getPool = () => {
+  if (!_pool) {
+    const { Pool } = require('pg');
+    _pool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+      ssl: { rejectUnauthorized: false },
+      max: 2,
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 10000,
+    });
+  }
+  return _pool;
+};
 
 // Log Spaces config on startup (keys masked)
 console.log('Spaces config:', {
@@ -27,12 +42,12 @@ const s3 = new S3Client({
   forcePathStyle: false,
 });
 
-const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
+
 
 // GET /api/recordings — list recordings for org
 router.get('/', async (req, res) => {
   try {
-    const result = await pool.query(
+    const result = await getPool().query(
       'SELECT * FROM recordings WHERE organization_id = $1 ORDER BY created_at DESC LIMIT 100',
       [req.user.organizationId]
     );
@@ -45,7 +60,7 @@ router.get('/', async (req, res) => {
 // Ensure recordings table exists
 const ensureTable = async () => {
   try {
-    await pool.query(`
+    await getPool().query(`
       CREATE TABLE IF NOT EXISTS recordings (
         id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
         organization_id UUID,
@@ -93,7 +108,7 @@ router.post('/upload', upload.single('video'), async (req, res) => {
 
     // Save to DB regardless of Spaces success
     try {
-      await pool.query(
+      await getPool().query(
         `INSERT INTO recordings (organization_id, device_id, filename, url, size, created_at)
          VALUES ($1, $2, $3, $4, $5, NOW())`,
         [orgId, deviceId, filename, url, req.file.size]
@@ -102,8 +117,8 @@ router.post('/upload', upload.single('video'), async (req, res) => {
       console.error('DB insert error:', dbErr.message, dbErr.code);
       // Try to create table and retry
       try {
-        await pool.query(`CREATE TABLE IF NOT EXISTS recordings (id UUID DEFAULT gen_random_uuid() PRIMARY KEY, organization_id UUID, device_id UUID, filename TEXT, url TEXT, size BIGINT, created_at TIMESTAMPTZ DEFAULT NOW())`);
-        await pool.query(`INSERT INTO recordings (organization_id, device_id, filename, url, size, created_at) VALUES ($1, $2, $3, $4, $5, NOW())`, [orgId, deviceId, filename, url, req.file.size]);
+        await getPool().query(`CREATE TABLE IF NOT EXISTS recordings (id UUID DEFAULT gen_random_uuid() PRIMARY KEY, organization_id UUID, device_id UUID, filename TEXT, url TEXT, size BIGINT, created_at TIMESTAMPTZ DEFAULT NOW())`);
+        await getPool().query(`INSERT INTO recordings (organization_id, device_id, filename, url, size, created_at) VALUES ($1, $2, $3, $4, $5, NOW())`, [orgId, deviceId, filename, url, req.file.size]);
         console.log('DB insert retry succeeded');
       } catch(retryErr) { console.error('DB retry error:', retryErr.message); }
     }
@@ -122,7 +137,7 @@ router.post('/upload', upload.single('video'), async (req, res) => {
 // DELETE /api/recordings/:id
 router.delete('/:id', async (req, res) => {
   try {
-    await pool.query('DELETE FROM recordings WHERE id = $1 AND organization_id = $2', [req.params.id, req.user.organizationId]);
+    await getPool().query('DELETE FROM recordings WHERE id = $1 AND organization_id = $2', [req.params.id, req.user.organizationId]);
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ success: false, message: e.message });

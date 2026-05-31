@@ -1,11 +1,21 @@
 // enrollment.js — QR code camera enrollment system
 const express = require('express');
 const router  = express.Router();
-const { Pool } = require('pg');
 const jwt     = require('jsonwebtoken');
 const crypto  = require('crypto');
 
-const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
+let _pool = null;
+const getPool = () => {
+  if (!_pool) {
+    const { Pool } = require('pg');
+    _pool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+      ssl: { rejectUnauthorized: false },
+      max: 2, idleTimeoutMillis: 30000, connectionTimeoutMillis: 10000,
+    });
+  }
+  return _pool;
+};
 
 // POST /api/enrollment/generate — admin generates a QR enrollment token
 // Returns a token + URL that a camera device scans to auto-enroll
@@ -19,7 +29,7 @@ router.post('/generate', async (req, res) => {
     const expiresAt   = new Date(Date.now() + expiresIn * 60 * 60 * 1000);
 
     // Store in DB
-    await pool.query(`
+    await getPool().query(`
       CREATE TABLE IF NOT EXISTS enrollment_tokens (
         id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
         token TEXT UNIQUE NOT NULL,
@@ -34,7 +44,7 @@ router.post('/generate', async (req, res) => {
       )
     `);
 
-    await pool.query(
+    await getPool().query(
       `INSERT INTO enrollment_tokens (token, organization_id, created_by, camera_name, location, expires_at)
        VALUES ($1, $2, $3, $4, $5, $6)`,
       [enrollToken, organizationId, userId, cameraName || 'New Camera', location || '', expiresAt]
@@ -57,7 +67,7 @@ router.get('/claim/:token', async (req, res) => {
     const { token } = req.params;
     const { deviceName, deviceType = 'mobile' } = req.query;
 
-    const result = await pool.query(
+    const result = await getPool().query(
       `SELECT * FROM enrollment_tokens WHERE token = $1 AND used = FALSE AND expires_at > NOW()`,
       [token]
     );
@@ -70,7 +80,7 @@ router.get('/claim/:token', async (req, res) => {
 
     // Create device record
     const finalName = deviceName || enrollment.camera_name || 'Enrolled Camera';
-    const devResult = await pool.query(
+    const devResult = await getPool().query(
       `INSERT INTO devices (name, location, organization_id, is_active, device_type, created_at)
        VALUES ($1, $2, $3, TRUE, $4, NOW())
        RETURNING id, name, location, organization_id`,
@@ -79,7 +89,7 @@ router.get('/claim/:token', async (req, res) => {
     const device = devResult.rows[0];
 
     // Mark token as used
-    await pool.query(
+    await getPool().query(
       `UPDATE enrollment_tokens SET used = TRUE, device_id = $1 WHERE token = $2`,
       [device.id, token]
     );
@@ -112,7 +122,7 @@ router.get('/claim/:token', async (req, res) => {
 // GET /api/enrollment/list — admin lists active tokens
 router.get('/list', async (req, res) => {
   try {
-    const result = await pool.query(
+    const result = await getPool().query(
       `SELECT id, camera_name, location, expires_at, used, device_id, created_at
        FROM enrollment_tokens
        WHERE organization_id = $1
@@ -128,7 +138,7 @@ router.get('/list', async (req, res) => {
 // GET /api/enrollment/admins — get admin devices for org
 router.get('/admins', async (req, res) => {
   try {
-    const result = await pool.query(
+    const result = await getPool().query(
       `SELECT id, first_name, last_name, email, role, is_admin
        FROM users WHERE organization_id = $1
        ORDER BY created_at ASC LIMIT 10`,
@@ -148,9 +158,9 @@ router.post('/set-admins', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Maximum 2 admin devices allowed' });
     }
     // Reset all to non-admin then set selected
-    await pool.query(`UPDATE users SET is_admin = FALSE WHERE organization_id = $1`, [req.user.organizationId]);
+    await getPool().query(`UPDATE users SET is_admin = FALSE WHERE organization_id = $1`, [req.user.organizationId]);
     for (const uid of adminUserIds) {
-      await pool.query(`UPDATE users SET is_admin = TRUE WHERE id = $1 AND organization_id = $2`, [uid, req.user.organizationId]);
+      await getPool().query(`UPDATE users SET is_admin = TRUE WHERE id = $1 AND organization_id = $2`, [uid, req.user.organizationId]);
     }
     res.json({ success: true });
   } catch(e) {
