@@ -666,20 +666,15 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
   // Camera devices are enumerated inside startStream() AFTER getUserMedia
   // succeeds so that browser returns full labels (requires permission first).
   useEffect(()=>{
-    // Auto-start if flag set (from Cameras tab broadcast button)
-    if (sessionStorage.getItem('autoStartBroadcast')==='1') {
-      sessionStorage.removeItem('autoStartBroadcast');
-      setTimeout(()=>{ if (!autoStartRef.current) { autoStartRef.current=true; startStream(); } }, 800);
-    }
-    // Auto-restart if was broadcasting before page refresh
-    else if (sessionStorage.getItem('usbBroadcasting')==='1') {
-      const savedDevice = sessionStorage.getItem('usbLinkedDevice');
-      if (savedDevice) setLinkedDevice(savedDevice);
-      setTimeout(()=>{ if (!autoStartRef.current) { autoStartRef.current=true; startStream(); } }, 1000);
-    }
-    // Auto-link device if coming from Cameras tab
+    // Clear any stale auto-start flags from previous sessions
+    // Never auto-call startStream() — requires explicit user click for camera permission
+    sessionStorage.removeItem('autoStartBroadcast');
+    sessionStorage.removeItem('usbBroadcasting');
+    // Restore linked device selection if set
     const autoLink = sessionStorage.getItem('autoLinkDevice');
     if (autoLink) { setLinkedDevice(autoLink); sessionStorage.removeItem('autoLinkDevice'); }
+    const savedDevice = sessionStorage.getItem('usbLinkedDevice');
+    if (savedDevice) setLinkedDevice(savedDevice);
   },[]);
 
   useEffect(()=>{
