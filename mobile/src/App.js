@@ -15,6 +15,13 @@ import { AudioModule } from 'expo-audio';
 import NetInfo from '@react-native-community/netinfo';
 import { Accelerometer } from 'expo-sensors';
 import { io } from 'socket.io-client';
+import {
+  RTCPeerConnection,
+  RTCIceCandidate,
+  RTCSessionDescription,
+  mediaDevices as RNMediaDevices,
+  RTCView,
+} from 'react-native-webrtc';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 const API_URL = 'https://whale-app-hxokg.ondigitalocean.app';
@@ -315,6 +322,86 @@ function SubscriptionScreen({ navigation }) {
     </View>
   );
 }
+
+// ─── Live Viewer Screen ──────────────────────────────────────────
+function LiveViewerScreen({ navigation, route, socket }) {
+  const { device } = route.params || {};
+  const pcRef             = useRef(null);
+  const cameraSocketIdRef = useRef(null);
+  const [remoteStream, setRemoteStream] = useState(null);
+  const [status,       setStatus]       = useState('Connecting...');
+
+  useEffect(()=>{
+    if (!socket||!device?.id){ setStatus('No socket connection'); return; }
+    const handleOffer = async({offer,fromSocketId})=>{
+      if (!pcRef.current) return;
+      cameraSocketIdRef.current = fromSocketId;
+      await pcRef.current.setRemoteDescription(new RTCSessionDescription(offer));
+      const answer = await pcRef.current.createAnswer();
+      await pcRef.current.setLocalDescription(answer);
+      socket.emit('webrtc:answer',{targetSocketId:fromSocketId,answer});
+    };
+    const handleIce = ({candidate,fromSocketId})=>{
+      if (pcRef.current&&candidate&&fromSocketId===cameraSocketIdRef.current)
+        pcRef.current.addIceCandidate(new RTCIceCandidate(candidate)).catch(()=>{});
+    };
+    socket.on('webrtc:offer',handleOffer);
+    socket.on('webrtc:ice',  handleIce);
+    const pc = new RTCPeerConnection({iceServers:[
+      {urls:'stun:stun.l.google.com:19302'},
+      {urls:'stun:stun1.l.google.com:19302'},
+    ]});
+    pcRef.current = pc;
+    pc.ontrack = e=>{ if(e.streams[0]) setRemoteStream(e.streams[0]); };
+    pc.onicecandidate = e=>{ if(e.candidate&&cameraSocketIdRef.current) socket.emit('webrtc:ice',{targetSocketId:cameraSocketIdRef.current,candidate:e.candidate}); };
+    pc.onconnectionstatechange = ()=>setStatus(pc.connectionState==='connected'?'● Live':pc.connectionState);
+    pc.addTransceiver('video',{direction:'recvonly'});
+    pc.addTransceiver('audio',{direction:'recvonly'});
+    socket.emit('viewer:watch',{deviceId:device.id});
+    setStatus('Waiting for camera...');
+    return ()=>{
+      socket.off('webrtc:offer',handleOffer); socket.off('webrtc:ice',handleIce);
+      if(pcRef.current){pcRef.current.close();pcRef.current=null;}
+    };
+  },[socket,device?.id]);
+
+  return (
+    <View style={lv.container}>
+      <StatusBar barStyle="light-content" backgroundColor="#000"/>
+      {remoteStream
+        ? <RTCView streamURL={remoteStream.toURL()} style={lv.video} objectFit="contain"/>
+        : <View style={lv.placeholder}>
+            <Text style={{fontSize:48}}>📡</Text>
+            <Text style={lv.statusText}>{status}</Text>
+            <ActivityIndicator color="#00ff88" style={{marginTop:16}}/>
+          </View>
+      }
+      <View style={lv.topBar}>
+        <TouchableOpacity onPress={()=>navigation.goBack()} style={lv.backBtn}>
+          <Text style={lv.backTxt}>← Back</Text>
+        </TouchableOpacity>
+        <View style={{flex:1,alignItems:'center'}}>
+          <Text style={lv.deviceName}>{device?.name||'Camera'}</Text>
+          <Text style={lv.statusBadge}>{status}</Text>
+        </View>
+        <View style={{width:60}}/>
+      </View>
+    </View>
+  );
+}
+const lv = StyleSheet.create({
+  container:   {flex:1,backgroundColor:'#000'},
+  video:       {flex:1},
+  placeholder: {flex:1,alignItems:'center',justifyContent:'center'},
+  statusText:  {color:'#fff',fontSize:16,marginTop:12},
+  topBar:      {position:'absolute',top:0,left:0,right:0,flexDirection:'row',alignItems:'center',
+                paddingTop:Platform.OS==='ios'?50:30,paddingBottom:12,paddingHorizontal:12,
+                backgroundColor:'rgba(0,0,0,0.6)',zIndex:20},
+  backBtn:     {paddingHorizontal:8,paddingVertical:4},
+  backTxt:     {color:'#00ff88',fontSize:15,fontWeight:'600'},
+  deviceName:  {color:'#fff',fontSize:15,fontWeight:'bold'},
+  statusBadge: {color:'#00ff88',fontSize:11,marginTop:2},
+});
 
 // ─── Clips Screen ─────────────────────────────────────────────────
 function ClipsScreen({ navigation }) {
@@ -755,6 +842,10 @@ function DashboardScreen({ navigation, logout, socket }) {
                       <Text style={s.cardActionIco}>🔒</Text><Text style={[s.cardActionTxt,{color:'#4488ff'}]}>Security</Text>
                     </TouchableOpacity>
                   </View>
+                  <TouchableOpacity style={[s.cardActionBtn,{marginTop:6,backgroundColor:'#ff440018',borderColor:'#ff440060',paddingVertical:8}]}
+                    onPress={()=>navigation.navigate('LiveViewer',{device:item})}>
+                    <Text style={s.cardActionIco}>▶</Text><Text style={[s.cardActionTxt,{color:'#ff8844'}]}>Watch Live</Text>
+                  </TouchableOpacity>
                 </TouchableOpacity>
                 <TouchableOpacity style={s.deleteBtn} onPress={()=>setDeleteConfirm(item.id)}>
                   <Text style={s.deleteBtnTxt}>🗑 Delete</Text>
@@ -830,9 +921,9 @@ function CameraScreen({ navigation, route, socket }) {
   const [isArmed,       setIsArmed]      = useState(false);
   const [recordingTime, setRecordingTime]= useState(0);
   const [clipCount,     setClipCount]    = useState(0);
-  const [loopDuration,  setLoopDuration] = useState(300);
+  const [loopDuration,  setLoopDuration] = useState(60);
   const [loopForever,   setLoopForever]  = useState(false);
-  const [clipSize,      setClipSize]     = useState(300);
+  const [clipSize,      setClipSize]     = useState(60);
   const [cloudUpload,   setCloudUpload]  = useState(true);
   const [motionEnabled, setMotionEnabled]= useState(true);
   const [soundEnabled,  setSoundEnabled] = useState(true);
@@ -860,13 +951,16 @@ function CameraScreen({ navigation, route, socket }) {
   const motionEnabledRef = useRef(true);
   const soundEnabledRef  = useRef(true);
   const loopForeverRef   = useRef(false);
-  const loopDurationRef  = useRef(300);
+  const loopDurationRef  = useRef(60);
   const clipSizeRef      = useRef(300);
   const camModeRef       = useRef(initialMode||'dashcam');
   const camPermRef       = useRef(false);
   const micPermRef       = useRef(false);
   const motionCoolRef    = useRef(false);
   const sensitivityRef   = useRef(50);
+  // WebRTC streaming refs
+  const webrtcPcsRef     = useRef({}); // viewerSocketId -> RTCPeerConnection
+  const localStreamRef   = useRef(null);
   // Accelerometer baseline
   const accelBaseRef     = useRef(null);
   const accelLastRef     = useRef({x:0,y:0,z:0});
@@ -892,6 +986,19 @@ function CameraScreen({ navigation, route, socket }) {
     })();
     if (initialMode==='dashcam') setTimeout(()=>setShowLoopPrompt(true),700);
 
+    // Get camera stream for WebRTC broadcasting
+    const getLocalStream = async () => {
+      try {
+        const stream = await RNMediaDevices.getUserMedia({
+          audio: true,
+          video: { facingMode: 'environment', width:1280, height:720 }
+        });
+        localStreamRef.current = stream;
+        console.log('📺 Local stream ready for WebRTC broadcasting');
+      } catch(e) { console.log('📺 Local stream error:', e.message); }
+    };
+    getLocalStream();
+
     // Announce online after a short delay to ensure socket is stable
     const announceTimer = setTimeout(()=>{
       if (socket && device?.id) {
@@ -915,9 +1022,60 @@ function CameraScreen({ navigation, route, socket }) {
       }
     }, 1000);
 
+    // WebRTC: handle viewer requests to watch this camera
+    const handleViewerRequest = async({viewerSocketId})=>{
+      if (!localStreamRef.current) {
+        console.log('📺 Viewer requested but no local stream yet');
+        return;
+      }
+      const pc = new RTCPeerConnection({iceServers:[
+        {urls:'stun:stun.l.google.com:19302'},
+        {urls:'stun:stun1.l.google.com:19302'},
+      ]});
+      webrtcPcsRef.current[viewerSocketId] = pc;
+      localStreamRef.current.getTracks().forEach(t=>pc.addTrack(t,localStreamRef.current));
+      pc.onicecandidate = e=>{
+        if(e.candidate) socket?.emit('webrtc:ice',{targetSocketId:viewerSocketId,candidate:e.candidate});
+      };
+      pc.onconnectionstatechange = ()=>{
+        if(pc.connectionState==='disconnected'||pc.connectionState==='closed'){
+          delete webrtcPcsRef.current[viewerSocketId];
+        }
+      };
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      socket?.emit('webrtc:offer',{targetSocketId:viewerSocketId,offer});
+      console.log('📺 Sent WebRTC offer to viewer:', viewerSocketId);
+    };
+
+    const handleViewerAnswer = async({answer,fromSocketId})=>{
+      const pc = webrtcPcsRef.current[fromSocketId];
+      if(pc) await pc.setRemoteDescription(new RTCSessionDescription(answer)).catch(()=>{});
+    };
+
+    const handleViewerIce = async({candidate,fromSocketId})=>{
+      const pc = webrtcPcsRef.current[fromSocketId];
+      if(pc&&candidate) await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(()=>{});
+    };
+
+    if (socket) {
+      socket.on('viewer:request', handleViewerRequest);
+      socket.on('webrtc:answer',  handleViewerAnswer);
+      socket.on('webrtc:ice',     handleViewerIce);
+    }
+
     return ()=>{
       clearTimeout(announceTimer);
       stopAll();
+      if (socket) {
+        socket.off('viewer:request', handleViewerRequest);
+        socket.off('webrtc:answer',  handleViewerAnswer);
+        socket.off('webrtc:ice',     handleViewerIce);
+      }
+      // Close all WebRTC connections
+      Object.values(webrtcPcsRef.current).forEach(pc=>pc.close());
+      webrtcPcsRef.current = {};
+      if (localStreamRef.current) { localStreamRef.current.getTracks().forEach(t=>t.stop()); localStreamRef.current=null; }
       // Announce offline when leaving camera screen
       if (socket && device?.id) {
         socket.emit('camera:offline',{deviceId:device.id});
@@ -1504,6 +1662,7 @@ function App() {
         </>):(<>
           <Stack.Screen name="Dashboard">{p=><DashboardScreen {...p} logout={logout} socket={socket}/>}</Stack.Screen>
           <Stack.Screen name="Camera">{p=><CameraScreen {...p} socket={socket}/>}</Stack.Screen>
+          <Stack.Screen name="LiveViewer">{p=><LiveViewerScreen {...p} socket={socket}/>}</Stack.Screen>
           <Stack.Screen name="Clips" component={ClipsScreen}/>
           <Stack.Screen name="EventsLog" component={EventsLogScreen}/>
           <Stack.Screen name="Subscription" component={SubscriptionScreen}/>
