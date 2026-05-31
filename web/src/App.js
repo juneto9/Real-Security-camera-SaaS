@@ -1280,6 +1280,235 @@ function EventsPanel({ events }) {
   );
 }
 
+
+// ─── QR Enrollment Modal ──────────────────────────────────────────
+function EnrollmentModal({ onClose, onEnrolled }) {
+  const [step,        setStep]        = useState('form'); // form | qr | success
+  const [cameraName,  setCameraName]  = useState('');
+  const [location,    setLocation]    = useState('');
+  const [expiresIn,   setExpiresIn]   = useState(24);
+  const [enrollData,  setEnrollData]  = useState(null);
+  const [loading,     setLoading]     = useState(false);
+  const [copied,      setCopied]      = useState(false);
+  const qrRef = useRef(null);
+
+  const generate = async () => {
+    if (!cameraName.trim()) return;
+    setLoading(true);
+    try {
+      const res = await api.post('/api/enrollment/generate', { cameraName, location, expiresIn });
+      setEnrollData(res.data.data);
+      setStep('qr');
+      // Generate QR code using Google Charts API
+      setTimeout(()=>{
+        if (qrRef.current) {
+          qrRef.current.src = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(res.data.data.url)}&bgcolor=0a0a0a&color=00ff88&margin=10`;
+        }
+      }, 100);
+    } catch(e) {
+      alert('Failed to generate enrollment QR: ' + e.message);
+    }
+    setLoading(false);
+  };
+
+  const copyUrl = () => {
+    navigator.clipboard.writeText(enrollData.url);
+    setCopied(true);
+    setTimeout(()=>setCopied(false), 2000);
+  };
+
+  const expiresLabel = (h) => h < 24 ? h+'h' : (h/24)+'d';
+
+  return (
+    <div style={st.modal} onClick={onClose}>
+      <div style={{...st.modalBox, maxWidth:480}} onClick={e=>e.stopPropagation()}>
+        <div style={{...st.flexBetween, marginBottom:16}}>
+          <h2 style={{margin:0, color:C.green}}>📷 Enroll New Camera</h2>
+          <button style={{...st.btn,...st.btnGray}} onClick={onClose}>✕</button>
+        </div>
+
+        {step==='form' && (
+          <>
+            <p style={{color:C.sub,fontSize:13,marginBottom:16}}>
+              Generate a QR code. Any device that scans it automatically becomes a security camera in your system.
+            </p>
+
+            <label style={st.label}>Camera Name *</label>
+            <input style={{...st.input,marginBottom:12}} value={cameraName}
+              onChange={e=>setCameraName(e.target.value)}
+              placeholder="e.g. Front Door, Garage, Living Room"/>
+
+            <label style={st.label}>Location</label>
+            <input style={{...st.input,marginBottom:12}} value={location}
+              onChange={e=>setLocation(e.target.value)}
+              placeholder="e.g. First Floor, Outside"/>
+
+            <label style={st.label}>QR Code Valid For</label>
+            <div style={{display:'flex',gap:6,marginBottom:16,flexWrap:'wrap'}}>
+              {[1,6,24,48,168].map(h=>(
+                <button key={h} onClick={()=>setExpiresIn(h)} style={{
+                  ...st.btn, flex:1, fontSize:12,
+                  backgroundColor: expiresIn===h ? C.green : C.card,
+                  color: expiresIn===h ? '#000' : C.text,
+                  border: `1px solid ${expiresIn===h ? C.green : C.border}`,
+                }}>{expiresLabel(h)}</button>
+              ))}
+            </div>
+
+            <div style={{backgroundColor:'#0a1a0a',border:`1px solid ${C.green}30`,borderRadius:8,padding:12,marginBottom:16,fontSize:12,color:C.sub}}>
+              <div style={{color:C.green,fontWeight:'bold',marginBottom:4}}>📋 How it works</div>
+              <div>1. Generate the QR code below</div>
+              <div>2. Show it to the device you want to enroll (old phone, tablet, IP cam)</div>
+              <div>3. Device scans QR → opens enrollment URL → auto-registers</div>
+              <div>4. Camera appears in your dashboard instantly</div>
+              <div style={{marginTop:6,color:'#666'}}>Only your 2 admin devices can view or trigger cameras</div>
+            </div>
+
+            <div style={{display:'flex',gap:8}}>
+              <button style={{...st.btn,...st.btnGray,flex:1}} onClick={onClose}>Cancel</button>
+              <button style={{...st.btn,...st.btnGreen,flex:2}} onClick={generate} disabled={loading||!cameraName.trim()}>
+                {loading ? 'Generating...' : '🔳 Generate QR Code'}
+              </button>
+            </div>
+          </>
+        )}
+
+        {step==='qr' && enrollData && (
+          <>
+            <div style={{textAlign:'center',marginBottom:16}}>
+              <div style={{backgroundColor:'#0a0a0a',borderRadius:12,padding:16,display:'inline-block',border:`2px solid ${C.green}`}}>
+                <img ref={qrRef} alt="Enrollment QR Code" style={{width:220,height:220,display:'block'}}/>
+              </div>
+              <div style={{color:C.green,fontWeight:'bold',marginTop:10,fontSize:15}}>{cameraName}</div>
+              {location && <div style={{color:C.sub,fontSize:12}}>📍 {location}</div>}
+              <div style={{color:'#666',fontSize:11,marginTop:4}}>
+                Expires: {new Date(enrollData.expiresAt).toLocaleString()} ({expiresIn}h)
+              </div>
+            </div>
+
+            <div style={{backgroundColor:C.card,borderRadius:8,padding:10,marginBottom:12}}>
+              <div style={{fontSize:11,color:C.sub,marginBottom:4}}>Enrollment URL (tap to copy):</div>
+              <div style={{fontSize:11,color:C.green,wordBreak:'break-all',cursor:'pointer',fontFamily:'monospace'}}
+                onClick={copyUrl}>
+                {enrollData.url}
+              </div>
+            </div>
+
+            <div style={{display:'flex',gap:6,marginBottom:12}}>
+              <button style={{...st.btn,...st.btnGray,flex:1,fontSize:12}} onClick={copyUrl}>
+                {copied ? '✅ Copied!' : '📋 Copy URL'}
+              </button>
+              <button style={{...st.btn,...st.btnGray,flex:1,fontSize:12}} onClick={()=>{
+                const a = document.createElement('a');
+                a.href = qrRef.current?.src;
+                a.download = `enroll_${cameraName.replace(/\s+/g,'_')}.png`;
+                a.click();
+              }}>⬇️ Save QR</button>
+            </div>
+
+            <div style={{backgroundColor:'#0a1a0a',border:`1px solid ${C.green}30`,borderRadius:8,padding:10,fontSize:12,color:C.sub,marginBottom:12}}>
+              <strong style={{color:C.text}}>📱 On the camera device:</strong>
+              <div style={{marginTop:4}}>Open camera app → Scan QR code → Tap the link → Device auto-enrolls and appears in your dashboard</div>
+            </div>
+
+            <div style={{display:'flex',gap:8}}>
+              <button style={{...st.btn,...st.btnGray,flex:1}} onClick={()=>setStep('form')}>← Back</button>
+              <button style={{...st.btn,...st.btnGreen,flex:1}} onClick={()=>{ onEnrolled(); onClose(); }}>✓ Done</button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Admin Management Modal ───────────────────────────────────────
+function AdminManageModal({ onClose }) {
+  const [admins,  setAdmins]  = useState([]);
+  const [users,   setUsers]   = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving,  setSaving]  = useState(false);
+  const [selected,setSelected]= useState([]);
+
+  useEffect(()=>{
+    api.get('/api/enrollment/admins').then(r=>{
+      const data = r.data.data || [];
+      setUsers(data);
+      setAdmins(data.filter(u=>u.is_admin).map(u=>u.id));
+      setSelected(data.filter(u=>u.is_admin).map(u=>u.id));
+    }).catch(()=>{}).finally(()=>setLoading(false));
+  },[]);
+
+  const toggle = (id) => {
+    setSelected(s => s.includes(id)
+      ? s.filter(x=>x!==id)
+      : s.length<2 ? [...s,id] : s
+    );
+  };
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await api.post('/api/enrollment/set-admins', { adminUserIds: selected });
+      alert('Admin devices updated!');
+      onClose();
+    } catch(e) { alert('Failed: '+e.message); }
+    setSaving(false);
+  };
+
+  return (
+    <div style={st.modal} onClick={onClose}>
+      <div style={{...st.modalBox,maxWidth:440}} onClick={e=>e.stopPropagation()}>
+        <div style={{...st.flexBetween,marginBottom:16}}>
+          <h2 style={{margin:0,color:C.green}}>👥 Admin Devices</h2>
+          <button style={{...st.btn,...st.btnGray}} onClick={onClose}>✕</button>
+        </div>
+
+        <div style={{backgroundColor:'#0a1a2a',border:`1px solid ${C.blue}30`,borderRadius:8,padding:12,marginBottom:16,fontSize:12,color:C.sub}}>
+          <div style={{color:C.blue,fontWeight:'bold',marginBottom:4}}>🔐 Access Control</div>
+          <div>Select up to <strong style={{color:C.text}}>2 admin accounts</strong> (e.g. you and your spouse). Only admins can view live feeds and trigger cameras.</div>
+        </div>
+
+        {loading ? <div style={{textAlign:'center',padding:20,color:C.sub}}>Loading...</div> : (
+          <div style={{marginBottom:16}}>
+            {users.map(u=>(
+              <div key={u.id} onClick={()=>toggle(u.id)} style={{
+                display:'flex',alignItems:'center',gap:12,padding:'10px 12px',
+                borderRadius:8,marginBottom:6,cursor:'pointer',
+                backgroundColor: selected.includes(u.id) ? '#00ff8815' : C.card,
+                border: `1px solid ${selected.includes(u.id) ? C.green : C.border}`,
+              }}>
+                <div style={{width:32,height:32,borderRadius:'50%',backgroundColor:selected.includes(u.id)?C.green:'#333',display:'flex',alignItems:'center',justifyContent:'center',fontSize:14,color:selected.includes(u.id)?'#000':'#666',fontWeight:'bold'}}>
+                  {(u.first_name||u.email||'?')[0].toUpperCase()}
+                </div>
+                <div style={{flex:1}}>
+                  <div style={{color:C.text,fontSize:13,fontWeight:'bold'}}>{u.first_name} {u.last_name}</div>
+                  <div style={{color:C.sub,fontSize:11}}>{u.email}</div>
+                </div>
+                <div style={{color:selected.includes(u.id)?C.green:C.sub,fontSize:12}}>
+                  {selected.includes(u.id) ? '✓ Admin' : '○'}
+                </div>
+              </div>
+            ))}
+            {users.length===0 && <div style={{color:C.sub,textAlign:'center',padding:20}}>No users found</div>}
+          </div>
+        )}
+
+        <div style={{color:C.sub,fontSize:11,marginBottom:12,textAlign:'center'}}>
+          {selected.length}/2 admin slots used
+        </div>
+
+        <div style={{display:'flex',gap:8}}>
+          <button style={{...st.btn,...st.btnGray,flex:1}} onClick={onClose}>Cancel</button>
+          <button style={{...st.btn,...st.btnGreen,flex:1}} onClick={save} disabled={saving}>
+            {saving?'Saving...':'Save Admins'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Add Device Modal ─────────────────────────────────────────────
 function AddDeviceModal({ onClose, onAdded }) {
   const [name,setName]=useState(''); const [loc,setLoc]=useState(''); const [loading,setLoading]=useState(false);
@@ -1447,6 +1676,8 @@ export default function App() {
   const [onlineMap,  setOnlineMap]  = useState({});
   const [settingsFor,setSettingsFor]= useState(null);
   const [deviceSettings,setDeviceSettings]=useState({});
+  const [showEnroll,   setShowEnroll]   = useState(false);
+  const [showAdmins,   setShowAdmins]   = useState(false);
 
   const showToast = msg => { setToast(msg); setTimeout(()=>setToast(''),3000); };
 
@@ -1577,7 +1808,11 @@ export default function App() {
               border:tab===t.id?'none':`1px solid ${C.border}`,
             }}>{t.label}</button>
           ))}
-          {tab==='cameras' && <button style={{...st.btn,...st.btnGreen,marginLeft:'auto'}} onClick={()=>setShowAdd(true)}>+ Add Camera</button>}
+          {tab==='cameras' && <div style={{display:'flex',gap:6,marginLeft:'auto'}}>
+            <button style={{...st.btn,...st.btnGray}} onClick={()=>setShowAdmins(true)}>👥 Admins</button>
+            <button style={{...st.btn,backgroundColor:'#4488ff20',color:C.blue,border:`1px solid ${C.blue}`}} onClick={()=>setShowEnroll(true)}>🔳 Enroll Camera</button>
+            <button style={{...st.btn,...st.btnGreen}} onClick={()=>setShowAdd(true)}>+ Add Camera</button>
+          </div>}
         </div>
 
         {/* Cameras */}
@@ -1628,6 +1863,8 @@ export default function App() {
       )}
 
       {toast && <div style={st.toast}>{toast}</div>}
+      {showEnroll && <EnrollmentModal onClose={()=>setShowEnroll(false)} onEnrolled={loadDevices}/>}
+      {showAdmins && <AdminManageModal onClose={()=>setShowAdmins(false)}/>}
     </div>
   );
 }
