@@ -661,6 +661,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
   const triggerEventIdRef = useRef(null);
 
   const autoStartRef = useRef(false);
+  const [remoteStartPending, setRemoteStartPending] = useState(false);
 
   // ── PATCH 1: Removed premature enumerateDevices() on mount ──────
   // Camera devices are enumerated inside startStream() AFTER getUserMedia
@@ -713,8 +714,25 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
     cs.on('camera:command', ({command}) => {
       console.log('📡 Received camera:command:', command);
       if (command === 'start' && !streamRef.current) {
-        console.log('📡 Remote start triggered — starting stream');
-        startStream();
+        console.log('📡 Remote start — checking camera permission');
+        // Check if camera permission already granted (no user gesture needed)
+        navigator.permissions.query({name:'camera'}).then(perm => {
+          if (perm.state === 'granted') {
+            // Permission already granted — can start silently
+            console.log('📡 Camera permission granted — auto-starting');
+            startStream();
+          } else {
+            // Need user gesture — show a prominent banner on the USB tab
+            console.log('📡 Camera permission needed — showing banner');
+            setRemoteStartPending(true);
+            // Switch to USB tab so user sees the banner
+            const tabs = document.querySelectorAll('[data-tab]');
+            tabs.forEach(t=>{ if(t.dataset.tab==='usb') t.click(); });
+          }
+        }).catch(()=>{
+          // permissions API not supported — try directly, may work if previously granted
+          startStream();
+        });
       }
     });
 
@@ -846,6 +864,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
       setCamDevices(vids);
       if (vids.length>0) setSelectedDev(vids[0].deviceId);
 
+      setRemoteStartPending(false);
       setStreaming(true);
       setStatusMsg('🟢 Broadcasting — select mode below');
       try {
@@ -1013,6 +1032,19 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
 
   return (
     <div>
+      {/* Remote start banner — shown when Cameras tab Watch Live triggered this */}
+      {remoteStartPending && (
+        <div style={{backgroundColor:'#00ff8820',border:`2px solid ${C.green}`,borderRadius:10,padding:'14px 18px',marginBottom:16,display:'flex',alignItems:'center',justifyContent:'space-between',gap:12}}>
+          <div>
+            <div style={{color:C.green,fontWeight:'bold',fontSize:15}}>📷 Camera start requested from Cameras tab</div>
+            <div style={{color:C.sub,fontSize:13,marginTop:3}}>Click Start to turn on your camera and begin streaming</div>
+          </div>
+          <button style={{...st.btn,...st.btnGreen,fontSize:14,padding:'10px 20px',whiteSpace:'nowrap'}}
+            onClick={()=>{ setRemoteStartPending(false); startStream(); }}>
+            📡 Start Camera
+          </button>
+        </div>
+      )}
       <h2 style={st.sectionHdr}>🔒 USB / Webcam — Security Camera</h2>
       <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:20}}>
 
