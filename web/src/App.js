@@ -420,7 +420,10 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
     const s = io(API_URL, {
       auth:{ token }, transports:['websocket','polling']
     });
-    s.on('connect', ()=>{ console.log('📡 Camera socket connected:', s.id); });
+    s.on('connect', ()=>{
+      console.log('📡 Camera socket connected:', s.id);
+      setCamSocket(s); // trigger re-render so viewer:request useEffect re-runs with valid socket
+    });
     s.on('disconnect', ()=>{ console.log('📡 Camera socket disconnected'); });
     camSocketRef.current = s;
     setCamSocket(s);
@@ -1302,8 +1305,9 @@ export default function App() {
         </div>
 
         {/* Cameras */}
-        {tab==='cameras' && (
-          devices.length===0
+        {/* Keep all tabs mounted, just hide inactive ones */}
+        <div style={{display: tab==='cameras' ? 'block' : 'none'}}>
+          {devices.length===0
             ? <div style={{...st.card,textAlign:'center',padding:40,color:C.sub}}>
                 <div style={{fontSize:48}}>📷</div>
                 <div style={{marginTop:12}}>No cameras yet. Click "+ Add Camera" above.</div>
@@ -1319,11 +1323,18 @@ export default function App() {
                   />
                 ))}
               </div>
-        )}
+          }
+        </div>
 
-        {tab==='usb'    && <USBCameraPage socket={socket} devices={devices} userId={user?.userId} organizationId={user?.organizationId} onEvent={e=>setEvents(ev=>[e,...ev])}/>}
-        {tab==='events' && <EventsPanel events={events}/>}
-        {tab==='sub'    && <SubscriptionPage/>}
+        <div style={{display: tab==='usb' ? 'block' : 'none'}}>
+          <USBCameraPage socket={socket} devices={devices} userId={user?.userId} organizationId={user?.organizationId} onEvent={e=>setEvents(ev=>[e,...ev])}/>
+        </div>
+        <div style={{display: tab==='events' ? 'block' : 'none'}}>
+          <EventsPanel events={events}/>
+        </div>
+        <div style={{display: tab==='sub' ? 'block' : 'none'}}>
+          <SubscriptionPage/>
+        </div>
       </main>
 
       {showAdd && <AddDeviceModal onClose={()=>setShowAdd(false)} onAdded={()=>{ loadDevices(); showToast('Camera added!'); }}/>}
