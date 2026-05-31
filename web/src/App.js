@@ -467,6 +467,7 @@ function CameraCard({ device, socket, onEvent, onSettings, settings }) {
             }}
             onClick={()=>{
               const cmd = armed ? 'disarm' : 'arm';
+              console.log('📺 Sending camera:command', cmd, 'to deviceId:', device.id);
               if (socket) socket.emit('camera:command',{
                 deviceId: device.id,
                 command: cmd,
@@ -655,7 +656,25 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
   const [selectedDev,    setSelectedDev]    = useState('');
   const [camDevices,     setCamDevices]     = useState([]);
   const [linkedDevice,   setLinkedDevice]   = useState('');
-  useEffect(()=>{ if(devices.length>0 && !linkedDevice) setLinkedDevice(devices[0].id); },[devices]);
+  useEffect(()=>{ 
+    if(devices.length>0 && !linkedDevice) {
+      setLinkedDevice(devices[0].id);
+      linkedDeviceRef.current = devices[0].id;
+    }
+  },[devices]);
+  useEffect(()=>{ linkedDeviceRef.current = linkedDevice; },[linkedDevice]);
+
+  // Re-auth camera socket whenever linkedDevice or devices list changes
+  // This ensures server has correct deviceId→socketId mapping for camera:command routing
+  useEffect(()=>{
+    if (!linkedDevice || !camSocketRef.current?.connected) return;
+    const token = localStorage.getItem('accessToken');
+    const payload = token ? JSON.parse(atob(token.split('.')[1])) : {};
+    const orgId = payload.organizationId || payload.org_id || organizationId;
+    const devName = devices.find(d=>d.id===linkedDevice)?.name || 'PC Camera';
+    camSocketRef.current.emit('auth',{deviceId:linkedDevice,deviceName:devName,role:'camera',organizationId:orgId,userId:payload.userId||userId});
+    console.log('📡 Re-auth — deviceId:', linkedDevice, '| name:', devName, '| socketId:', camSocketRef.current.id);
+  },[linkedDevice, devices]);
   const [viewers,        setViewers]        = useState(0);
   const [nightVision,    setNightVision]    = useState(false);
   const [motionEnabled,  setMotionEnabled]  = useState(true);
@@ -726,7 +745,8 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
     const token = localStorage.getItem('accessToken');
     const payload = token ? JSON.parse(atob(token.split('.')[1])) : {};
     const orgId = payload.organizationId || payload.org_id || organizationId;
-    const currentLinkedDevice = sessionStorage.getItem('usbLinkedDevice') || linkedDevice || (devices[0]?.id);
+    // Try to auth immediately if we have a device ID
+    const currentLinkedDevice = linkedDeviceRef.current || sessionStorage.getItem('usbLinkedDevice') || (devices[0]?.id);
     if (currentLinkedDevice) {
       const devName = devices.find(d=>d.id===currentLinkedDevice)?.name || 'PC Camera';
       cs.emit('auth', {
@@ -736,7 +756,9 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
         organizationId: orgId,
         userId: payload.userId || userId,
       });
-      console.log('📡 Camera socket standby auth:', devName, currentLinkedDevice);
+      console.log('📡 Camera socket auth on connect — deviceId:', currentLinkedDevice, devName);
+    } else {
+      console.log('📡 Camera socket connected but no deviceId yet — will auth when device selected');
     }
 
     // Remote start — viewer clicked Watch Live on Cameras tab
