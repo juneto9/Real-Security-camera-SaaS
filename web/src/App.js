@@ -659,6 +659,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
   const canvasCleanupRef  = useRef(null);
   const tsStreamRef       = useRef(null);
   const triggerEventIdRef = useRef(null);
+  const pendingViewersRef = useRef([]); // viewers waiting for stream to start
 
   const autoStartRef = useRef(false);
   const [remoteStartPending, setRemoteStartPending] = useState(false);
@@ -736,21 +737,58 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
       }
     });
 
-    cs.on('viewer:request',async({viewerSocketId})=>{
-      console.log('📺 Camera received viewer:request from:', viewerSocketId, 'stream ready:', !!streamRef.current);
-      if (!streamRef.current) { console.log('📺 No stream available yet!'); return; }
-      const pc = new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}]});
-      pcsRef.current[viewerSocketId]=pc;
-      streamRef.current.getTracks().forEach(t=>pc.addTrack(t,streamRef.current));
-      pc.onicecandidate=e=>{ if(e.candidate) cs.emit('webrtc:ice',{targetSocketId:viewerSocketId,candidate:e.candidate}); };
-      pc.onconnectionstatechange=()=>{
+    // Helper: create WebRTC peer connection and send offer to a viewer
+    const connectViewerToPeer = async (viewerSocketId) => {
+      if (!streamRef.current) return false;
+      const pc = new RTCPeerConnection({iceServers:[
+        {urls:'stun:stun.l.google.com:19302'},
+        {urls:'stun:stun1.l.google.com:19302'},
+      ]});
+      pcsRef.current[viewerSocketId] = pc;
+      streamRef.current.getTracks().forEach(t => pc.addTrack(t, streamRef.current));
+      pc.onicecandidate = e => { if(e.candidate) cs.emit('webrtc:ice',{targetSocketId:viewerSocketId,candidate:e.candidate}); };
+      pc.onconnectionstatechange = () => {
         if(pc.connectionState==='connected') setViewers(v=>v+1);
-        if(pc.connectionState==='disconnected'||pc.connectionState==='closed'){ setViewers(v=>Math.max(0,v-1)); delete pcsRef.current[viewerSocketId]; }
+        if(pc.connectionState==='disconnected'||pc.connectionState==='closed'){
+          setViewers(v=>Math.max(0,v-1)); delete pcsRef.current[viewerSocketId];
+        }
       };
-      const offer=await pc.createOffer();
+      const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
       console.log('📺 Camera sending offer to viewer:', viewerSocketId);
       cs.emit('webrtc:offer',{targetSocketId:viewerSocketId,offer});
+      return true;
+    };
+
+    cs.on('viewer:request', async ({viewerSocketId}) => {
+      console.log('📺 viewer:request from:', viewerSocketId, '— stream ready:', !!streamRef.current);
+      if (streamRef.current) {
+        // Stream already running — connect immediately
+        connectViewerToPeer(viewerSocketId);
+      } else {
+        // Stream not ready yet — queue viewer and retry every 500ms for 10s
+        console.log('📺 Stream not ready — queuing viewer, will retry');
+        pendingViewersRef.current.push(viewerSocketId);
+        let attempts = 0;
+        const retry = setInterval(async () => {
+          attempts++;
+          if (streamRef.current) {
+            clearInterval(retry);
+            const idx = pendingViewersRef.current.indexOf(viewerSocketId);
+            if (idx > -1) {
+              pendingViewersRef.current.splice(idx, 1);
+              console.log('📺 Stream now ready — connecting queued viewer:', viewerSocketId);
+              connectViewerToPeer(viewerSocketId);
+            }
+          } else if (attempts >= 20) {
+            // 10 seconds elapsed — give up
+            clearInterval(retry);
+            const idx = pendingViewersRef.current.indexOf(viewerSocketId);
+            if (idx > -1) pendingViewersRef.current.splice(idx, 1);
+            console.log('📺 Stream never started for viewer:', viewerSocketId);
+          }
+        }, 500);
+      }
     });
     cs.on('webrtc:answer',async({answer,fromSocketId})=>{ const pc=pcsRef.current[fromSocketId]; if(pc) await pc.setRemoteDescription(new RTCSessionDescription(answer)).catch(()=>{}); });
     cs.on('webrtc:ice',async({candidate,fromSocketId})=>{ const pc=pcsRef.current[fromSocketId]; if(pc&&candidate) await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(()=>{}); });
@@ -857,6 +895,36 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
       }
       streamRef.current = stream;
       if (videoRef.current) videoRef.current.srcObject = stream;
+
+      // Flush any viewers that were waiting for the stream to start
+      if (pendingViewersRef.current.length > 0) {
+        console.log('📺 Flushing', pendingViewersRef.current.length, 'pending viewer(s)');
+        // Short delay to ensure tracks are fully ready
+        setTimeout(async () => {
+          for (const viewerSocketId of [...pendingViewersRef.current]) {
+            const pc = new RTCPeerConnection({iceServers:[
+              {urls:'stun:stun.l.google.com:19302'},
+              {urls:'stun:stun1.l.google.com:19302'},
+            ]});
+            pcsRef.current[viewerSocketId] = pc;
+            streamRef.current.getTracks().forEach(t => pc.addTrack(t, streamRef.current));
+            pc.onicecandidate = e => {
+              if(e.candidate && camSocketRef.current)
+                camSocketRef.current.emit('webrtc:ice',{targetSocketId:viewerSocketId,candidate:e.candidate});
+            };
+            pc.onconnectionstatechange = () => {
+              if(pc.connectionState==='connected') setViewers(v=>v+1);
+              if(pc.connectionState==='disconnected'||pc.connectionState==='closed'){
+                setViewers(v=>Math.max(0,v-1)); delete pcsRef.current[viewerSocketId];
+              }
+            };
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+            camSocketRef.current.emit('webrtc:offer',{targetSocketId:viewerSocketId,offer});
+          }
+          pendingViewersRef.current = [];
+        }, 300);
+      }
 
       // PATCH 1: Enumerate devices HERE — after permission granted, labels are available
       const devs = await navigator.mediaDevices.enumerateDevices();
