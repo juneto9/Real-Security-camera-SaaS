@@ -648,6 +648,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
   const triggerEventIdRef = useRef(null);
   const pendingViewersRef = useRef([]); // viewers waiting for stream to start
   const linkedDeviceRef   = useRef('');  // always current linkedDevice for socket closures
+  const streamingRef      = useRef(false); // mirrors streaming state for socket closure
 
   const autoStartRef = useRef(false);
   const [remoteStartPending, setRemoteStartPending] = useState(false);
@@ -672,9 +673,8 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
     if (autoLink) { setLinkedDevice(autoLink); sessionStorage.removeItem('autoLinkDevice'); }
   },[]);
 
-  useEffect(()=>{
-    isArmedRef.current = isArmed;
-  },[isArmed]);
+  useEffect(()=>{ isArmedRef.current = isArmed; },[isArmed]);
+  useEffect(()=>{ streamingRef.current = streaming; },[streaming]);
 
   // Re-auth camera socket whenever linkedDevice changes (devices may load after socket connects)
   useEffect(()=>{
@@ -761,7 +761,15 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
 
     // Viewer wants this camera's stream
     s.on('viewer:request', async ({viewerSocketId}) => {
+      // Recovery: if streaming but streamRef lost (e.g. page reload mid-stream),
+      // recover from videoRef.srcObject
+      if (!streamRef.current && streamingRef.current && videoRef.current?.srcObject) {
+        console.log('📺 Recovering streamRef from videoRef.srcObject');
+        streamRef.current = videoRef.current.srcObject;
+      }
+
       console.log('📺 viewer:request from:', viewerSocketId, '| stream ready:', !!streamRef.current);
+
       if (streamRef.current) {
         connectViewerToPeer(viewerSocketId);
       } else {
@@ -770,6 +778,10 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
         let tries = 0;
         const poll = setInterval(() => {
           tries++;
+          // Also attempt recovery on each poll
+          if (!streamRef.current && streamingRef.current && videoRef.current?.srcObject) {
+            streamRef.current = videoRef.current.srcObject;
+          }
           if (streamRef.current) {
             clearInterval(poll);
             const i = pendingViewersRef.current.indexOf(viewerSocketId);
@@ -897,6 +909,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
         }, 1500);
       }
       streamRef.current = stream;
+      streamingRef.current = true;
       if (videoRef.current) videoRef.current.srcObject = stream;
       // Store on ref so doAuth() inside socket useEffect can find it
       if (camSocketRef.current) {
@@ -975,7 +988,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
     if (mediaRecRef.current) { try { mediaRecRef.current.stop(); } catch {} mediaRecRef.current=null; }
     if (streamRef.current) streamRef.current.getTracks().forEach(t=>t.stop());
     if (canvasCleanupRef.current) { canvasCleanupRef.current(); canvasCleanupRef.current=null; }
-    streamRef.current=null; tsStreamRef.current=null;
+    streamRef.current=null; tsStreamRef.current=null; streamingRef.current=false;
     Object.values(pcsRef.current).forEach(pc=>pc.close()); pcsRef.current={};
     if (videoRef.current) videoRef.current.srcObject=null;
     setStreaming(false); setIsArmed(false); setIsRecording(false);
