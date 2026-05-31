@@ -607,7 +607,14 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
   const [selectedDev,    setSelectedDev]    = useState('');
   const [camDevices,     setCamDevices]     = useState([]);
   const [linkedDevice,   setLinkedDevice]   = useState('');
-  useEffect(()=>{ if(devices.length>0 && !linkedDevice) setLinkedDevice(devices[0].id); },[devices]);
+  useEffect(()=>{
+    if(devices.length>0 && !linkedDevice) {
+      setLinkedDevice(devices[0].id);
+      linkedDeviceRef.current = devices[0].id;
+    }
+  },[devices]);
+  // Keep ref in sync whenever linkedDevice state changes
+  useEffect(()=>{ linkedDeviceRef.current = linkedDevice; },[linkedDevice]);
   const [viewers,        setViewers]        = useState(0);
   const [nightVision,    setNightVision]    = useState(false);
   const [motionEnabled,  setMotionEnabled]  = useState(true);
@@ -640,6 +647,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
   const tsStreamRef       = useRef(null);
   const triggerEventIdRef = useRef(null);
   const pendingViewersRef = useRef([]); // viewers waiting for stream to start
+  const linkedDeviceRef   = useRef('');  // always current linkedDevice for socket closures
 
   const autoStartRef = useRef(false);
   const [remoteStartPending, setRemoteStartPending] = useState(false);
@@ -668,6 +676,17 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
     isArmedRef.current = isArmed;
   },[isArmed]);
 
+  // Re-auth camera socket whenever linkedDevice changes (devices may load after socket connects)
+  useEffect(()=>{
+    if (!linkedDevice || !camSocketRef.current?.connected) return;
+    const token = localStorage.getItem('accessToken');
+    const payload = token ? JSON.parse(atob(token.split('.')[1])) : {};
+    const orgId = payload.organizationId || payload.org_id || organizationId;
+    const devName = devices.find(d=>d.id===linkedDevice)?.name || 'PC Camera';
+    camSocketRef.current.emit('auth',{deviceId:linkedDevice,deviceName:devName,role:'camera',organizationId:orgId,userId:payload.userId||userId});
+    console.log('📡 Re-auth on linkedDevice change:', devName, linkedDevice);
+  },[linkedDevice]);
+
   // ── Single socket init — all handlers registered once inside connect ──
   useEffect(()=>{
     const token = localStorage.getItem('accessToken');
@@ -675,14 +694,20 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
     const API_URL = 'https://whale-app-hxokg.ondigitalocean.app';
     const s = io(API_URL, { auth:{ token }, transports:['websocket','polling'] });
 
-    const doAuth = () => {
+    const doAuth = (overrideDevId) => {
       const payload = token ? JSON.parse(atob(token.split('.')[1])) : {};
       const orgId = payload.organizationId || payload.org_id || organizationId;
-      const devId = sessionStorage.getItem('usbLinkedDevice') || camSocketRef.current?._linkedDevice;
-      if (!devId) return;
-      const devName = camSocketRef.current?._linkedName || 'PC Camera';
+      // Priority: explicit override → linkedDeviceRef (always current) → sessionStorage
+      const devId = overrideDevId
+        || linkedDeviceRef.current
+        || sessionStorage.getItem('usbLinkedDevice');
+      if (!devId) {
+        console.log('📡 doAuth: no deviceId yet — will re-auth when device selected');
+        return;
+      }
+      const devName = devices.find(d=>d.id===devId)?.name || 'PC Camera';
       s.emit('auth', { deviceId:devId, deviceName:devName, role:'camera', organizationId:orgId, userId:payload.userId||userId });
-      console.log('📡 Camera socket auth:', devName, devId);
+      console.log('📡 Camera socket auth as:', devName, devId);
     };
 
     // Helper — uses refs so always has current stream
