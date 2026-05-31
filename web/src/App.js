@@ -796,11 +796,16 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
       if (command === 'arm' || command === 'disarm') {
         console.log('📡 [DIRECT] camera:command received:', command, params);
         // Use ref callback — bypasses closure staleness entirely
-        if (executeCommandRef.current) {
+        // Try ref first, then window bridge as fallback
+      if (executeCommandRef.current) {
           executeCommandRef.current(command, params || {});
-        } else {
-          console.log('📡 executeCommandRef not ready yet');
-        }
+      } else if (window.__executeCommand) {
+          console.log('📡 Using window bridge for command:', command);
+          window.__executeCommand(command, params || {});
+      } else {
+          console.log('📡 No command executor available yet — storing for later');
+          window.__pendingSocketCommand = {command, params: params || {}};
+      }
       }
     });
 
@@ -856,7 +861,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
   },[camSocket]);
 
   const startMotionDetection = () => {
-    startMotionDetRef.current = startMotionDetection; // keep ref current
+    startMotionDetRef.current = startMotionDetection;
     if (!streamRef.current || !motionEnabled) return;
     const video = videoRef.current;
     const canvas = document.createElement('canvas');
@@ -1135,7 +1140,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
   // Use a ref callback so the socket closure can call it directly
   // without going through React state (avoids batching/closure issues)
   useEffect(()=>{
-    executeCommandRef.current = (command, params) => {
+    const executor = (command, params) => {
       console.log('📡 executeCommand:', command, '| stream:', !!streamRef.current, '| videoRef:', !!videoRef.current?.srcObject);
 
       if (command === 'arm') {
@@ -1169,7 +1174,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
         if (onUsbStatus) onUsbStatus('');
       }
     };
-  }); // no deps — re-register every render so always has current closures
+  }); // intentionally no deps array — re-registers after every render with fresh closures
 
   const handleZoom = async (val) => {
     const z = parseFloat(val); setZoomLevel(z);
