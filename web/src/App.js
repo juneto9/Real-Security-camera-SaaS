@@ -467,7 +467,7 @@ function CameraCard({ device, socket, onEvent, onSettings, settings }) {
             }}
             onClick={()=>{
               const cmd = armed ? 'disarm' : 'arm';
-              console.log('📺 Sending camera:command', cmd, 'to deviceId:', device.id);
+              console.log('📺 Sending camera:command', cmd, 'to deviceId:', device.id, '| socket.connected:', socket?.connected, '| socket.id:', socket?.id);
               if (socket) socket.emit('camera:command',{
                 deviceId: device.id,
                 command: cmd,
