@@ -92,6 +92,16 @@ function initSignaling(httpServer, corsOrigins) {
   io.on('connection', (socket) => {
     logger.info('Socket connected', { socketId: socket.id });
 
+    // Intercept ALL incoming packets at the lowest level
+    socket.conn.on('packet', (packet) => {
+      if (packet.type === 2) { // type 2 = EVENT
+        try {
+          const data = JSON.parse(packet.data);
+          logger.info('RAW PACKET', { socketId: socket.id, event: data[0], type: packet.type });
+        } catch {}
+      }
+    });
+
     // ── auth ─────────────────────────────────────────────────
     // Sent by both cameras and viewers right after connect
     socket.on('auth', (data) => {
