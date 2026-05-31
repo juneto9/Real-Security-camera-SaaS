@@ -594,7 +594,7 @@ const CLIP_SIZES = [
   { label:'5 min', value:300 },
 ];
 
-function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsbStatus }) {
+function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsbStatus, onLinkedDevice }) {
   const camSocketRef = useRef(null);
   const [camSocket, setCamSocket] = useState(null);
 
@@ -651,7 +651,11 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
       linkedDeviceRef.current = devices[0].id;
     }
   },[devices]);
-  useEffect(()=>{ linkedDeviceRef.current = linkedDevice; },[linkedDevice]);
+  useEffect(()=>{ 
+    linkedDeviceRef.current = linkedDevice;
+    if (onLinkedDevice) onLinkedDevice(linkedDevice);
+    if (linkedDevice) sessionStorage.setItem('usbLinkedDevice', linkedDevice);
+  },[linkedDevice]);
   const [viewers,        setViewers]        = useState(0);
   const [nightVision,    setNightVision]    = useState(false);
   const [motionEnabled,  setMotionEnabled]  = useState(true);
@@ -2040,6 +2044,7 @@ export default function App() {
   const [showEnroll,   setShowEnroll]   = useState(false);
   const [showAdmins,   setShowAdmins]   = useState(false);
   const [usbStatus,    setUsbStatus]    = useState(''); // 'armed' | 'recording' | ''
+  const [usbLinkedDevice, setUsbLinkedDevice] = useState(()=>sessionStorage.getItem('usbLinkedDevice')||'');
 
   const showToast = (msg, duration=3000) => { setToast(msg); setTimeout(()=>setToast(''),duration); };
   // Persist events to localStorage (today only)
@@ -2196,7 +2201,12 @@ export default function App() {
                 <div style={{marginTop:12}}>No cameras yet. Click "+ Add Camera" above.</div>
               </div>
             : <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(320px,1fr))',gap:16}}>
-                {devices.map(d=>(
+                {devices.filter(d=>{
+                  // Exclude USB/Webcam device — managed from USB/Webcam tab only
+                  if (usbLinkedDevice && d.id === usbLinkedDevice) return false;
+                  if (d.device_type === 'usb' || d.device_type === 'webcam') return false;
+                  return true;
+                }).map(d=>(
                   <CameraCard key={d.id}
                     device={{...d,online:onlineMap[d.id]?.online||onlineMap[d.id]===true||d.is_active}}
                     socket={socket}
@@ -2210,7 +2220,7 @@ export default function App() {
         </div>
 
         <div style={{display: tab==='usb' ? 'block' : 'none'}}>
-          <USBCameraPage socket={socket} devices={devices} userId={user?.userId} organizationId={user?.organizationId} onUsbStatus={setUsbStatus} onEvent={e=>{
+          <USBCameraPage socket={socket} devices={devices} userId={user?.userId} organizationId={user?.organizationId} onUsbStatus={setUsbStatus} onLinkedDevice={setUsbLinkedDevice} onEvent={e=>{
             if (e.type==='clip_ready') {
               setEvents(ev=>{
                 const updated = ev.map(existing=>
