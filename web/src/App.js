@@ -297,8 +297,35 @@ function CameraCard({ device, socket, onEvent, onSettings, settings }) {
   const stopWatching = () => {
     if (pcRef.current) { pcRef.current.close(); pcRef.current=null; }
     if (videoRef.current) videoRef.current.srcObject=null;
+    if (localMicRef.current) { localMicRef.current.getTracks().forEach(t=>t.stop()); localMicRef.current=null; }
     setWatching(false); setStatus(online?'Online':'Offline');
+    setZoom(1); setTalkback(false);
   };
+
+  const reconnect = () => {
+    // Reconnect just this camera without affecting others
+    stopWatching();
+    setTimeout(()=>startWatching(), 500);
+  };
+
+  // Detect frozen feed — no new video frames for 10 seconds
+  useEffect(()=>{
+    if (!watching || !videoRef.current) return;
+    let lastTime = 0;
+    let frozenTimer = null;
+    const checkFrozen = () => {
+      if (!videoRef.current) return;
+      const ct = videoRef.current.currentTime;
+      if (ct === lastTime && videoRef.current.srcObject) {
+        setStatus('⚠️ Feed frozen — click Reconnect');
+      } else {
+        lastTime = ct;
+        if (status === '⚠️ Feed frozen — click Reconnect') setStatus('● Live');
+      }
+    };
+    frozenTimer = setInterval(checkFrozen, 10000);
+    return ()=>clearInterval(frozenTimer);
+  },[watching]);
 
   const camMode   = settings?.camMode || 'dashcam';
   const modeColor = camMode==='dashcam' ? C.green : C.blue;
@@ -392,12 +419,15 @@ function CameraCard({ device, socket, onEvent, onSettings, settings }) {
               <button style={{...st.btn,...(online?st.btnGreen:st.btnGray),flex:2}} onClick={startWatching} disabled={!online}>
                 {online?'▶ Watch Live':'Offline'}
               </button>
-              {!online && <button style={{...st.btn,...st.btnGray,flex:1,fontSize:11}} onClick={()=>{
-                // Scroll to USB tab and activate it
+              {!online && <button style={{...st.btn,flex:1,fontSize:11,backgroundColor:'#4488ff20',color:C.blue,border:`1px solid ${C.blue}`}} onClick={()=>{
+                sessionStorage.setItem('autoStartBroadcast','1');
                 document.querySelector('[data-tab="usb"]')?.click();
-              }}>📡 Broadcast</button>}
+              }}>📡 Start Feed</button>}
             </>
-          : <button style={{...st.btn,...st.btnRed,flex:2}} onClick={stopWatching}>⏹ Stop</button>
+          : <>
+              <button style={{...st.btn,...st.btnRed,flex:1}} onClick={stopWatching}>⏹ Stop</button>
+              <button style={{...st.btn,...st.btnGray,flex:1,fontSize:11}} onClick={reconnect} title="Reconnect this feed without affecting others">🔄 Reconnect</button>
+            </>
         }
         {watching && <>
           <button title={muted?'Unmute':'Mute'} style={{...st.btn,...st.btnGray,padding:'6px 10px'}} onClick={()=>{ if(videoRef.current) videoRef.current.muted=!muted; setMuted(m=>!m); }}>
@@ -563,9 +593,13 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
     });
     s.on('connect', ()=>{
       console.log('📡 Camera socket connected:', s.id);
-      setCamSocket(s); // trigger re-render so viewer:request useEffect re-runs with valid socket
+      setCamSocket({}); // force re-render
+      setTimeout(()=>setCamSocket(s), 50); // then set real socket
     });
-    s.on('disconnect', ()=>{ console.log('📡 Camera socket disconnected'); });
+    s.on('disconnect', ()=>{
+      console.log('📡 Camera socket disconnected — will auto-reconnect');
+      // Socket.io auto-reconnects by default
+    });
     camSocketRef.current = s;
     setCamSocket(s);
     // Don't clean up on unmount — keep alive while page is open
@@ -613,6 +647,8 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
   const canvasCleanupRef = useRef(null);
   const tsStreamRef      = useRef(null); // timestamped stream for recording
 
+  // Auto-start broadcasting on mount if previously active
+  const autoStartRef = useRef(false);
   useEffect(()=>{
     navigator.mediaDevices.enumerateDevices().then(devs=>{
       const vids = devs.filter(d=>d.kind==='videoinput');
@@ -622,6 +658,17 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
         else { setCamDevices([{deviceId:'',label:`${vids.length} camera${vids.length>1?'s':''} available`}]); setSelectedDev(''); }
       }
     });
+    // Auto-start if flag set (from Cameras tab broadcast button)
+    if (sessionStorage.getItem('autoStartBroadcast')==='1') {
+      sessionStorage.removeItem('autoStartBroadcast');
+      setTimeout(()=>{ if (!autoStartRef.current) { autoStartRef.current=true; startStream(); } }, 800);
+    }
+    // Auto-restart if was broadcasting before page refresh
+    else if (sessionStorage.getItem('usbBroadcasting')==='1') {
+      const savedDevice = sessionStorage.getItem('usbLinkedDevice');
+      if (savedDevice) setLinkedDevice(savedDevice);
+      setTimeout(()=>{ if (!autoStartRef.current) { autoStartRef.current=true; startStream(); } }, 1000);
+    }
   },[]);
 
   useEffect(()=>{
@@ -737,6 +784,8 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
   const startStream = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video:true, audio:true });
+      sessionStorage.setItem('usbBroadcasting', '1');
+      sessionStorage.setItem('usbLinkedDevice', linkedDevice||'');
       streamRef.current = stream;
       if (videoRef.current) videoRef.current.srcObject = stream;
       const devs = await navigator.mediaDevices.enumerateDevices();
@@ -771,6 +820,8 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
   };
 
   const stopStream = () => {
+    sessionStorage.removeItem('usbBroadcasting');
+    sessionStorage.removeItem('usbLinkedDevice');
     stopMotionDetection();
     clearInterval(loopTimerRef.current);
     clearInterval(recTimerRef.current);
@@ -1136,7 +1187,7 @@ function ClipsPage({ devices }) {
   const [playingUrl, setPlayingUrl] = React.useState(null);
   const [playingName,setPlayingName]= React.useState('');
   const [totalSize,  setTotalSize]  = React.useState(0);
-  const retDays = parseInt(localStorage.getItem('retentionDays')||'11');
+  const retDays = parseInt(localStorage.getItem('retentionDays')||'14');
 
   const loadClips = async () => {
     setLoading(true);
@@ -1172,7 +1223,7 @@ function ClipsPage({ devices }) {
 
   const grouped = filtered.reduce((acc,c)=>{ const k=c.device_id||'unknown'; if(!acc[k]) acc[k]=[]; acc[k].push(c); return acc; },{});
 
-  const RETENTION_OPTIONS = [{label:'11 days (Free)',value:11},{label:'30 days (Pro)',value:30},{label:'90 days (Pro)',value:90},{label:'1 year (Enterprise)',value:365}];
+  const RETENTION_OPTIONS = [{label:'14 days (Free)',value:14},{label:'60 days (Pro)',value:60},{label:'180 days (Pro)',value:180},{label:'1 year (Enterprise)',value:365}];
 
   return (
     <div>
@@ -1749,9 +1800,12 @@ export default function App() {
   useEffect(()=>{
     if (!token||!user) return;
     const s = io(API,{auth:{token},transports:['websocket','polling']});
-    s.on('connect',()=>{
+    const doAuth = () => {
       const orgId = user.organizationId || user.org_id || user.organization_id;
       s.emit('auth',{userId:user.userId||user.id,organizationId:orgId,role:'viewer',deviceName:'Web Dashboard'});
+    };
+    s.on('connect',()=>{
+      doAuth();
       showToast('Connected to streaming server');
       // After connecting, fetch current active streams to catch already-online cameras
       setTimeout(async()=>{
@@ -1772,7 +1826,8 @@ export default function App() {
     s.on('camera:offline',({deviceId})=>{
       setOnlineMap(m=>({...m,[deviceId]:{...(m[deviceId]||{}),online:false}}));
     });
-    s.on('disconnect',()=>showToast('Disconnected from server'));
+    s.on('disconnect',()=>showToast('Disconnected — reconnecting...'));
+    s.on('reconnect',()=>{ doAuth(); showToast('Reconnected'); });
     setSocket(s);
     return ()=>s.disconnect();
   },[token,user]);
