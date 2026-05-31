@@ -586,8 +586,8 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
   const [hwZoomSupported,setHwZoomSupported]= useState(false);
   const [hwZoomRange,    setHwZoomRange]    = useState({min:1,max:3,step:0.1});
   // Recording mode
-  const [recordMode,     setRecordMode]     = useState('manual');  // manual | timed | loop
-  const [loopDuration,   setLoopDuration]   = useState(300);
+  const [recordMode,     setRecordMode]     = useState('timed');   // manual | timed | loop
+  const [loopDuration,   setLoopDuration]   = useState(60);
   const [clipSize,       setClipSize]       = useState(300);
   const [showRecPrompt,  setShowRecPrompt]  = useState(false);
   const [clipManagement, setClipManagement] = useState('cloud'); // download | cloud | both | ask
