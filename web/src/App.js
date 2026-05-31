@@ -229,26 +229,56 @@ function CameraCard({ device, socket, onEvent, onSettings, settings }) {
     socket.on('camera:offline', onOffline);
     socket.on('webrtc:offer', async({offer,fromSocketId})=>{
       if (!pcRef.current) return;
+      console.log('📺 Received WebRTC offer from:', fromSocketId);
+      cameraSocketIdRef.current = fromSocketId; // store for ICE
       await pcRef.current.setRemoteDescription(new RTCSessionDescription(offer));
       const answer = await pcRef.current.createAnswer();
       await pcRef.current.setLocalDescription(answer);
       socket.emit('webrtc:answer',{targetSocketId:fromSocketId,answer});
     });
     socket.on('webrtc:ice',({candidate,fromSocketId})=>{
-      if (pcRef.current&&candidate) pcRef.current.addIceCandidate(new RTCIceCandidate(candidate)).catch(()=>{});
+      // Only process ICE from the camera we're watching
+      if (pcRef.current && candidate && fromSocketId === cameraSocketIdRef.current) {
+        pcRef.current.addIceCandidate(new RTCIceCandidate(candidate)).catch(e=>console.log('ICE error:',e));
+      }
     });
     return ()=>{ socket.off('camera:online',onOnline); socket.off('camera:offline',onOffline); };
   },[socket,device.id]);
 
+  const cameraSocketIdRef = useRef(null); // store camera's socketId for ICE
+
   const startWatching = () => {
     if (!socket||!online) return;
-    const pc = new RTCPeerConnection({ iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}] });
+    // Clean up any existing connection first
+    if (pcRef.current) { pcRef.current.close(); pcRef.current=null; }
+    const pc = new RTCPeerConnection({
+      iceServers:[
+        {urls:'stun:stun.l.google.com:19302'},
+        {urls:'stun:stun1.l.google.com:19302'},
+        {urls:'stun:stun2.l.google.com:19302'},
+      ]
+    });
     pcRef.current = pc;
-    pc.ontrack = e=>{ if(videoRef.current&&e.streams[0]) videoRef.current.srcObject=e.streams[0]; };
-    pc.onicecandidate = e=>{ if(e.candidate) socket.emit('webrtc:ice',{targetSocketId:'__camera__',candidate:e.candidate}); };
-    pc.onconnectionstatechange = ()=>setStatus(pc.connectionState==='connected'?'Live':pc.connectionState);
+    pc.ontrack = e=>{
+      console.log('📺 Got track:', e.track.kind, e.streams.length);
+      if(videoRef.current && e.streams[0]) {
+        videoRef.current.srcObject = e.streams[0];
+        videoRef.current.play().catch(()=>{});
+      }
+    };
+    // Send ICE candidates to the camera using its socketId from the offer
+    pc.onicecandidate = e=>{
+      if(e.candidate && cameraSocketIdRef.current) {
+        socket.emit('webrtc:ice',{targetSocketId:cameraSocketIdRef.current, candidate:e.candidate});
+      }
+    };
+    pc.onconnectionstatechange = ()=>{
+      console.log('📺 WebRTC state:', pc.connectionState);
+      setStatus(pc.connectionState==='connected'?'● Live':pc.connectionState);
+    };
     pc.addTransceiver('video',{direction:'recvonly'});
     pc.addTransceiver('audio',{direction:'recvonly'});
+    console.log('📺 Sending viewer:watch for device:', device.id, 'socket:', socket.id);
     socket.emit('viewer:watch',{deviceId:device.id});
     setWatching(true); setStatus('Connecting...');
   };
@@ -277,7 +307,8 @@ function CameraCard({ device, socket, onEvent, onSettings, settings }) {
       {/* Video */}
       <div style={st.videoBox}>
         {watching
-          ? <video ref={videoRef} style={st.videoEl} autoPlay playsInline/>
+          ? <video ref={videoRef} style={st.videoEl} autoPlay playsInline controls
+              onLoadedMetadata={e=>{ if(e.target.paused) e.target.play(); }}/>
           : <div style={{...st.videoEl,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',color:C.sub,position:'absolute',inset:0}}>
               <span style={{fontSize:40}}>📷</span>
               <span style={{marginTop:8,fontSize:13}}>{status}</span>
@@ -376,6 +407,26 @@ const CLIP_SIZES = [
 ];
 
 function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
+  // Dedicated camera socket — separate from viewer socket
+  // This lets same browser be both broadcaster AND viewer
+  const camSocketRef = useRef(null);
+  const [camSocket, setCamSocket] = useState(null);
+
+  useEffect(()=>{
+    const token = localStorage.getItem('accessToken');
+    if (!token || camSocketRef.current) return; // only create once
+    // io is imported at top of file from socket.io-client
+    const API_URL = 'https://whale-app-hxokg.ondigitalocean.app';
+    const s = io(API_URL, {
+      auth:{ token }, transports:['websocket','polling']
+    });
+    s.on('connect', ()=>{ console.log('📡 Camera socket connected:', s.id); });
+    s.on('disconnect', ()=>{ console.log('📡 Camera socket disconnected'); });
+    camSocketRef.current = s;
+    setCamSocket(s);
+    // Don't clean up on unmount — keep alive while page is open
+    return ()=>{};
+  },[]);
   const videoRef   = useRef(null);
   const streamRef  = useRef(null);
   const pcsRef     = useRef({});
@@ -434,25 +485,29 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
   },[isArmed]);
 
   useEffect(()=>{
-    if (!socket) return;
-    socket.on('viewer:request',async({viewerSocketId})=>{
-      if (!streamRef.current) return;
-      const pc = new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}]});
+    const cs = camSocket; // use state not ref so effect re-runs when socket connects
+    if (!cs) { console.log('📺 No camera socket yet'); return; }
+    console.log('📺 Registering viewer:request handler on camera socket:', cs.id);
+    cs.on('viewer:request',async({viewerSocketId})=>{
+      console.log('📺 Camera received viewer:request from:', viewerSocketId, 'stream ready:', !!streamRef.current);
+      if (!streamRef.current) { console.log('📺 No stream available yet!'); return; }
+      const pc = new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}]});
       pcsRef.current[viewerSocketId]=pc;
       streamRef.current.getTracks().forEach(t=>pc.addTrack(t,streamRef.current));
-      pc.onicecandidate=e=>{ if(e.candidate) socket.emit('webrtc:ice',{targetSocketId:viewerSocketId,candidate:e.candidate}); };
+      pc.onicecandidate=e=>{ if(e.candidate) cs.emit('webrtc:ice',{targetSocketId:viewerSocketId,candidate:e.candidate}); };
       pc.onconnectionstatechange=()=>{
         if(pc.connectionState==='connected') setViewers(v=>v+1);
         if(pc.connectionState==='disconnected'||pc.connectionState==='closed'){ setViewers(v=>Math.max(0,v-1)); delete pcsRef.current[viewerSocketId]; }
       };
       const offer=await pc.createOffer();
       await pc.setLocalDescription(offer);
-      socket.emit('webrtc:offer',{targetSocketId:viewerSocketId,offer});
+      console.log('📺 Camera sending offer to viewer:', viewerSocketId);
+      cs.emit('webrtc:offer',{targetSocketId:viewerSocketId,offer});
     });
-    socket.on('webrtc:answer',async({answer,fromSocketId})=>{ const pc=pcsRef.current[fromSocketId]; if(pc) await pc.setRemoteDescription(new RTCSessionDescription(answer)).catch(()=>{}); });
-    socket.on('webrtc:ice',async({candidate,fromSocketId})=>{ const pc=pcsRef.current[fromSocketId]; if(pc&&candidate) await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(()=>{}); });
-    return ()=>{ socket.off('viewer:request'); socket.off('webrtc:answer'); socket.off('webrtc:ice'); };
-  },[socket]);
+    cs.on('webrtc:answer',async({answer,fromSocketId})=>{ const pc=pcsRef.current[fromSocketId]; if(pc) await pc.setRemoteDescription(new RTCSessionDescription(answer)).catch(()=>{}); });
+    cs.on('webrtc:ice',async({candidate,fromSocketId})=>{ const pc=pcsRef.current[fromSocketId]; if(pc&&candidate) await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(()=>{}); });
+    return ()=>{ cs.off('viewer:request'); cs.off('webrtc:answer'); cs.off('webrtc:ice'); };
+  },[camSocket]);
 
   // ── Real pixel-diff motion detection ─────────────────────────
   const startMotionDetection = () => {
@@ -556,8 +611,12 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
       const { canvasStream, cleanup } = createTimestampedStream(stream);
       tsStreamRef.current = canvasStream;
       canvasCleanupRef.current = cleanup;
-      if (linkedDevice && socket) {
-        socket.emit('auth',{ deviceId:linkedDevice, deviceName:devices.find(d=>d.id===linkedDevice)?.name||'USB Camera', role:'camera', organizationId, userId });
+      if (linkedDevice && camSocketRef.current) {
+        const token = localStorage.getItem('accessToken');
+        const payload = token ? JSON.parse(atob(token.split('.')[1])) : {};
+        const orgId = payload.organizationId || payload.org_id || organizationId;
+        camSocketRef.current.emit('auth',{ deviceId:linkedDevice, deviceName:devices.find(d=>d.id===linkedDevice)?.name||'USB Camera', role:'camera', organizationId:orgId, userId:payload.userId||userId });
+        console.log('📡 Camera socket authed as:', devices.find(d=>d.id===linkedDevice)?.name, 'org:', orgId);
       }
     } catch(e) {
       if (e.name==='NotAllowedError') alert('Camera permission denied. Allow access in browser settings.');
@@ -580,7 +639,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
     setStreaming(false); setIsArmed(false); setIsRecording(false);
     setViewers(0); setStatusMsg('Ready'); setRecordingTime(0);
     isArmedRef.current=false; isRecordingRef.current=false;
-    if (linkedDevice&&socket) socket.emit('camera:offline',{deviceId:linkedDevice});
+    if (linkedDevice&&camSocketRef.current) camSocketRef.current.emit('camera:offline',{deviceId:linkedDevice});
   };
 
   const armCamera = () => {
@@ -630,18 +689,20 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
         URL.revokeObjectURL(url);
       }
       if (clipManagement==='cloud' || clipManagement==='both') {
-        // Upload to backend
         const formData = new FormData();
         formData.append('video', blob, filename);
         formData.append('device_id', linkedDevice||'');
         formData.append('filename', filename);
         const token = localStorage.getItem('accessToken');
+        setStatusMsg('☁️ Uploading...');
         fetch(`${API}/api/recordings/upload`, {
           method:'POST',
           headers:{ Authorization:'Bearer '+token },
           body: formData,
-        }).then(()=>setStatusMsg('☁️ Clip uploaded'))
-          .catch(()=>setStatusMsg('⚠️ Cloud upload failed'));
+        }).then(async r=>{
+          if (r.ok) { setStatusMsg('☁️ Clip uploaded'); }
+          else { console.warn('Upload failed:', r.status); setStatusMsg('⬇️ Saved locally (cloud unavailable)'); }
+        }).catch(()=>setStatusMsg('⬇️ Saved locally (cloud unavailable)'));
       }
 
       isRecordingRef.current=false; setIsRecording(false);
@@ -1141,10 +1202,22 @@ export default function App() {
     if (!token||!user) return;
     const s = io(API,{auth:{token},transports:['websocket','polling']});
     s.on('connect',()=>{
-      s.emit('auth',{userId:user.userId,organizationId:user.organizationId,role:'viewer',deviceName:'Web Dashboard'});
+      const orgId = user.organizationId || user.org_id || user.organization_id;
+      s.emit('auth',{userId:user.userId||user.id,organizationId:orgId,role:'viewer',deviceName:'Web Dashboard'});
       showToast('Connected to streaming server');
+      // After connecting, fetch current active streams to catch already-online cameras
+      setTimeout(async()=>{
+        try {
+          const res = await api.get('/api/streaming/streams');
+          const streams = res.data?.data || [];
+          streams.forEach(s=>{
+            if (s.online) setOnlineMap(m=>({...m,[s.deviceId]:{online:true,name:s.deviceName}}));
+          });
+        } catch {}
+      }, 2000);
     });
     s.on('camera:online', ({deviceId,deviceName})=>{
+      console.log('📷 Web received camera:online:', deviceName, deviceId);
       setOnlineMap(m=>({...m,[deviceId]:{online:true,name:deviceName}}));
       setEvents(ev=>[{type:'system',id:Date.now(),deviceName,time:new Date().toLocaleTimeString(),message:`${deviceName} came online`},...ev]);
     });
@@ -1166,6 +1239,14 @@ export default function App() {
     {id:'events',  label:'🚨 Events'},
     {id:'sub',     label:'⭐ Subscription'},
   ];
+
+  const switchTab = (newTab) => {
+    // If switching away from cameras while watching, warn
+    if (tab==='cameras' && newTab!=='cameras') {
+      // Just switch — streams will reconnect when coming back
+    }
+    setTab(newTab);
+  };
 
   return (
     <div style={st.app}>
@@ -1210,7 +1291,7 @@ export default function App() {
         {/* Tabs */}
         <div style={st.tabs}>
           {TABS.map(t=>(
-            <button key={t.id} onClick={()=>setTab(t.id)} style={{
+            <button key={t.id} onClick={()=>switchTab(t.id)} style={{
               ...st.tab,
               backgroundColor:tab===t.id?C.green:C.card,
               color:tab===t.id?'#000':C.text,
