@@ -127,3 +127,4 @@ module.exports = function setupSocket(io, app) {
 
   logger.info('Socket.io signaling server ready');
 };
+
