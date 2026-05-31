@@ -9,11 +9,11 @@ const path     = require('path');
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 500 * 1024 * 1024 } });
 
 const s3 = new S3Client({
-  endpoint: process.env.SPACES_ENDPOINT || 'https://nyc3.digitaloceanspaces.com',
-  region: process.env.SPACES_REGION || 'nyc3',
+  endpoint: process.env.STORAGE_ENDPOINT || process.env.SPACES_ENDPOINT || 'https://nyc3.digitaloceanspaces.com',
+  region: process.env.STORAGE_REGION || process.env.SPACES_REGION || 'nyc3',
   credentials: {
-    accessKeyId:     process.env.SPACES_KEY,
-    secretAccessKey: process.env.SPACES_SECRET,
+    accessKeyId:     process.env.STORAGE_ACCESS_KEY || process.env.SPACES_KEY,
+    secretAccessKey: process.env.STORAGE_SECRET_KEY || process.env.SPACES_SECRET,
   },
   forcePathStyle: false,
 });
@@ -42,7 +42,7 @@ router.post('/upload', upload.single('video'), async (req, res) => {
     const deviceId  = req.body.device_id || 'unknown';
     const orgId     = req.user.organizationId;
     const key       = `recordings/${orgId}/${deviceId}/${filename}`;
-    const bucket    = process.env.SPACES_BUCKET || 'real-security-camera';
+    const bucket    = process.env.STORAGE_BUCKET || process.env.SPACES_BUCKET || 'real-security-camera';
 
     // Upload to Spaces
     await s3.send(new PutObjectCommand({
@@ -53,7 +53,7 @@ router.post('/upload', upload.single('video'), async (req, res) => {
       ACL:         'private',
     }));
 
-    const url = `https://${bucket}.${process.env.SPACES_REGION || 'nyc3'}.digitaloceanspaces.com/${key}`;
+    const url = `https://${bucket}.${process.env.STORAGE_REGION || process.env.SPACES_REGION || 'nyc3'}.digitaloceanspaces.com/${key}`;
 
     // Save to DB
     try {
