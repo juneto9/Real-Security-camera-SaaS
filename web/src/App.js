@@ -593,8 +593,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
     });
     s.on('connect', ()=>{
       console.log('📡 Camera socket connected:', s.id);
-      setCamSocket({}); // force re-render
-      setTimeout(()=>setCamSocket(s), 50); // then set real socket
+      setCamSocket(s); // set real socket on connect
     });
     s.on('disconnect', ()=>{
       console.log('📡 Camera socket disconnected — will auto-reconnect');
