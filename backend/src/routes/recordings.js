@@ -102,7 +102,7 @@ router.post('/upload', upload.single('video'), async (req, res) => {
       // Try to create table and retry
       try {
         await req.app.get('db').query(`CREATE TABLE IF NOT EXISTS recordings (id UUID DEFAULT gen_random_uuid() PRIMARY KEY, organization_id UUID, device_id UUID, filename TEXT, url TEXT, size BIGINT, created_at TIMESTAMPTZ DEFAULT NOW())`);
-        await req.app.get('db').query(`INSERT INTO recordings (organization_id, device_id, filename, url, size, start_time, created_at) VALUES ($1, $2, $3, $4, $5, NOW(), NOW())`, [orgId, deviceId, filename, url, req.file.size]);
+        await req.app.get('db').query(`INSERT INTO recordings (organization_id, device_id, filename, url, size, start_time, end_time, created_at) VALUES ($1, $2, $3, $4, $5, NOW(), NOW(), NOW())`, [orgId, deviceId, filename, url, req.file.size]);
         console.log('DB insert retry succeeded');
       } catch(retryErr) { console.error('DB retry error:', retryErr.message); }
     }
