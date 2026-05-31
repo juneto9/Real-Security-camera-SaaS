@@ -230,7 +230,6 @@ function CameraCard({ device, socket, onEvent, onSettings, settings }) {
   const [brightness,    setBrightness]   = useState(100);
   const [contrast,      setContrast]     = useState(100);
   const [snapshot,      setSnapshot]     = useState(null);
-  const [armed,         setArmed]        = useState(false);
 
   useEffect(()=>{
     if (!socket) return;
@@ -330,7 +329,7 @@ function CameraCard({ device, socket, onEvent, onSettings, settings }) {
     if (videoRef.current) videoRef.current.srcObject=null;
     if (localMicRef.current) { localMicRef.current.getTracks().forEach(t=>t.stop()); localMicRef.current=null; }
     setWatching(false); setStatus(online?'Online':'Offline');
-    setZoom(1); setTalkback(false); setArmed(false);
+    setZoom(1); setTalkback(false);
   };
 
   const reconnect = () => {
@@ -456,35 +455,6 @@ function CameraCard({ device, socket, onEvent, onSettings, settings }) {
             </>
         }
         {watching && <>
-          {/* Monitoring arm/disarm — sends command to camera via socket */}
-          <button
-            title={armed?'Stop Monitoring':'Start Monitoring'}
-            style={{...st.btn, padding:'6px 10px',
-              backgroundColor: armed ? 'rgba(255,68,68,0.2)' : 'rgba(0,255,136,0.15)',
-              color: armed ? C.red : C.green,
-              border: `1px solid ${armed ? C.red : C.green}`,
-              fontSize:11, fontWeight:'bold',
-            }}
-            onClick={()=>{
-              const cmd = armed ? 'disarm' : 'arm';
-              console.log('📺 Sending camera:command', cmd, 'to deviceId:', device.id, '| socket.connected:', socket?.connected, '| socket.id:', socket?.id);
-              if (socket) socket.emit('camera:command',{
-                deviceId: device.id,
-                command: cmd,
-                // Pass current settings so USB page uses correct durations
-                params: settings ? {
-                  loopDuration: settings.loopDuration || 60,
-                  clipSize: settings.clipSize || 60,
-                  recordMode: settings.camMode === 'security' ? 'timed' : 'timed',
-                  motionEnabled: settings.motionEnabled !== false,
-                  soundEnabled: settings.soundEnabled !== false,
-                } : { loopDuration: 60, clipSize: 60 }
-              });
-              setArmed(a=>!a);
-            }}
-          >
-            {armed ? '🔴 Disarm' : '🟢 Monitor'}
-          </button>
           <button title={muted?'Unmute':'Mute'} style={{...st.btn,...st.btnGray,padding:'6px 10px'}} onClick={()=>{ if(videoRef.current) videoRef.current.muted=!muted; setMuted(m=>!m); }}>
             {muted?'🔇':'🔊'}
           </button>
