@@ -664,7 +664,8 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
   const [selectedDev,    setSelectedDev]    = useState('');
   const [camDevices,     setCamDevices]     = useState([]);
   const [linkedDevice,   setLinkedDevice]   = useState('');
-  const linkedDeviceRef = useRef(''); // always current linkedDevice for socket closures
+  const linkedDeviceRef   = useRef('');  // always current linkedDevice for socket closures
+  const executeCommandRef = useRef(null); // ref to command executor
 
   useEffect(()=>{ 
     if(devices.length>0 && !linkedDevice) {
@@ -793,11 +794,13 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
       // Don't call functions directly — set state so useEffect can execute
       // with all current function references available
       if (command === 'arm' || command === 'disarm') {
-        console.log('📡 [DIRECT] Setting pendingCommand:', command, params);
-        setPendingCommand(prev => {
-          console.log('📡 [DIRECT] pendingCommand setter called, prev:', prev, 'new:', command);
-          return {command, params: params || {}};
-        });
+        console.log('📡 [DIRECT] camera:command received:', command, params);
+        // Use ref callback — bypasses closure staleness entirely
+        if (executeCommandRef.current) {
+          executeCommandRef.current(command, params || {});
+        } else {
+          console.log('📡 executeCommandRef not ready yet');
+        }
       }
     });
 
@@ -1129,50 +1132,44 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
   };
 
   // ── Execute remote arm/disarm commands ──────────────────────────
-  // Runs AFTER all functions are defined, so references are valid
+  // Use a ref callback so the socket closure can call it directly
+  // without going through React state (avoids batching/closure issues)
   useEffect(()=>{
-    if (!pendingCommand) return;
-    const {command, params} = pendingCommand;
-    // Don't clear yet — clear after state updates to avoid batching conflict
-    console.log('📡 Executing command:', command, '| stream:', !!streamRef.current, '| videoRef:', !!videoRef.current?.srcObject);
+    executeCommandRef.current = (command, params) => {
+      console.log('📡 executeCommand:', command, '| stream:', !!streamRef.current, '| videoRef:', !!videoRef.current?.srcObject);
 
-    if (command === 'arm') {
-      // Recover stream from videoRef if needed
-      if (!streamRef.current && videoRef.current?.srcObject) {
-        streamRef.current = videoRef.current.srcObject;
+      if (command === 'arm') {
+        if (!streamRef.current && videoRef.current?.srcObject) {
+          streamRef.current = videoRef.current.srcObject;
+        }
+        if (!streamRef.current) {
+          console.log('📡 Arm ignored: no stream');
+          return;
+        }
+        if (params.loopDuration) setLoopDuration(params.loopDuration);
+        if (params.clipSize) setClipSize(params.clipSize);
+        if (params.motionEnabled !== undefined) setMotionEnabled(params.motionEnabled);
+        if (params.soundEnabled !== undefined) setSoundEnabled(params.soundEnabled);
+        setIsArmed(true); isArmedRef.current=true;
+        setStreaming(true); // ensure streaming state is true so buttons show
+        setStatusMsg('🟢 Armed — monitoring...');
+        if (onUsbStatus) onUsbStatus('armed');
+        startMotionDetection();
+        if (soundEnabled) startSoundDetection();
+        if (params.recordMode !== 'manual') {
+          setTimeout(()=>{ if (isArmedRef.current) startRecording(); }, 300);
+        }
       }
-      if (!streamRef.current) {
-        console.log('📡 Arm: no stream — cannot arm without active broadcast');
-        return;
-      }
-      // Apply settings from admin
-      if (params.loopDuration) setLoopDuration(params.loopDuration);
-      if (params.clipSize) setClipSize(params.clipSize);
-      if (params.motionEnabled !== undefined) setMotionEnabled(params.motionEnabled);
-      if (params.soundEnabled !== undefined) setSoundEnabled(params.soundEnabled);
-      // Arm
-      setIsArmed(true); isArmedRef.current=true;
-      setStatusMsg('🟢 Armed — monitoring...');
-      if (onUsbStatus) onUsbStatus('armed');
-      startMotionDetection();
-      if (soundEnabled) startSoundDetection();
-      // Start recording immediately (timed)
-      if (params.recordMode !== 'manual') {
-        setTimeout(()=>{ if (isArmedRef.current) startRecording(); }, 300);
-      }
-    }
 
-    if (command === 'disarm') {
-      setIsArmed(false); isArmedRef.current=false;
-      stopMotionDetection();
-      if (isRecordingRef.current) stopRecording();
-      setStatusMsg('🟢 Broadcasting');
-      if (onUsbStatus) onUsbStatus('');
-    }
-
-    // Clear AFTER all state updates
-    setPendingCommand(null);
-  },[pendingCommand]);
+      if (command === 'disarm') {
+        setIsArmed(false); isArmedRef.current=false;
+        stopMotionDetection();
+        if (isRecordingRef.current) stopRecording();
+        setStatusMsg('🟢 Broadcasting');
+        if (onUsbStatus) onUsbStatus('');
+      }
+    };
+  }); // no deps — re-register every render so always has current closures
 
   const handleZoom = async (val) => {
     const z = parseFloat(val); setZoomLevel(z);
