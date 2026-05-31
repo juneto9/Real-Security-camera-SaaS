@@ -694,6 +694,8 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
   const stopRecordingRef  = useRef(null);
 
   const autoStartRef = useRef(false);
+  const [remoteStartPending, setRemoteStartPending] = useState(false);
+  const [pendingCommand, setPendingCommand] = useState(null);
 
   // ── PATCH 1: Removed premature enumerateDevices() on mount ──────
   // Camera devices are enumerated inside startStream() AFTER getUserMedia
@@ -757,36 +759,11 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
           startStream();
         }
       }
-      if (command === 'arm') {
-        console.log('📡 Remote arm — starting monitoring', params);
-        if (streamRef.current) {
-          // Apply settings from admin if provided
-          if (params) {
-            if (params.loopDuration) setLoopDuration(params.loopDuration);
-            if (params.clipSize) setClipSize(params.clipSize);
-            if (params.motionEnabled !== undefined) setMotionEnabled(params.motionEnabled);
-            if (params.soundEnabled !== undefined) setSoundEnabled(params.soundEnabled);
-          }
-          setIsArmed(true); isArmedRef.current=true;
-          setStatusMsg('🟢 Armed — monitoring...');
-          if (onUsbStatus) onUsbStatus('armed');
-          if (startMotionDetRef.current) startMotionDetRef.current();
-          if (startSoundDetRef.current) startSoundDetRef.current();
-          // Also start a timed recording immediately so clip is always generated
-          if (params?.recordMode !== 'manual') {
-            setTimeout(()=>{ if (isArmedRef.current) startRecording(); }, 300);
-          }
-        } else {
-          console.log('📡 Arm command received but no stream yet');
-        }
-      }
-      if (command === 'disarm') {
-        console.log('📡 Remote disarm — stopping monitoring');
-        setIsArmed(false); isArmedRef.current=false;
-        if (stopMotionDetRef.current) stopMotionDetRef.current();
-        if (isRecordingRef.current && stopRecordingRef.current) stopRecordingRef.current();
-        setStatusMsg('🟢 Broadcasting');
-        if (onUsbStatus) onUsbStatus('');
+      // Don't call functions directly — set state so useEffect can execute
+      // with all current function references available
+      if (command === 'arm' || command === 'disarm') {
+        console.log('📡 Received command:', command, params);
+        setPendingCommand({command, params: params || {}});
       }
     });
 
@@ -1116,6 +1093,44 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
       mediaRecRef.current.stop();
     }
   };
+
+  // ── Execute remote arm/disarm commands ──────────────────────────
+  // Runs AFTER all functions are defined, so references are valid
+  useEffect(()=>{
+    if (!pendingCommand) return;
+    const {command, params} = pendingCommand;
+    setPendingCommand(null); // clear immediately
+
+    if (command === 'arm') {
+      if (!streamRef.current) {
+        console.log('📡 Arm: no stream yet');
+        return;
+      }
+      // Apply settings from admin
+      if (params.loopDuration) setLoopDuration(params.loopDuration);
+      if (params.clipSize) setClipSize(params.clipSize);
+      if (params.motionEnabled !== undefined) setMotionEnabled(params.motionEnabled);
+      if (params.soundEnabled !== undefined) setSoundEnabled(params.soundEnabled);
+      // Arm
+      setIsArmed(true); isArmedRef.current=true;
+      setStatusMsg('🟢 Armed — monitoring...');
+      if (onUsbStatus) onUsbStatus('armed');
+      startMotionDetection();
+      if (soundEnabled) startSoundDetection();
+      // Start recording immediately (timed)
+      if (params.recordMode !== 'manual') {
+        setTimeout(()=>{ if (isArmedRef.current) startRecording(); }, 300);
+      }
+    }
+
+    if (command === 'disarm') {
+      setIsArmed(false); isArmedRef.current=false;
+      stopMotionDetection();
+      if (isRecordingRef.current) stopRecording();
+      setStatusMsg('🟢 Broadcasting');
+      if (onUsbStatus) onUsbStatus('');
+    }
+  },[pendingCommand]);
 
   const handleZoom = async (val) => {
     const z = parseFloat(val); setZoomLevel(z);
