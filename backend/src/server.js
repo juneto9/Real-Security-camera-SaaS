@@ -16,7 +16,8 @@ const recordingRoutes = require('./routes/recordings');
 const streamRoutes = require('./routes/streams');
 const userRoutes = require('./routes/users');
 const setupSocket = require('./socket');
-const streamingRoutes = require('./routes/streaming');
+const streamingRoutes  = require('./routes/streaming');
+const enrollmentRoutes = require('./routes/enrollment');
 
 const app = express();
 const server = http.createServer(app);
@@ -73,7 +74,8 @@ app.use('/api/devices', deviceRoutes);
 app.use('/api/recordings', authMiddleware, recordingRoutes);
 app.use('/api/streams', authMiddleware, streamRoutes);
 app.use('/api/users', authMiddleware, userRoutes);
-app.use('/api/streaming', streamingRoutes);
+app.use('/api/streaming',  streamingRoutes);
+app.use('/api/enrollment', authMiddleware, enrollmentRoutes);
 
 // ── Socket.io signaling ──────────────────────────────────────────
 setupSocket(io, app);
