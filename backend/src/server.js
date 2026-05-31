@@ -80,6 +80,8 @@ const initTables = async (attempts = 0) => {
     )`);
     // Add missing columns if table already exists with old schema
     await db.query(`ALTER TABLE recordings ADD COLUMN IF NOT EXISTS filename TEXT`).catch(()=>{});
+    await db.query(`ALTER TABLE recordings ADD COLUMN IF NOT EXISTS start_time TIMESTAMPTZ DEFAULT NOW()`).catch(()=>{});
+    await db.query(`ALTER TABLE recordings ADD COLUMN IF NOT EXISTS end_time TIMESTAMPTZ`).catch(()=>{});
     await db.query(`ALTER TABLE recordings ADD COLUMN IF NOT EXISTS device_id UUID`).catch(()=>{});
     await db.query(`ALTER TABLE recordings ADD COLUMN IF NOT EXISTS size BIGINT`).catch(()=>{});
     await db.query(`ALTER TABLE recordings ADD COLUMN IF NOT EXISTS url TEXT`).catch(()=>{});

@@ -388,9 +388,15 @@ function CameraCard({ device, socket, onEvent, onSettings, settings }) {
       {/* Main controls row */}
       <div style={{display:'flex',gap:5,marginTop:8,flexWrap:'wrap'}}>
         {!watching
-          ? <button style={{...st.btn,...(online?st.btnGreen:st.btnGray),flex:2}} onClick={startWatching} disabled={!online}>
-              {online?'▶ Watch Live':'Offline'}
-            </button>
+          ? <>
+              <button style={{...st.btn,...(online?st.btnGreen:st.btnGray),flex:2}} onClick={startWatching} disabled={!online}>
+                {online?'▶ Watch Live':'Offline'}
+              </button>
+              {!online && <button style={{...st.btn,...st.btnGray,flex:1,fontSize:11}} onClick={()=>{
+                // Scroll to USB tab and activate it
+                document.querySelector('[data-tab="usb"]')?.click();
+              }}>📡 Broadcast</button>}
+            </>
           : <button style={{...st.btn,...st.btnRed,flex:2}} onClick={stopWatching}>⏹ Stop</button>
         }
         {watching && <>
@@ -838,19 +844,24 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
           headers:{ Authorization:'Bearer '+token },
           body: formData,
         }).then(async r=>{
-          if (r.ok) { setStatusMsg('☁️ Clip uploaded'); }
-          else { console.warn('Upload failed:', r.status); setStatusMsg('⬇️ Saved locally (cloud unavailable)'); }
+          if (r.ok) {
+            setStatusMsg('☁️ Clip uploaded');
+            const data = await r.json().catch(()=>({}));
+            const clipUrl = data?.data?.url;
+            if (triggerEventId && clipUrl) {
+              setEvents(ev=>ev.map(e=>e.id===triggerEventId?{...e,clip_url:clipUrl,clip_pending:false}:e));
+              if (onEvent) onEvent({type:'clip_ready',eventId:triggerEventId,clip_url:clipUrl});
+            }
+          } else {
+            console.warn('Upload failed:', r.status);
+            setStatusMsg('⬇️ Saved locally (cloud unavailable)');
+          }
         }).catch(()=>setStatusMsg('⬇️ Saved locally (cloud unavailable)'));
       }
 
       isRecordingRef.current=false; setIsRecording(false);
       // Release cooldown NOW — clip is saved
       alertActiveRef.current=false;
-      // Update event with clip URL so Events tab can play it
-      if (triggerEventId && url) {
-        setEvents(ev=>ev.map(e=>e.id===triggerEventId ? {...e, clip_url:url, clip_pending:false} : e));
-        if (onEvent) onEvent({type:'clip_ready', eventId:triggerEventId, clip_url:url});
-      }
       setStatusMsg(isArmedRef.current?'🟢 Armed — monitoring...':'🟢 Broadcasting');
       if (recordMode==='loop' && isArmedRef.current) startRecording();
     };
@@ -1829,7 +1840,7 @@ export default function App() {
         {/* Tabs */}
         <div style={st.tabs}>
           {TABS.map(t=>(
-            <button key={t.id} onClick={()=>switchTab(t.id)} style={{
+            <button key={t.id} data-tab={t.id} onClick={()=>switchTab(t.id)} style={{
               ...st.tab,
               backgroundColor:tab===t.id?C.green:C.card,
               color:tab===t.id?'#000':C.text,
