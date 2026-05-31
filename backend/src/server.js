@@ -69,17 +69,15 @@ app.get('/health', (req, res) => {
 });
 
 // ── Routes (all AFTER cors) ──────────────────────────────────────
-// Ensure tables exist on startup — using DATABASE_URL directly
-setTimeout(async () => {
-  const { Pool: StartupPool } = require('pg');
-  const sp = new StartupPool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
+// Ensure tables exist — retry until DB is ready
+const initTables = async (attempts = 0) => {
   try {
-    await sp.query(`CREATE TABLE IF NOT EXISTS recordings (
+    await db.query(`CREATE TABLE IF NOT EXISTS recordings (
       id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
       organization_id UUID, device_id UUID, filename TEXT,
       url TEXT, size BIGINT, created_at TIMESTAMPTZ DEFAULT NOW()
     )`);
-    await sp.query(`CREATE TABLE IF NOT EXISTS enrollment_tokens (
+    await db.query(`CREATE TABLE IF NOT EXISTS enrollment_tokens (
       id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
       token TEXT UNIQUE NOT NULL, organization_id UUID NOT NULL,
       created_by UUID NOT NULL, camera_name TEXT, location TEXT,
@@ -87,9 +85,12 @@ setTimeout(async () => {
       device_id UUID, created_at TIMESTAMPTZ DEFAULT NOW()
     )`);
     console.log('Tables ready');
-  } catch(e) { console.log('Table init error:', e.message); }
-  sp.end();
-}, 3000);
+  } catch(e) {
+    console.log('Table init error:', e.message, '- attempt', attempts+1);
+    if (attempts < 10) setTimeout(()=>initTables(attempts+1), 5000);
+  }
+};
+setTimeout(()=>initTables(), 5000);
 
 app.use('/api/auth', authRoutes);
 app.use('/api/devices', deviceRoutes);
