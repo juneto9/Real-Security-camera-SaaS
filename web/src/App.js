@@ -740,8 +740,8 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
     }
 
     // Remote start — viewer clicked Watch Live on Cameras tab
-    cs.on('camera:command', ({command}) => {
-      console.log('📡 Received camera:command:', command);
+    cs.on('camera:command', ({command, params}) => {
+      console.log('📡 Received camera:command:', command, params);
       if (command === 'start' && !streamRef.current) {
         if (navigator.permissions) {
           navigator.permissions.query({name:'camera'}).then(perm => {
@@ -1529,7 +1529,25 @@ function ClipsPage({ devices }) {
                 </div>
                 <div style={{display:'flex',gap:6}}>
                   <button style={{...st.btn,...st.btnGreen,flex:1,fontSize:11,padding:'6px 8px'}} onClick={()=>{ setPlayingUrl(clip.url); setPlayingName(clip.filename); }}>▶ Play</button>
-                  <a href={clip.url} download={clip.filename} target="_blank" rel="noreferrer" style={{...st.btn,...st.btnGray,flex:1,fontSize:11,padding:'6px 8px',textDecoration:'none',textAlign:'center',display:'block'}}>⬇ Save</a>
+                  <button style={{...st.btn,...st.btnGray,flex:1,fontSize:11,padding:'6px 8px'}} onClick={async()=>{
+                    try {
+                      const res = await fetch(clip.url);
+                      const blob = await res.blob();
+                      // Try modern file picker first
+                      if (window.showSaveFilePicker) {
+                        const fh = await window.showSaveFilePicker({suggestedName: clip.filename||'clip.webm', types:[{description:'Video',accept:{'video/webm':['.webm']}}]});
+                        const w = await fh.createWritable();
+                        await w.write(blob);
+                        await w.close();
+                      } else {
+                        // Fallback: auto-download
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href=url; a.download=clip.filename||'clip.webm'; a.click();
+                        setTimeout(()=>URL.revokeObjectURL(url),5000);
+                      }
+                    } catch(e) { if(e.name!=='AbortError') alert('Save failed: '+e.message); }
+                  }}>⬇ Save</button>
                   <button style={{...st.btn,...st.btnRed,padding:'6px 10px',fontSize:12}} onClick={()=>deleteClip(clip.id)}>🗑</button>
                 </div>
               </div>
