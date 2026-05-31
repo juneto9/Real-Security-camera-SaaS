@@ -86,9 +86,8 @@ function CameraSettingsPanel({ device, settings, onChange, onClose }) {
   const update = (key, val) => setS(p => ({ ...p, [key]: val }));
 
   const save = async () => {
-    try {
-      await api.put(`/api/devices/${device.id}`, { settings: s });
-    } catch {}
+    // Settings stored locally — backend settings endpoint not yet implemented
+    // TODO: persist to backend when /api/devices/:id/settings endpoint is added
     onChange(s);
     onClose();
   };
@@ -468,7 +467,18 @@ function CameraCard({ device, socket, onEvent, onSettings, settings }) {
             }}
             onClick={()=>{
               const cmd = armed ? 'disarm' : 'arm';
-              if (socket) socket.emit('camera:command',{deviceId:device.id,command:cmd});
+              if (socket) socket.emit('camera:command',{
+                deviceId: device.id,
+                command: cmd,
+                // Pass current settings so USB page uses correct durations
+                params: settings ? {
+                  loopDuration: settings.loopDuration || 60,
+                  clipSize: settings.clipSize || 60,
+                  recordMode: settings.camMode === 'security' ? 'timed' : 'timed',
+                  motionEnabled: settings.motionEnabled !== false,
+                  soundEnabled: settings.soundEnabled !== false,
+                } : { loopDuration: 60, clipSize: 60 }
+              });
               setArmed(a=>!a);
             }}
           >
@@ -613,7 +623,7 @@ const CLIP_SIZES = [
   { label:'5 min', value:300 },
 ];
 
-function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
+function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsbStatus }) {
   const camSocketRef = useRef(null);
   const [camSocket, setCamSocket] = useState(null);
 
@@ -659,7 +669,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
   const [hwZoomRange,    setHwZoomRange]    = useState({min:1,max:3,step:0.1});
   const [recordMode,     setRecordMode]     = useState('timed');
   const [loopDuration,   setLoopDuration]   = useState(60);
-  const [clipSize,       setClipSize]       = useState(300);
+  const [clipSize,       setClipSize]       = useState(60);
   const [showRecPrompt,  setShowRecPrompt]  = useState(false);
   const [clipManagement, setClipManagement] = useState('cloud');
   const [showClipPrompt, setShowClipPrompt] = useState(false);
@@ -748,13 +758,24 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
         }
       }
       if (command === 'arm') {
-        console.log('📡 Remote arm — starting monitoring');
+        console.log('📡 Remote arm — starting monitoring', params);
         if (streamRef.current) {
+          // Apply settings from admin if provided
+          if (params) {
+            if (params.loopDuration) setLoopDuration(params.loopDuration);
+            if (params.clipSize) setClipSize(params.clipSize);
+            if (params.motionEnabled !== undefined) setMotionEnabled(params.motionEnabled);
+            if (params.soundEnabled !== undefined) setSoundEnabled(params.soundEnabled);
+          }
           setIsArmed(true); isArmedRef.current=true;
           setStatusMsg('🟢 Armed — monitoring...');
-          // Use refs — arrow functions not hoisted, unavailable in closure at registration time
+          if (onUsbStatus) onUsbStatus('armed');
           if (startMotionDetRef.current) startMotionDetRef.current();
           if (startSoundDetRef.current) startSoundDetRef.current();
+          // Also start a timed recording immediately so clip is always generated
+          if (params?.recordMode !== 'manual') {
+            setTimeout(()=>{ if (isArmedRef.current) startRecording(); }, 300);
+          }
         } else {
           console.log('📡 Arm command received but no stream yet');
         }
@@ -765,6 +786,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
         if (stopMotionDetRef.current) stopMotionDetRef.current();
         if (isRecordingRef.current && stopRecordingRef.current) stopRecordingRef.current();
         setStatusMsg('🟢 Broadcasting');
+        if (onUsbStatus) onUsbStatus('');
       }
     });
 
@@ -1060,9 +1082,19 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent }) {
             }
           } else {
             console.warn('Upload failed:', r.status);
-            setStatusMsg('⬇️ Saved locally (cloud unavailable)');
+            setStatusMsg('⬇️ Saved locally (upload failed — downloading)');
+            const url2=URL.createObjectURL(blob);
+            const a2=document.createElement('a');
+            a2.href=url2; a2.download=filename; a2.click();
+            setTimeout(()=>URL.revokeObjectURL(url2),5000);
           }
-        }).catch(()=>setStatusMsg('⬇️ Saved locally (cloud unavailable)'));
+        }).catch(()=>{
+            setStatusMsg('⬇️ Cloud unavailable — downloading locally');
+            const url2=URL.createObjectURL(blob);
+            const a2=document.createElement('a');
+            a2.href=url2; a2.download=filename; a2.click();
+            setTimeout(()=>URL.revokeObjectURL(url2),5000);
+          });
       }
 
       isRecordingRef.current=false; setIsRecording(false);
@@ -1895,6 +1927,7 @@ export default function App() {
   const [deviceSettings,setDeviceSettings]=useState({});
   const [showEnroll,   setShowEnroll]   = useState(false);
   const [showAdmins,   setShowAdmins]   = useState(false);
+  const [usbStatus,    setUsbStatus]    = useState(''); // 'armed' | 'recording' | ''
 
   const showToast = msg => { setToast(msg); setTimeout(()=>setToast(''),3000); };
 
@@ -2016,7 +2049,12 @@ export default function App() {
               backgroundColor:tab===t.id?C.green:C.card,
               color:tab===t.id?'#000':C.text,
               border:tab===t.id?'none':`1px solid ${C.border}`,
-            }}>{t.label}</button>
+              position:'relative',
+            }}>
+              {t.label}
+              {t.id==='usb' && usbStatus==='armed' && <span style={{marginLeft:5,fontSize:10,color:C.green,fontWeight:'normal'}}>🟢</span>}
+              {t.id==='usb' && usbStatus==='recording' && <span style={{marginLeft:5,fontSize:10,color:C.red,fontWeight:'normal'}}>⏺</span>}
+            </button>
           ))}
           {tab==='cameras' && <div style={{display:'flex',gap:6,marginLeft:'auto'}}>
             <button style={{...st.btn,...st.btnGray}} onClick={()=>setShowAdmins(true)}>👥 Admins</button>
@@ -2046,7 +2084,7 @@ export default function App() {
         </div>
 
         <div style={{display: tab==='usb' ? 'block' : 'none'}}>
-          <USBCameraPage socket={socket} devices={devices} userId={user?.userId} organizationId={user?.organizationId} onEvent={e=>{
+          <USBCameraPage socket={socket} devices={devices} userId={user?.userId} organizationId={user?.organizationId} onUsbStatus={setUsbStatus} onEvent={e=>{
             if (e.type==='clip_ready') {
               // Update existing event with clip_url rather than adding new entry
               setEvents(ev=>ev.map(existing=>
