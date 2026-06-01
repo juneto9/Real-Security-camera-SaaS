@@ -1,7 +1,7 @@
 const { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } = require('@aws-sdk/client-s3');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
-const config = require('../config');
-const logger = require('../utils/logger');
+const config = require('./config');
+const logger = require('./utils/logger');
 
 const s3Client = new S3Client({
   endpoint: config.STORAGE.endpoint,
