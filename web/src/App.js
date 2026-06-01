@@ -113,7 +113,7 @@ function Toggle({ value, onChange, color='#00ff88' }) {
 }
 
 // ─── Camera Settings Panel ────────────────────────────────────────
-function CameraSettingsPanel({ device, settings, onChange, onClose }) {
+function CameraSettingsPanel({ device, settings, onChange, onClose, onDeviceUpdated }) {
   const [s, setS] = useState(settings || {
     camMode: 'security',
     loopForever: false,
@@ -125,14 +125,46 @@ function CameraSettingsPanel({ device, settings, onChange, onClose }) {
     nightVisionPro: false,
     cloudUpload: false,
   });
+  const [devName,     setDevName]     = useState(device.name?.trim() || '');
+  const [devLocation, setDevLocation] = useState(device.location?.trim() || '');
+  const [devRtsp,     setDevRtsp]     = useState(device.rtsp_url || '');
+  const [saving,      setSaving]      = useState(false);
+  const [saveMsg,     setSaveMsg]     = useState('');
+  const [deleting,    setDeleting]    = useState(false);
 
   const update = (key, val) => setS(p => ({ ...p, [key]: val }));
 
   const save = async () => {
-    // Settings stored locally — backend settings endpoint not yet implemented
-    // TODO: persist to backend when /api/devices/:id/settings endpoint is added
-    onChange(s);
-    onClose();
+    setSaving(true);
+    setSaveMsg('');
+    try {
+      await api.put(`/api/devices/${device.id}`, {
+        name: devName,
+        location: devLocation,
+        rtsp_url: devRtsp,
+        is_motion_detection_enabled: s.motionEnabled,
+      });
+      setSaveMsg('✅ Saved!');
+      if (onDeviceUpdated) onDeviceUpdated({ ...device, name: devName, location: devLocation, rtsp_url: devRtsp });
+      onChange(s);
+      setTimeout(() => { setSaveMsg(''); onClose(); }, 800);
+    } catch(e) {
+      setSaveMsg('❌ ' + (e.response?.data?.message || e.message));
+    }
+    setSaving(false);
+  };
+
+  const deleteDevice = async () => {
+    if (!window.confirm(`Delete "${devName}"? This cannot be undone.`)) return;
+    setDeleting(true);
+    try {
+      await api.delete(`/api/devices/${device.id}`);
+      if (onDeviceUpdated) onDeviceUpdated(null); // null = deleted
+      onClose();
+    } catch(e) {
+      alert('Delete failed: ' + (e.response?.data?.message || e.message));
+    }
+    setDeleting(false);
   };
 
   const LOOP_OPTIONS = [
@@ -152,8 +184,34 @@ function CameraSettingsPanel({ device, settings, onChange, onClose }) {
     <div style={st.modal}>
       <div style={st.modalBox}>
         <div style={{...st.flexBetween, marginBottom:16}}>
-          <h2 style={{margin:0, color:C.green}}>⚙️ {device.name} Settings</h2>
+          <h2 style={{margin:0, color:C.green}}>⚙️ Camera Settings</h2>
           <button style={{...st.btn,...st.btnGray}} onClick={onClose}>✕</button>
+        </div>
+
+        {/* Device Info */}
+        <p style={st.settingSection}>📷 Device Info</p>
+        <div style={{marginBottom:8}}>
+          <label style={{color:C.sub,fontSize:12,display:'block',marginBottom:4}}>Camera Name</label>
+          <input value={devName} onChange={e=>setDevName(e.target.value)}
+            placeholder="Camera name"
+            style={{width:'100%',padding:'8px 10px',background:C.input,border:`1px solid ${C.border}`,
+              borderRadius:6,color:C.text,fontSize:13,boxSizing:'border-box'}}/>
+        </div>
+        <div style={{marginBottom:8}}>
+          <label style={{color:C.sub,fontSize:12,display:'block',marginBottom:4}}>Location</label>
+          <input value={devLocation} onChange={e=>setDevLocation(e.target.value)}
+            placeholder="e.g. Front door, Living room"
+            style={{width:'100%',padding:'8px 10px',background:C.input,border:`1px solid ${C.border}`,
+              borderRadius:6,color:C.text,fontSize:13,boxSizing:'border-box'}}/>
+        </div>
+        <div style={{marginBottom:16}}>
+          <label style={{color:C.sub,fontSize:12,display:'block',marginBottom:4}}>
+            RTSP URL <span style={{color:C.sub,fontWeight:'normal'}}>(IP cameras)</span>
+          </label>
+          <input value={devRtsp} onChange={e=>setDevRtsp(e.target.value)}
+            placeholder="rtsp://user:pass@192.168.x.x:554/stream"
+            style={{width:'100%',padding:'8px 10px',background:C.input,border:`1px solid ${C.border}`,
+              borderRadius:6,color:C.text,fontSize:13,boxSizing:'border-box'}}/>
         </div>
 
         {/* Mode */}
@@ -247,8 +305,17 @@ function CameraSettingsPanel({ device, settings, onChange, onClose }) {
         </div>
 
         <div style={{display:'flex', gap:8, marginTop:20}}>
+          <button style={{...st.btn,backgroundColor:'#3d1a1a',color:C.red,border:`1px solid ${C.red}40`}}
+            onClick={deleteDevice} disabled={deleting}>
+            {deleting?'Deleting...':'🗑 Delete'}
+          </button>
           <button style={{...st.btn,...st.btnGray, flex:1}} onClick={onClose}>Cancel</button>
-          <button style={{...st.btn,...st.btnGreen, flex:2}} onClick={save}>Save Settings</button>
+          <button style={{...st.btn,...st.btnGreen, flex:2, opacity:saving?0.6:1}}
+            onClick={save} disabled={saving}>
+            {saving?'Saving...':'Save Settings'}
+          </button>
+          {saveMsg && <div style={{width:'100%',textAlign:'center',fontSize:12,marginTop:4,
+            color:saveMsg.startsWith('✅')?C.green:C.red}}>{saveMsg}</div>}
         </div>
       </div>
     </div>
@@ -2488,7 +2555,22 @@ function DiscoverPage({ socket, onDeviceAdded }) {
     setRemoving(null);
   };
 
-  const allDevices = [...discovered, ...mdnsDevices.filter(m => !discovered.find(d => d.ip === m.ip))];
+  // Deduplicate: if same IP appears as both 'registered' and 'agent', keep registered only
+  const deduped = [];
+  const seenIPs = new Set();
+  const seenIDs = new Set();
+  // First pass: registered devices
+  discovered.filter(d => d.source === 'registered').forEach(d => {
+    if (!seenIDs.has(d.id)) { deduped.push(d); seenIDs.add(d.id); if(d.location) seenIPs.add(d.location); }
+  });
+  // Second pass: agent/ARP devices not already registered
+  discovered.filter(d => d.source !== 'registered').forEach(d => {
+    if (!seenIPs.has(d.ip) && !seenIDs.has(d.id||d.ip)) {
+      deduped.push(d); if(d.ip) seenIPs.add(d.ip);
+    }
+  });
+  mdnsDevices.filter(m => !seenIPs.has(m.ip)).forEach(m => deduped.push(m));
+  const allDevices = deduped;
   const typeIcon = (t) => t==='iOS'?'📱':t==='Android'?'🤖':t==='IPCamera'?'📹':t==='RSCCamera'?'📱':'📡';
   const isRegistered = (d) => d.source === 'registered';
 
@@ -3052,14 +3134,14 @@ export default function App() {
         <div style={st.statRow}>
           <div style={st.stat}>
             <p style={st.statN}>
-              {devices.filter(d=>d.is_active && d.device_type !== 'usb' && d.device_type !== 'webcam' && d.name !== 'PC Camera').length}
+              {devices.filter(d=>d.is_active && d.device_type !== 'usb' && d.device_type !== 'webcam' && d.name?.trim() !== 'PC Camera').length}
             </p>
             <p style={st.statL}>Total Cameras</p>
           </div>
           <div style={st.stat}>
             <p style={{...st.statN,color:C.green}}>
               {new Set([
-                ...devices.filter(d=>d.is_active||onlineMap[d.id]?.online||onlineMap[d.id]===true).map(d=>d.id),
+                ...devices.filter(d=>(onlineMap[d.id]?.online||onlineMap[d.id]===true) && d.device_type!=='usb' && d.name?.trim()!=='PC Camera').map(d=>d.id),
                 ...Object.entries(onlineMap).filter(([k,v])=>(v?.online||v===true) && devices.find(d=>d.id===k && d.device_type!=='usb' && d.name!=='PC Camera')).map(([k])=>k)
               ]).size}
             </p>
@@ -3107,13 +3189,13 @@ export default function App() {
                   // Exclude USB/Webcam devices — managed from USB/Webcam tab only
                   if (usbLinkedDevice && d.id === usbLinkedDevice) return false;
                   if (d.device_type === 'usb' || d.device_type === 'webcam') return false;
-                  if (d.name === 'PC Camera') return false;
+                  if (d.name?.trim() === 'PC Camera') return false;
                   // Only show enrolled active devices
                   if (!d.is_active) return false;
                   return true;
                 }).map(d=>(
                   <CameraCard key={d.id}
-                    device={{...d,online:onlineMap[d.id]?.online||onlineMap[d.id]===true||d.is_active}}
+                    device={{...d,online:onlineMap[d.id]?.online||onlineMap[d.id]===true}}
                     socket={socket}
                     onEvent={e=>addEvent(e)}
                     settings={deviceSettings[d.id]}
@@ -3175,6 +3257,7 @@ export default function App() {
           settings={deviceSettings[settingsFor.id]}
           onChange={s=>setDeviceSettings(p=>({...p,[settingsFor.id]:s}))}
           onClose={()=>setSettingsFor(null)}
+          onDeviceUpdated={(updated)=>{ if(updated===null){setDevices(prev=>prev.filter(d=>d.id!==settingsFor.id)); setSettingsFor(null);} else setDevices(prev=>prev.map(d=>d.id===updated.id?{...d,...updated}:d)); }}
         />
       )}
 
