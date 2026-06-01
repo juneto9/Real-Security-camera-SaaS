@@ -10,25 +10,68 @@ api.interceptors.request.use(cfg => {
   return cfg;
 });
 
-const C = {
-  bg:'#0a0a0a', surface:'#111', card:'#1a1a1a',
-  green:'#00ff88', blue:'#4488ff', red:'#ff4444',
-  gold:'#ffd700', text:'#ffffff', sub:'#666666', border:'#222222',
+// ─── Theme Definitions ───────────────────────────────────────────
+const THEMES = {
+  operator: {
+    name:'🟢 Operator',
+    bg:'#050505', surface:'#0f0f0f', card:'#141414',
+    green:'#00ff88', blue:'#00aaff', red:'#ff3333',
+    gold:'#ffd700', text:'#ffffff', sub:'#555555', border:'#1a1a1a',
+    radius:6, font:'monospace',
+  },
+  life360: {
+    name:'🔵 Life360',
+    bg:'#f0f2f5', surface:'#ffffff', card:'#ffffff',
+    green:'#1a73e8', blue:'#1a73e8', red:'#ea4335',
+    gold:'#fbbc04', text:'#1a1a1a', sub:'#888888', border:'#e0e0e0',
+    radius:16, font:'system-ui,sans-serif',
+  },
+  bubble: {
+    name:'🍎 Bubble iOS',
+    bg:'#f2f2f7', surface:'rgba(255,255,255,0.85)', card:'rgba(255,255,255,0.85)',
+    green:'#34c759', blue:'#007aff', red:'#ff3b30',
+    gold:'#ff9500', text:'#000000', sub:'#8e8e93', border:'rgba(0,0,0,0.08)',
+    radius:22, font:'-apple-system,BlinkMacSystemFont,sans-serif',
+  },
+  custom: {
+    name:'🎨 Custom',
+    bg:'#0a0a0a', surface:'#111', card:'#1a1a1a',
+    green:'#00ff88', blue:'#4488ff', red:'#ff4444',
+    gold:'#ffd700', text:'#ffffff', sub:'#666666', border:'#222222',
+    radius:10, font:'system-ui,sans-serif',
+  },
 };
 
+function getTheme() {
+  try {
+    const saved = localStorage.getItem('rsc_theme')||'operator';
+    const custom = localStorage.getItem('rsc_custom_theme');
+    if (saved==='custom' && custom) return {...THEMES.custom,...JSON.parse(custom)};
+    return THEMES[saved]||THEMES.operator;
+  } catch { return THEMES.operator; }
+}
+
+// Active theme — components import this
+let C = getTheme();
+
+// Refresh C when theme changes
+function refreshTheme() {
+  C = getTheme();
+}
+
 const st = {
-  app:         { minHeight:'100vh', backgroundColor:C.bg, color:C.text, fontFamily:'system-ui,sans-serif' },
-  nav:         { backgroundColor:C.surface, padding:'12px 24px', display:'flex', alignItems:'center', justifyContent:'space-between', borderBottom:`1px solid ${C.border}`, position:'sticky', top:0, zIndex:100 },
+  app:         { minHeight:'100vh', backgroundColor:C.bg, color:C.text, fontFamily:C.font||'system-ui,sans-serif' },
+  nav:         { backgroundColor:C.surface||C.card, padding:'12px 24px', display:'flex', alignItems:'center', justifyContent:'space-between', borderBottom:`1px solid ${C.border}`, position:'sticky', top:0, zIndex:100 },
   navTitle:    { color:C.green, fontSize:20, fontWeight:'bold', margin:0 },
   navRight:    { display:'flex', alignItems:'center', gap:12 },
-  btn:         { padding:'8px 16px', borderRadius:6, border:'none', cursor:'pointer', fontWeight:'bold', fontSize:13 },
+  btn:         { padding:'8px 16px', borderRadius:C.radius||6, border:'none', cursor:'pointer', fontWeight:'bold', fontSize:13 },
   btnGreen:    { backgroundColor:C.green, color:'#000' },
   btnRed:      { backgroundColor:C.red, color:'#fff' },
   btnGray:     { backgroundColor:C.card, color:C.text, border:`1px solid ${C.border}` },
   btnGold:     { backgroundColor:'transparent', color:C.gold, border:`1px solid ${C.gold}` },
   btnBlue:     { backgroundColor:C.blue, color:'#fff' },
   main:        { padding:24, maxWidth:1400, margin:'0 auto' },
-  card:        { backgroundColor:C.card, borderRadius:12, padding:16, border:`1px solid ${C.border}` },
+  card:        { backgroundColor:C.card, borderRadius:C.radius||12, padding:16, border:`1px solid ${C.border}` },
   statRow:     { display:'flex', gap:12, marginBottom:20, flexWrap:'wrap' },
   stat:        { backgroundColor:C.card, borderRadius:10, padding:'12px 16px', flex:1, textAlign:'center', border:`1px solid ${C.border}`, minWidth:100 },
   statN:       { fontSize:24, fontWeight:'bold', color:C.green, margin:0 },
@@ -1895,6 +1938,7 @@ function AddDeviceModal({ onClose, onAdded }) {
 
 // ─── Subscription Page ────────────────────────────────────────────
 function SubscriptionPage() {
+  // TODO: ENABLE PAYWALL — this page controls all subscription gating
   const TIERS = {
     free:       { label:'Free',       price:'$0/mo',    color:C.sub,   features:['Local recording','Night Vision','1 camera','Basic motion alerts'] },
     pro:        { label:'Pro',        price:'$9.99/mo', color:C.green, features:['Everything in Free','Loop Forever recording','Cloud storage 50GB','5 cameras','Priority support','Web dashboard'] },
@@ -1986,6 +2030,429 @@ function SubscriptionPage() {
 }
 
 // ─── Login ────────────────────────────────────────────────────────
+
+// ─── MAC OUI Database ─────────────────────────────────────────────
+const OUI_MAP = {
+  '00:03:93':'iOS','00:0A:95':'iOS','00:1C:B3':'iOS','00:21:E9':'iOS',
+  '04:0C:CE':'iOS','04:26:65':'iOS','04:52:F3':'iOS','04:54:53':'iOS',
+  '00:07:AB':'Android','00:12:47':'Android','00:15:99':'Android',
+  '00:1A:8A':'Android','00:1D:25':'Android','04:18:0F':'Android',
+  'F4:F5:D8':'Android','3C:5A:B4':'Android',
+  '00:12:17':'IPCamera','44:19:B6':'IPCamera','4C:BD:8F':'IPCamera',
+  'BC:AD:28':'IPCamera','B4:A3:82':'IPCamera','EC:71:DB':'IPCamera',
+  '00:40:8C':'IPCamera','AC:CC:8E':'IPCamera','28:57:BE':'IPCamera',
+};
+function identifyDevice(mac) {
+  if (!mac) return 'Unknown';
+  return OUI_MAP[mac.substring(0,8).toUpperCase()] || 'Unknown';
+}
+
+// ─── Discover Page ────────────────────────────────────────────────
+function DiscoverPage({ socket, onDeviceAdded }) {
+  const [scanning,   setScanning]   = useState(false);
+  const [discovered, setDiscovered] = useState([]);
+  const [enrolling,  setEnrolling]  = useState(null);
+  const [mdnsDevices,setMdnsDevices]= useState([]);
+
+  // Listen for mDNS devices from backend (via socket)
+  useEffect(()=>{
+    if (!socket) return;
+    socket.on('mdns:device', (device)=>{
+      setMdnsDevices(d=>[...d.filter(x=>x.id!==device.id), device]);
+    });
+    return ()=>socket.off('mdns:device');
+  },[socket]);
+
+  const scanNetwork = async () => {
+    setScanning(true);
+    setDiscovered([]);
+    try {
+      const res = await api.get('/api/devices/discover');
+      setDiscovered(res.data.data||[]);
+    } catch(e) {
+      // Fallback: show mDNS devices already received via socket
+      setDiscovered(mdnsDevices);
+    }
+    setScanning(false);
+  };
+
+  const enroll = async (device) => {
+    setEnrolling(device.id);
+    try {
+      await api.post('/api/devices', {
+        device_name: device.name||`Camera ${device.ip}`,
+        location: device.ip||'Local Network',
+        device_type: device.type==='RSCCamera'?'mobile':'ip_camera',
+        ip_address: device.ip,
+        mac_address: device.mac,
+      });
+      setDiscovered(d=>d.filter(x=>x.id!==device.id));
+      if (onDeviceAdded) onDeviceAdded();
+      alert(`✅ ${device.name||device.ip} enrolled successfully`);
+    } catch(e) {
+      alert('Enrollment failed: '+(e.response?.data?.message||e.message));
+    }
+    setEnrolling(null);
+  };
+
+  const allDevices = [...discovered, ...mdnsDevices.filter(m=>
+    !discovered.find(d=>d.ip===m.ip))];
+
+  const typeIcon = (t) => t==='iOS'?'📱':t==='Android'?'🤖':t==='IPCamera'?'📹':t==='RSCCamera'?'📱':'📡';
+
+  return (
+    <div style={{padding:24,maxWidth:900,margin:'0 auto'}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
+        <div>
+          <h2 style={{color:C.text,margin:0,fontSize:20}}>🔍 Discover Cameras</h2>
+          <p style={{color:C.sub,fontSize:13,margin:'4px 0 0'}}>
+            Find phones and IP cameras on your network
+          </p>
+        </div>
+        <button style={{...st.btn,...st.btnGreen,display:'flex',alignItems:'center',gap:8}}
+          onClick={scanNetwork} disabled={scanning}>
+          {scanning ? '⏳ Scanning...' : '🔍 Scan Network'}
+        </button>
+      </div>
+
+      {/* Info cards */}
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:20}}>
+        <div style={{...st.card,borderColor:C.green+'40',backgroundColor:C.green+'08'}}>
+          <div style={{fontWeight:'bold',color:C.green,marginBottom:4}}>🤖 Android Discovery</div>
+          <div style={{color:C.sub,fontSize:12}}>ARP table scan + mDNS — finds all Android phones and IP cameras on the same WiFi network</div>
+        </div>
+        <div style={{...st.card,borderColor:C.blue+'40',backgroundColor:C.blue+'08'}}>
+          <div style={{fontWeight:'bold',color:C.blue,marginBottom:4}}>🍎 iOS Discovery</div>
+          <div style={{color:C.sub,fontSize:12}}>mDNS/Bonjour auto-advertising — iPhones running the app appear automatically when on the same network</div>
+        </div>
+      </div>
+
+      {/* QR Enrollment reminder */}
+      <div style={{...st.card,marginBottom:20,display:'flex',alignItems:'center',gap:12}}>
+        <span style={{fontSize:24}}>🔳</span>
+        <div style={{flex:1}}>
+          <div style={{fontWeight:'bold',color:C.text}}>QR Code Enrollment</div>
+          <div style={{color:C.sub,fontSize:12}}>Use the Enroll Camera button to generate a QR code — works anywhere, no network scanning needed</div>
+        </div>
+      </div>
+
+      {/* Results */}
+      {scanning && (
+        <div style={{textAlign:'center',padding:40}}>
+          <div style={{color:C.green,fontSize:16,marginBottom:8}}>⏳ Scanning network...</div>
+          <div style={{color:C.sub,fontSize:12}}>Checking ARP table + mDNS (~8 seconds)</div>
+        </div>
+      )}
+
+      {!scanning && allDevices.length===0 && (
+        <div style={{textAlign:'center',padding:60}}>
+          <div style={{fontSize:48,marginBottom:16}}>📡</div>
+          <div style={{color:C.text,fontSize:18,marginBottom:8}}>No devices found yet</div>
+          <div style={{color:C.sub,fontSize:13}}>
+            Make sure devices are on the same WiFi, then click Scan Network
+          </div>
+        </div>
+      )}
+
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))',gap:12}}>
+        {allDevices.map(d=>(
+          <div key={d.id||d.ip} style={{...st.card}}>
+            <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10}}>
+              <span style={{fontSize:28}}>{typeIcon(d.type)}</span>
+              <div style={{flex:1}}>
+                <div style={{fontWeight:'bold',color:C.text,fontSize:14}}>
+                  {d.name||`${d.type} Device`}
+                </div>
+                <div style={{color:C.sub,fontSize:11,marginTop:2}}>
+                  {d.ip&&`IP: ${d.ip}`}{d.mac&&` · MAC: ${d.mac}`}
+                </div>
+              </div>
+              <span style={{fontSize:10,backgroundColor:C.green+'20',color:C.green,
+                padding:'2px 8px',borderRadius:10,fontWeight:'bold'}}>
+                {d.source==='mdns'?'mDNS':'ARP'}
+              </span>
+            </div>
+            <button
+              style={{...st.btn,...st.btnGreen,width:'100%',
+                opacity:enrolling===d.id?0.6:1}}
+              onClick={()=>enroll(d)}
+              disabled={enrolling===d.id}>
+              {enrolling===d.id?'Enrolling...':'+ Enroll Camera'}
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Admin Page ───────────────────────────────────────────────────
+function AdminPage({ user }) {
+  const [members,  setMembers]  = useState([]);
+  const [loading,  setLoading]  = useState(true);
+  const [invEmail, setInvEmail] = useState('');
+  const [inviting, setInviting] = useState(false);
+
+  // TODO: ENABLE PAYWALL — max 2 admins on free plan
+  const MAX_ADMINS = 2;
+
+  useEffect(()=>{ loadMembers(); },[]);
+
+  const loadMembers = async () => {
+    setLoading(true);
+    try {
+      const res = await api.get('/api/users');
+      setMembers(res.data.data||[]);
+    } catch(e) { console.log(e.message); }
+    setLoading(false);
+  };
+
+  const grantAdmin = async (userId) => {
+    const adminCount = members.filter(m=>m.role==='admin').length;
+    if (adminCount >= MAX_ADMINS) {
+      // TODO: ENABLE PAYWALL — show upgrade modal here
+      alert(`Admin limit reached. Your plan allows ${MAX_ADMINS} admins. Upgrade to add more.`);
+      return;
+    }
+    try {
+      await api.put(`/api/users/${userId}/role`, { role:'admin' });
+      loadMembers();
+    } catch(e) { alert('Failed to grant admin'); }
+  };
+
+  const revokeAdmin = async (userId) => {
+    if (!window.confirm('Remove admin access for this user?')) return;
+    try {
+      await api.put(`/api/users/${userId}/role`, { role:'viewer' });
+      loadMembers();
+    } catch(e) { alert('Failed to revoke admin'); }
+  };
+
+  const inviteUser = async () => {
+    if (!invEmail) return;
+    setInviting(true);
+    try {
+      await api.post('/api/users/invite', { email: invEmail });
+      alert(`Invitation sent to ${invEmail}`);
+      setInvEmail('');
+      loadMembers();
+    } catch(e) { alert(e.response?.data?.message||'Invitation failed'); }
+    setInviting(false);
+  };
+
+  const adminCount = members.filter(m=>m.role==='admin').length;
+
+  return (
+    <div style={{padding:24,maxWidth:800,margin:'0 auto'}}>
+      <h2 style={{color:C.text,marginBottom:20}}>👥 Admin Management</h2>
+
+      {/* Org Stats */}
+      <div style={{...st.card,marginBottom:20}}>
+        <div style={{display:'flex',gap:24,flexWrap:'wrap'}}>
+          <div style={{textAlign:'center'}}>
+            <div style={{fontSize:24,fontWeight:'bold',color:C.green}}>{members.length}</div>
+            <div style={{color:C.sub,fontSize:11}}>Members</div>
+          </div>
+          <div style={{textAlign:'center'}}>
+            <div style={{fontSize:24,fontWeight:'bold',color:C.green}}>{adminCount}</div>
+            <div style={{color:C.sub,fontSize:11}}>Admins</div>
+          </div>
+          <div style={{textAlign:'center'}}>
+            <div style={{fontSize:24,fontWeight:'bold',
+              color:adminCount>=MAX_ADMINS?C.red:C.green}}>
+              {MAX_ADMINS-adminCount}
+            </div>
+            <div style={{color:C.sub,fontSize:11}}>Slots Left</div>
+          </div>
+        </div>
+      </div>
+
+      {/* TODO: ENABLE PAYWALL banner */}
+      {adminCount >= MAX_ADMINS && (
+        <div style={{...st.card,marginBottom:20,borderColor:C.gold,
+          backgroundColor:C.gold+'10'}}>
+          <div style={{color:C.gold,fontWeight:'bold',marginBottom:4}}>
+            ⭐ Upgrade for More Admins
+          </div>
+          <div style={{color:C.sub,fontSize:13}}>
+            Your plan includes {MAX_ADMINS} admins. Upgrade to Pro for up to 5 admins.
+          </div>
+          {/* TODO: ENABLE PAYWALL — uncomment before production deploy */}
+          {/* <button style={{...st.btn,...st.btnGold,marginTop:10}} onClick={()=>{}}>
+            Upgrade Plan
+          </button> */}
+        </div>
+      )}
+
+      {/* Invite */}
+      <div style={{...st.card,marginBottom:20}}>
+        <div style={{fontWeight:'bold',color:C.text,marginBottom:12}}>✉️ Invite User</div>
+        <div style={{display:'flex',gap:8}}>
+          <input style={{...st.input,flex:1}} type="email"
+            placeholder="Email address"
+            value={invEmail} onChange={e=>setInvEmail(e.target.value)}/>
+          <button style={{...st.btn,...st.btnGreen}}
+            onClick={inviteUser} disabled={inviting||!invEmail}>
+            {inviting?'Sending...':'Send Invite'}
+          </button>
+        </div>
+      </div>
+
+      {/* Members */}
+      <div style={{fontWeight:'bold',color:C.text,marginBottom:12,fontSize:15}}>
+        Members
+      </div>
+      {loading ? <div style={{color:C.sub}}>Loading...</div> :
+        members.map(m=>(
+          <div key={m.id} style={{...st.card,marginBottom:8,
+            display:'flex',alignItems:'center',gap:12}}>
+            <div style={{width:40,height:40,borderRadius:'50%',
+              backgroundColor:C.green+'20',display:'flex',alignItems:'center',
+              justifyContent:'center',fontWeight:'bold',color:C.green,fontSize:16,flexShrink:0}}>
+              {(m.first_name||m.email||'?')[0].toUpperCase()}
+            </div>
+            <div style={{flex:1}}>
+              <div style={{fontWeight:'bold',color:C.text,fontSize:14}}>
+                {m.first_name} {m.last_name}
+              </div>
+              <div style={{color:C.sub,fontSize:12}}>{m.email}</div>
+            </div>
+            <span style={{fontSize:11,padding:'2px 8px',borderRadius:10,fontWeight:'bold',
+              backgroundColor:m.role==='admin'?C.green+'20':'rgba(100,100,100,0.15)',
+              color:m.role==='admin'?C.green:C.sub}}>
+              {m.role==='admin'?'Admin':'Viewer'}
+            </span>
+            {m.id !== user?.userId && (
+              m.role==='admin' ? (
+                <button style={{...st.btn,backgroundColor:'transparent',
+                  color:C.red,border:`1px solid ${C.red}`,fontSize:12,padding:'4px 10px'}}
+                  onClick={()=>revokeAdmin(m.id)}>
+                  Revoke
+                </button>
+              ) : (
+                <button style={{...st.btn,backgroundColor:'transparent',
+                  color:C.green,border:`1px solid ${C.green}`,fontSize:12,padding:'4px 10px'}}
+                  onClick={()=>grantAdmin(m.id)}>
+                  Make Admin
+                </button>
+              )
+            )}
+          </div>
+        ))
+      }
+    </div>
+  );
+}
+
+// ─── Settings Page ────────────────────────────────────────────────
+function SettingsPage({ currentTheme, onThemeChange, user }) {
+  const [customColor, setCustomColor] = useState(
+    localStorage.getItem('rsc_custom_color')||'#00ff88'
+  );
+
+  const COLOR_PRESETS = [
+    '#00ff88','#4488ff','#ff4444','#ff9500',
+    '#af52de','#ff2d55','#00c7be','#ffd700','#ff6b35','#00d4aa',
+  ];
+
+  const applyCustomColor = (color) => {
+    setCustomColor(color);
+    localStorage.setItem('rsc_custom_color', color);
+    onThemeChange('custom', {
+      ...THEMES.custom,
+      green: color,
+      primary: color,
+    });
+  };
+
+  return (
+    <div style={{padding:24,maxWidth:800,margin:'0 auto'}}>
+      <h2 style={{color:C.text,marginBottom:20}}>⚙️ Settings</h2>
+
+      {/* Theme Selector */}
+      <div style={{...st.card,marginBottom:20}}>
+        <div style={{fontWeight:'bold',color:C.text,marginBottom:16,fontSize:15}}>
+          🎨 App Theme
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+          {Object.entries(THEMES).map(([key, t])=>(
+            <button key={key}
+              style={{
+                padding:14, borderRadius:12, cursor:'pointer',
+                border:`2px solid ${currentTheme===key?t.green:C.border}`,
+                backgroundColor:currentTheme===key?t.green+'18':C.bg,
+                textAlign:'left', display:'flex', alignItems:'center', gap:10,
+              }}
+              onClick={()=>onThemeChange(key)}>
+              <div style={{width:24,height:24,borderRadius:12,
+                backgroundColor:t.green,flexShrink:0}}/>
+              <div>
+                <div style={{fontWeight:'bold',color:C.text,fontSize:13}}>{t.name}</div>
+                <div style={{color:C.sub,fontSize:11,marginTop:2}}>
+                  {key==='operator'?'Dark tactical neon'
+                   :key==='life360'?'Clean white safety app style'
+                   :key==='bubble'?'Frosted glass iOS aesthetics'
+                   :'Pick your own colors'}
+                </div>
+              </div>
+              {currentTheme===key&&(
+                <span style={{marginLeft:'auto',color:t.green,fontSize:16,fontWeight:'bold'}}>✓</span>
+              )}
+            </button>
+          ))}
+        </div>
+
+        {/* Custom color picker */}
+        {currentTheme==='custom'&&(
+          <div style={{marginTop:16,paddingTop:16,borderTop:`1px solid ${C.border}`}}>
+            <div style={{fontWeight:'bold',color:C.text,marginBottom:10,fontSize:13}}>
+              Primary Color
+            </div>
+            <div style={{display:'flex',gap:10,flexWrap:'wrap',alignItems:'center'}}>
+              {COLOR_PRESETS.map(c=>(
+                <div key={c}
+                  style={{width:36,height:36,borderRadius:18,backgroundColor:c,
+                    cursor:'pointer',border:customColor===c?'3px solid #fff':'3px solid transparent',
+                    boxShadow:customColor===c?`0 0 0 2px ${c}`:'none'}}
+                  onClick={()=>applyCustomColor(c)}/>
+              ))}
+              <input type="color" value={customColor}
+                onChange={e=>applyCustomColor(e.target.value)}
+                style={{width:36,height:36,borderRadius:18,border:'none',
+                  cursor:'pointer',backgroundColor:'transparent'}}/>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Account */}
+      <div style={{...st.card,marginBottom:20}}>
+        <div style={{fontWeight:'bold',color:C.text,marginBottom:12,fontSize:15}}>
+          👤 Account
+        </div>
+        <div style={{color:C.sub,fontSize:12,marginBottom:4}}>Logged in as</div>
+        <div style={{color:C.text,fontWeight:'bold',fontSize:15}}>{user?.email}</div>
+        <div style={{color:C.sub,fontSize:12,marginTop:4}}>
+          {user?.role==='admin'?'Administrator':'Viewer'}
+        </div>
+      </div>
+
+      {/* TODO: ENABLE PAYWALL — Subscription */}
+      <div style={{...st.card,borderColor:C.gold,marginBottom:20}}>
+        <div style={{color:C.gold,fontWeight:'bold',marginBottom:4,fontSize:15}}>
+          ⭐ Subscription
+        </div>
+        <div style={{color:C.text,fontSize:13,marginBottom:8}}>Free Plan · 14-day clip retention</div>
+        {/* TODO: ENABLE PAYWALL — uncomment before production deploy */}
+        {/* <button style={{...st.btn,...st.btnGold}} onClick={()=>{}}>Upgrade to Pro</button> */}
+        <div style={{color:C.sub,fontSize:12}}>
+          Pro: 60-day retention · 5 admins · Priority support — Coming soon
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function LoginPage({ onLogin }) {
   const [email,setEmail]=useState(''); const [pw,setPw]=useState(''); const [err,setErr]=useState(''); const [loading,setLoading]=useState(false);
   const login = async e => {
@@ -2045,6 +2512,16 @@ export default function App() {
   const [showAdmins,   setShowAdmins]   = useState(false);
   const [usbStatus,    setUsbStatus]    = useState(''); // 'armed' | 'recording' | ''
   const [usbLinkedDevice, setUsbLinkedDevice] = useState(()=>sessionStorage.getItem('usbLinkedDevice')||'');
+  const [theme, setTheme] = useState(()=>localStorage.getItem('rsc_theme')||'operator');
+  const [, forceRender] = useState(0);
+
+  const applyTheme = (key, customData) => {
+    setTheme(key);
+    localStorage.setItem('rsc_theme', key);
+    if (customData) localStorage.setItem('rsc_custom_theme', JSON.stringify(customData));
+    refreshTheme();
+    forceRender(n=>n+1); // trigger re-render with new theme
+  };
 
   const showToast = (msg, duration=3000) => { setToast(msg); setTimeout(()=>setToast(''),duration); };
   // Persist events to localStorage (today only)
@@ -2125,11 +2602,14 @@ export default function App() {
   if (!token) return <LoginPage onLogin={setToken}/>;
 
   const TABS = [
-    {id:'cameras', label:'📷 Cameras'},
-    {id:'usb',     label:'🖥️ USB/Webcam'},
-    {id:'clips',   label:'🎬 Clips'},
-    {id:'events',  label:'🚨 Events'},
-    {id:'sub',     label:'⭐ Subscription'},
+    {id:'cameras',  label:'📷 Cameras'},
+    {id:'usb',      label:'🖥️ USB/Webcam'},
+    {id:'discover', label:'🔍 Discover'},
+    {id:'clips',    label:'🎬 Clips'},
+    {id:'events',   label:'🚨 Events'},
+    {id:'admin',    label:'👥 Admin'},
+    {id:'settings', label:'⚙️ Settings'},
+    {id:'sub',      label:'⭐ Subscription'},
   ];
 
   const switchTab = (newTab) => {
@@ -2242,6 +2722,15 @@ export default function App() {
         </div>
         <div style={{display: tab==='sub' ? 'block' : 'none'}}>
           <SubscriptionPage/>
+        </div>
+        <div style={{display: tab==='discover' ? 'block' : 'none'}}>
+          <DiscoverPage socket={socket} onDeviceAdded={()=>loadDevices()}/>
+        </div>
+        <div style={{display: tab==='admin' ? 'block' : 'none'}}>
+          <AdminPage user={user}/>
+        </div>
+        <div style={{display: tab==='settings' ? 'block' : 'none'}}>
+          <SettingsPage currentTheme={theme} onThemeChange={applyTheme} user={user}/>
         </div>
       </main>
 
