@@ -53,26 +53,36 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString(), uptime: process.uptime() });
 });
 
-// Discovery agent report — no user auth, agent posts here
+// ── Discovery Agent Report ─────────────────────────────────────────────────
+// Called by the LAN agent — no user auth, uses orgId from body
+// Saves to DB so it survives server restarts/redeploys
 app.post('/api/discovery/report', async (req, res) => {
   try {
     const { orgId, devices, count, agentIP } = req.body;
     if (!orgId) return res.status(400).json({ success: false, message: 'orgId required' });
-    if (!global.discoveredDevices) global.discoveredDevices = {};
-    global.discoveredDevices[orgId] = {
-      devices: devices || [],
-      timestamp: new Date().toISOString(),
-      agentIP: agentIP || req.ip,
-      count: count || (devices ? devices.length : 0),
-    };
-    logger.info('Discovery report received', { orgId, count: global.discoveredDevices[orgId].count, agentIP: req.ip });
-    res.json({ success: true, received: global.discoveredDevices[orgId].count });
+
+    const deviceList = devices || [];
+    const deviceCount = count || deviceList.length;
+    const ip = agentIP || req.ip;
+
+    // Upsert into DB — survives restarts unlike global memory
+    await db.query(
+      `INSERT INTO discovery_reports (id, org_id, agent_ip, count, devices, discovered_at)
+       VALUES (gen_random_uuid(), $1, $2, $3, $4, NOW())
+       ON CONFLICT (org_id)
+       DO UPDATE SET agent_ip = $2, count = $3, devices = $4, discovered_at = NOW()`,
+      [orgId, ip, deviceCount, JSON.stringify(deviceList)]
+    );
+
+    logger.info('Discovery report received', { orgId, count: deviceCount, agentIP: ip });
+    res.json({ success: true, received: deviceCount });
   } catch (err) {
+    logger.error('Discovery report error', { error: err.message });
     res.status(500).json({ success: false, message: err.message });
   }
 });
 
-// Enrollment complete — no auth needed (device scans QR)
+// ── Enrollment complete — no auth needed (device scans QR) ────────────────
 app.post('/api/enrollment/complete', async (req, res) => {
   try {
     const { token } = req.body;
@@ -90,14 +100,15 @@ app.post('/api/enrollment/complete', async (req, res) => {
   }
 });
 
-// API Routes — /api/devices MUST come after static routes above
+// ── API Routes ─────────────────────────────────────────────────────────────
+// /api/devices MUST be registered after the static routes above
 app.use('/api/auth',       authRoutes);
 app.use('/api/devices',    authMiddleware, deviceRoutes);
 app.use('/api/recordings', authMiddleware, recordingRoutes);
 app.use('/api/streams',    authMiddleware, streamRoutes);
 app.use('/api/users',      authMiddleware, userRoutes);
 
-// Start server
+// ── Start server ───────────────────────────────────────────────────────────
 const startServer = async () => {
   try {
     const dbConnected = await db.testConnection();
@@ -193,11 +204,11 @@ const startServer = async () => {
           return res.status(400).json({ success: false, message: 'Invalid role' });
         const MAX_ADMINS = 2;
         if (role === 'admin') {
-          const count = await db.query(
+          const countResult = await db.query(
             `SELECT COUNT(*) FROM users WHERE organization_id = $1 AND role = 'admin'`,
             [orgId]
           );
-          if (parseInt(count.rows[0].count) >= MAX_ADMINS)
+          if (parseInt(countResult.rows[0].count) >= MAX_ADMINS)
             return res.status(403).json({ success: false, message: `Admin limit of ${MAX_ADMINS} reached` });
         }
         await db.query(
@@ -229,16 +240,28 @@ const startServer = async () => {
     });
 
     // Device discover — needs getActiveStreams closure so stays here
+    // Reads from DB discovery_reports so it survives restarts
     app.get('/api/device-discover', authMiddleware, async (req, res) => {
       try {
         const orgId = req.user.organizationId || req.user.org_id;
         const results = [];
-        const agentData = global.discoveredDevices?.[orgId];
-        if (agentData) {
-          results.push(...agentData.devices.map(d => ({
-            ...d, source: d.source || 'agent', lastSeen: agentData.timestamp,
-          })));
+
+        // 1. Devices from DB discovery report
+        const reportResult = await db.query(
+          `SELECT agent_ip, count, discovered_at, devices
+           FROM discovery_reports WHERE org_id = $1
+           ORDER BY discovered_at DESC LIMIT 1`,
+          [orgId]
+        );
+        if (reportResult.rows.length > 0) {
+          const report = reportResult.rows[0];
+          const deviceList = Array.isArray(report.devices) ? report.devices : [];
+          deviceList.forEach(d => results.push({
+            ...d, source: d.source || 'agent', lastSeen: report.discovered_at,
+          }));
         }
+
+        // 2. Active socket streams not yet enrolled
         const enrolled = await db.query(
           `SELECT d.id FROM devices d JOIN users u ON d.user_id = u.id WHERE u.organization_id = $1`,
           [orgId]
@@ -248,8 +271,10 @@ const startServer = async () => {
         streams.filter(s => !enrolledIds.has(s.deviceId)).forEach(s => results.push({
           id: s.socketId, name: s.deviceName, type: 'RSCCamera', source: 'socket', ip: '', mac: '',
         }));
+
         res.json({ success: true, data: results });
       } catch (err) {
+        logger.error('Device discover error', { error: err.message });
         res.status(500).json({ success: false, message: err.message });
       }
     });
