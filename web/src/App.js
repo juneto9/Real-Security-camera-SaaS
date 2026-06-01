@@ -2156,43 +2156,26 @@ function DiscoverPage({ socket, onDeviceAdded }) {
 
   const scanNetwork = async () => {
     setScanning(true);
-    setScanProgress('Getting local IP...');
+    setScanProgress('Checking backend for discovered devices...');
     setDiscovered([]);
-    const found = [];
 
     try {
-      // Get active IPs on subnet via browser WebRTC + ping sweep
-      setScanProgress('Scanning subnet...');
-      const activeIPs = await scanLocalNetwork();
-      setScanProgress(`Found ${activeIPs.length} active IPs — probing ports...`);
+      const res = await api.get('/api/devices/discover');
+      const found = res.data.data || [];
 
-      // Probe each active IP for camera ports
-      for (const ip of activeIPs) {
-        const probe = await probeDevice(ip);
-        if (probe) {
-          found.push({
-            id: ip.replace(/\./g,'_'),
-            ip,
-            mac: '',
-            type: probe.type,
-            name: `${probe.label} (${ip})`,
-            source: 'scan',
-            port: probe.port,
-          });
-        }
-      }
+      // Also include mDNS devices from socket
+      mdnsDevices.forEach(m => {
+        if (!found.find(d => d.ip === m.ip)) found.push(m);
+      });
+
+      setDiscovered(found);
+      setScanProgress(found.length > 0
+        ? `Found ${found.length} device(s)`
+        : 'No devices found — run the discovery agent on your local network');
     } catch(e) {
-      console.log('Scan error:', e.message);
+      setScanProgress('Error: ' + (e.response?.data?.message || e.message));
     }
 
-    // Also include any mDNS devices received via socket
-    const combined = [...found];
-    mdnsDevices.forEach(m => {
-      if (!combined.find(d => d.ip === m.ip)) combined.push(m);
-    });
-
-    setDiscovered(combined);
-    setScanProgress('');
     setScanning(false);
   };
 
@@ -2238,12 +2221,20 @@ function DiscoverPage({ socket, onDeviceAdded }) {
       {/* Info cards */}
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:20}}>
         <div style={{...st.card,borderColor:C.green+'40',backgroundColor:C.green+'08'}}>
-          <div style={{fontWeight:'bold',color:C.green,marginBottom:4}}>🤖 Android Discovery</div>
-          <div style={{color:C.sub,fontSize:12}}>ARP table scan + mDNS — finds all Android phones and IP cameras on the same WiFi network</div>
+          <div style={{fontWeight:'bold',color:C.green,marginBottom:4}}>🖥️ Discovery Agent</div>
+          <div style={{color:C.sub,fontSize:12}}>
+            Run the local agent on any PC on your network. It scans via ARP + port probing and reports devices here automatically.
+          </div>
+          <div style={{marginTop:8,fontFamily:'monospace',fontSize:11,color:C.green,
+            backgroundColor:'rgba(0,0,0,0.3)',padding:'6px 8px',borderRadius:4}}>
+            node discovery-agent.js
+          </div>
         </div>
         <div style={{...st.card,borderColor:C.blue+'40',backgroundColor:C.blue+'08'}}>
-          <div style={{fontWeight:'bold',color:C.blue,marginBottom:4}}>🍎 iOS Discovery</div>
-          <div style={{color:C.sub,fontSize:12}}>mDNS/Bonjour auto-advertising — iPhones running the app appear automatically when on the same network</div>
+          <div style={{fontWeight:'bold',color:C.blue,marginBottom:4}}>📱 Mobile App</div>
+          <div style={{color:C.sub,fontSize:12}}>
+            Phones running the Real Security Camera app register automatically via Socket.io when on any network — no local scanning needed.
+          </div>
         </div>
       </div>
 
