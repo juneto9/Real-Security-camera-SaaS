@@ -65,10 +65,12 @@ function connectSocket() {
     console.log('🔌 Connecting to relay server...');
 
     socket = io(API_URL + '/relay', {
-      auth: { token },  // token set after authenticate()
+      auth: { token },
       transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionDelay: 3000,
+      pingInterval: 10000,   // send ping every 10s
+      pingTimeout: 30000,    // wait 30s for pong
     });
 
     socket.on('connect', () => {
@@ -200,16 +202,25 @@ async function startStreamForDevice(deviceId, viewerSocketId) {
     }
   });
 
+  let ffmpegError = '';
   ffmpeg.stderr.on('data', (data) => {
     const msg = data.toString();
-    if (msg.includes('frame=') && !msg.includes('error')) return; // progress, skip
-    if (msg.includes('error') || msg.includes('Error')) {
-      console.error(`  ⚠️  FFmpeg: ${msg.slice(0, 150)}`);
+    ffmpegError += msg;
+    if (msg.includes('frame=') && !msg.includes('error')) return;
+    if (msg.toLowerCase().includes('error') || msg.includes('refused') || msg.includes('timeout')) {
+      console.error(`  ⚠️  FFmpeg stderr: ${msg.slice(0, 200)}`);
     }
   });
 
   ffmpeg.on('close', (code) => {
-    console.log(`  📴 FFmpeg closed for ${device.name} (code ${code})`);
+    if (code !== 0) {
+      console.error(`  ❌ FFmpeg failed for ${device.name} (code ${code})`);
+      // Show last relevant error line
+      const errLines = ffmpegError.split('\n').filter(l => l.includes('error') || l.includes('refused') || l.includes('Connection') || l.includes('Invalid'));
+      if (errLines.length > 0) console.error(`  Error: ${errLines[errLines.length-1].slice(0,200)}`);
+    } else {
+      console.log(`  📴 FFmpeg closed for ${device.name} (code ${code})`);
+    }
     const stream = activeStreams.get(deviceId);
     if (stream) {
       // Notify all viewers stream ended
@@ -266,6 +277,13 @@ function stopStream(deviceId) {
 
 // ── Status report every 30 seconds ───────────────────────────────
 function startStatusReporting() {
+  // Send keepalive ping every 15 seconds to prevent timeout
+  setInterval(() => {
+    if (socket && socket.connected) {
+      socket.emit('agent:ping', { orgId, timestamp: Date.now() });
+    }
+  }, 15000);
+
   setInterval(() => {
     const streams = Array.from(activeStreams.entries()).map(([id, s]) => ({
       deviceId: id,

@@ -91,8 +91,8 @@ function initSignaling(httpServer, corsOrigins) {
       credentials: true,
     },
     transports: ['websocket', 'polling'],
-    pingTimeout: 60000,
-    pingInterval: 25000,
+    pingTimeout: 120000,
+    pingInterval: 15000,
   });
 
   // ── Auth middleware ────────────────────────────────────────────────────
