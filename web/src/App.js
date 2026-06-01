@@ -20,14 +20,14 @@ const THEMES = {
     radius:6, font:'monospace',
   },
   life360: {
-    name:'🔵 Life360',
+    name:'🔵 Guardian',
     bg:'#f0f2f5', surface:'#ffffff', card:'#ffffff',
     green:'#1a73e8', blue:'#1a73e8', red:'#ea4335',
     gold:'#fbbc04', text:'#1a1a1a', sub:'#888888', border:'#e0e0e0',
     radius:16, font:'system-ui,sans-serif',
   },
   bubble: {
-    name:'🍎 Bubble iOS',
+    name:'🍎 Frost',
     bg:'#f2f2f7', surface:'rgba(255,255,255,0.85)', card:'rgba(255,255,255,0.85)',
     green:'#34c759', blue:'#007aff', red:'#ff3b30',
     gold:'#ff9500', text:'#000000', sub:'#8e8e93', border:'rgba(0,0,0,0.08)',
@@ -2201,7 +2201,7 @@ function AdminPage({ user }) {
   const loadMembers = async () => {
     setLoading(true);
     try {
-      const res = await api.get('/api/users');
+      const res = await api.get('/api/org/members');
       setMembers(res.data.data||[]);
     } catch(e) { console.log(e.message); }
     setLoading(false);
@@ -2215,7 +2215,7 @@ function AdminPage({ user }) {
       return;
     }
     try {
-      await api.put(`/api/users/${userId}/role`, { role:'admin' });
+      await api.put(`/api/org/members/${userId}/role`, { role:'admin' });
       loadMembers();
     } catch(e) { alert('Failed to grant admin'); }
   };
@@ -2223,7 +2223,7 @@ function AdminPage({ user }) {
   const revokeAdmin = async (userId) => {
     if (!window.confirm('Remove admin access for this user?')) return;
     try {
-      await api.put(`/api/users/${userId}/role`, { role:'viewer' });
+      await api.put(`/api/org/members/${userId}/role`, { role:'viewer' });
       loadMembers();
     } catch(e) { alert('Failed to revoke admin'); }
   };
@@ -2232,7 +2232,7 @@ function AdminPage({ user }) {
     if (!invEmail) return;
     setInviting(true);
     try {
-      await api.post('/api/users/invite', { email: invEmail });
+      await api.post('/api/org/invite', { email: invEmail });
       alert(`Invitation sent to ${invEmail}`);
       setInvEmail('');
       loadMembers();
@@ -2390,8 +2390,8 @@ function SettingsPage({ currentTheme, onThemeChange, user }) {
                 <div style={{fontWeight:'bold',color:C.text,fontSize:13}}>{t.name}</div>
                 <div style={{color:C.sub,fontSize:11,marginTop:2}}>
                   {key==='operator'?'Dark tactical neon'
-                   :key==='life360'?'Clean white safety app style'
-                   :key==='bubble'?'Frosted glass iOS aesthetics'
+                   :key==='life360'?'Clean white with blue accents'
+                   :key==='bubble'?'Frosted glass minimal style'
                    :'Pick your own colors'}
                 </div>
               </div>

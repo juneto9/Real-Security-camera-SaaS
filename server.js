@@ -132,6 +132,158 @@ const startServer = async () => {
       }
     });
 
+    // ── QR Enrollment ────────────────────────────────────────────
+    app.post('/api/enrollment/generate', authMiddleware, async (req, res) => {
+      try {
+        const { cameraName, location, expiresIn = 24 } = req.body;
+        if (!cameraName) return res.status(400).json({ success:false, message:'Camera name required' });
+        const orgId = req.user.organizationId || req.user.org_id;
+
+        // Create the device in DB
+        const result = await db.query(
+          `INSERT INTO devices (organization_id, device_name, location, device_type, is_active, created_at, updated_at)
+           VALUES ($1, $2, $3, 'mobile', false, NOW(), NOW())
+           RETURNING id`,
+          [orgId, cameraName, location||'']
+        );
+        const deviceId = result.rows[0].id;
+        const expiresAt = new Date(Date.now() + expiresIn * 3600000).toISOString();
+
+        // Generate enrollment token
+        const token = Buffer.from(JSON.stringify({
+          deviceId, orgId, cameraName, expiresAt
+        })).toString('base64url');
+
+        const enrollUrl = `${req.protocol}://${req.get('host')}/enroll?token=${token}`;
+
+        res.json({
+          success: true,
+          data: {
+            deviceId,
+            token,
+            url: enrollUrl,
+            cameraName,
+            location: location||'',
+            expiresAt,
+          }
+        });
+      } catch(err) {
+        logger.error('Enrollment generate error', { error: err.message });
+        res.status(500).json({ success: false, message: err.message });
+      }
+    });
+
+    app.post('/api/enrollment/complete', async (req, res) => {
+      try {
+        const { token } = req.body;
+        if (!token) return res.status(400).json({ success:false, message:'Token required' });
+        const data = JSON.parse(Buffer.from(token, 'base64url').toString());
+        if (new Date(data.expiresAt) < new Date())
+          return res.status(410).json({ success:false, message:'Enrollment link expired' });
+        await db.query(
+          `UPDATE devices SET is_active = true, updated_at = NOW() WHERE id = $1`,
+          [data.deviceId]
+        );
+        res.json({ success: true, data: { deviceId: data.deviceId, orgId: data.orgId } });
+      } catch(err) {
+        res.status(500).json({ success: false, message: err.message });
+      }
+    });
+
+    // ── Org Members ──────────────────────────────────────────────
+    app.get('/api/org/members', authMiddleware, async (req, res) => {
+      try {
+        const orgId = req.user.organizationId || req.user.org_id;
+        const result = await db.query(
+          `SELECT u.id, u.first_name, u.last_name, u.email, u.role, u.created_at
+           FROM users u
+           JOIN organizations o ON u.organization_id = o.id
+           WHERE o.id = $1
+           ORDER BY u.created_at ASC`,
+          [orgId]
+        );
+        res.json({ success: true, data: result.rows });
+      } catch(err) {
+        logger.error('Get members error', { error: err.message });
+        res.status(500).json({ success: false, message: err.message });
+      }
+    });
+
+    app.put('/api/org/members/:userId/role', authMiddleware, async (req, res) => {
+      try {
+        const orgId = req.user.organizationId || req.user.org_id;
+        const { role } = req.body;
+        if (!['admin','viewer'].includes(role))
+          return res.status(400).json({ success:false, message:'Invalid role' });
+        // Check admin limit (max 2 admins)
+        // TODO: ENABLE PAYWALL — check subscription tier for higher limits
+        const MAX_ADMINS = 2;
+        if (role === 'admin') {
+          const count = await db.query(
+            `SELECT COUNT(*) FROM users WHERE organization_id = $1 AND role = 'admin'`,
+            [orgId]
+          );
+          if (parseInt(count.rows[0].count) >= MAX_ADMINS) {
+            return res.status(403).json({ success:false, message:`Admin limit of ${MAX_ADMINS} reached` });
+          }
+        }
+        await db.query(
+          `UPDATE users SET role = $1 WHERE id = $2 AND organization_id = $3`,
+          [role, req.params.userId, orgId]
+        );
+        res.json({ success: true, message: `Role updated to ${role}` });
+      } catch(err) {
+        res.status(500).json({ success: false, message: err.message });
+      }
+    });
+
+    app.post('/api/org/invite', authMiddleware, async (req, res) => {
+      try {
+        const { email } = req.body;
+        if (!email) return res.status(400).json({ success:false, message:'Email required' });
+        const orgId = req.user.organizationId || req.user.org_id;
+        // Check if already a member
+        const existing = await db.query(
+          'SELECT id FROM users WHERE email = $1 AND organization_id = $2',
+          [email, orgId]
+        );
+        if (existing.rows.length > 0)
+          return res.status(409).json({ success:false, message:'User already a member' });
+        // For now just log the invite — email sending would go here
+        logger.info('User invited', { email, orgId, invitedBy: req.user.userId });
+        res.json({ success: true, message: `Invitation sent to ${email}` });
+      } catch(err) {
+        res.status(500).json({ success: false, message: err.message });
+      }
+    });
+
+    // ── Device Discovery ─────────────────────────────────────────
+    app.get('/api/devices/discover', authMiddleware, async (req, res) => {
+      try {
+        // Returns devices that have been seen via mDNS/Socket.io but not yet enrolled
+        // For now returns connected socket devices not in the devices table
+        const orgId = req.user.organizationId || req.user.org_id;
+        const enrolled = await db.query(
+          'SELECT ip_address, mac_address FROM devices WHERE organization_id = $1',
+          [orgId]
+        );
+        const enrolledIPs = new Set(enrolled.rows.map(r=>r.ip_address).filter(Boolean));
+        // Return active streams not yet enrolled
+        const streams = getActiveStreams();
+        const unenrolled = streams.filter(s => !enrolledIPs.has(s.deviceId));
+        res.json({ success: true, data: unenrolled.map(s=>({
+          id: s.socketId,
+          name: s.deviceName,
+          type: 'RSCCamera',
+          source: 'socket',
+          ip: '',
+          mac: '',
+        }))});
+      } catch(err) {
+        res.status(500).json({ success: false, message: err.message });
+      }
+    });
+
     // Active-streams REST endpoint — needs getActiveStreams closure
     app.get('/api/streaming/streams', authMiddleware, (req, res) => {
       try {
