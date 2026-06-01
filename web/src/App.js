@@ -2031,6 +2031,77 @@ function SubscriptionPage() {
 
 // ─── Login ────────────────────────────────────────────────────────
 
+// ─── Network Scanner (browser-based) ────────────────────────────
+// Uses the browser's ability to fetch local IPs since it's on the same network
+async function scanLocalNetwork() {
+  const results = [];
+
+  // Step 1: Get local gateway IP via WebRTC trick
+  let localIP = null;
+  try {
+    const pc = new RTCPeerConnection({ iceServers: [] });
+    pc.createDataChannel('');
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    await new Promise(resolve => setTimeout(resolve, 500));
+    const sdp = pc.localDescription?.sdp || '';
+    const match = sdp.match(/(\d+\.\d+\.\d+)\.\d+/);
+    if (match) localIP = match[1]; // e.g. 192.168.1
+    pc.close();
+  } catch {}
+
+  if (!localIP) {
+    // Fallback: try common subnets
+    localIP = '192.168.1';
+  }
+
+  // Step 2: Ping sweep the subnet
+  const promises = [];
+  for (let i = 1; i <= 254; i++) {
+    const ip = `${localIP}.${i}`;
+    promises.push(
+      Promise.race([
+        fetch(`http://${ip}`, { mode: 'no-cors', signal: AbortSignal.timeout(300) })
+          .then(() => ({ ip, alive: true }))
+          .catch(() => null),
+      ])
+    );
+  }
+
+  // Run in batches of 30
+  for (let i = 0; i < promises.length; i += 30) {
+    const batch = await Promise.allSettled(promises.slice(i, i + 30));
+    batch.forEach(r => {
+      if (r.status === 'fulfilled' && r.value?.alive) {
+        results.push(r.value.ip);
+      }
+    });
+  }
+
+  return results;
+}
+
+// Check if an IP is running an RTSP/camera port
+async function probeDevice(ip) {
+  const ports = [
+    { port: 80,   type: 'IPCamera', label: 'HTTP Camera' },
+    { port: 8080, type: 'IPCamera', label: 'IP Camera (8080)' },
+    { port: 554,  type: 'IPCamera', label: 'RTSP Camera' },
+    { port: 8081, type: 'RSCCamera', label: 'Real Security Camera' },
+  ];
+
+  for (const p of ports) {
+    try {
+      await fetch(`http://${ip}:${p.port}`, {
+        mode: 'no-cors',
+        signal: AbortSignal.timeout(400),
+      });
+      return { type: p.type, label: p.label, port: p.port };
+    } catch {}
+  }
+  return null;
+}
+
 // ─── MAC OUI Database ─────────────────────────────────────────────
 const OUI_MAP = {
   '00:03:93':'iOS','00:0A:95':'iOS','00:1C:B3':'iOS','00:21:E9':'iOS',
@@ -2049,10 +2120,11 @@ function identifyDevice(mac) {
 
 // ─── Discover Page ────────────────────────────────────────────────
 function DiscoverPage({ socket, onDeviceAdded }) {
-  const [scanning,   setScanning]   = useState(false);
-  const [discovered, setDiscovered] = useState([]);
-  const [enrolling,  setEnrolling]  = useState(null);
-  const [mdnsDevices,setMdnsDevices]= useState([]);
+  const [scanning,     setScanning]     = useState(false);
+  const [scanProgress, setScanProgress] = useState('');
+  const [discovered,   setDiscovered]   = useState([]);
+  const [enrolling,    setEnrolling]    = useState(null);
+  const [mdnsDevices,  setMdnsDevices]  = useState([]);
 
   // Listen for mDNS devices from backend (via socket)
   useEffect(()=>{
@@ -2065,14 +2137,43 @@ function DiscoverPage({ socket, onDeviceAdded }) {
 
   const scanNetwork = async () => {
     setScanning(true);
+    setScanProgress('Getting local IP...');
     setDiscovered([]);
+    const found = [];
+
     try {
-      const res = await api.get('/api/devices/discover');
-      setDiscovered(res.data.data||[]);
+      // Get active IPs on subnet via browser WebRTC + ping sweep
+      setScanProgress('Scanning subnet...');
+      const activeIPs = await scanLocalNetwork();
+      setScanProgress(`Found ${activeIPs.length} active IPs — probing ports...`);
+
+      // Probe each active IP for camera ports
+      for (const ip of activeIPs) {
+        const probe = await probeDevice(ip);
+        if (probe) {
+          found.push({
+            id: ip.replace(/\./g,'_'),
+            ip,
+            mac: '',
+            type: probe.type,
+            name: `${probe.label} (${ip})`,
+            source: 'scan',
+            port: probe.port,
+          });
+        }
+      }
     } catch(e) {
-      // Fallback: show mDNS devices already received via socket
-      setDiscovered(mdnsDevices);
+      console.log('Scan error:', e.message);
     }
+
+    // Also include any mDNS devices received via socket
+    const combined = [...found];
+    mdnsDevices.forEach(m => {
+      if (!combined.find(d => d.ip === m.ip)) combined.push(m);
+    });
+
+    setDiscovered(combined);
+    setScanProgress('');
     setScanning(false);
   };
 
@@ -2140,7 +2241,11 @@ function DiscoverPage({ socket, onDeviceAdded }) {
       {scanning && (
         <div style={{textAlign:'center',padding:40}}>
           <div style={{color:C.green,fontSize:16,marginBottom:8}}>⏳ Scanning network...</div>
-          <div style={{color:C.sub,fontSize:12}}>Checking ARP table + mDNS (~8 seconds)</div>
+          <div style={{color:C.sub,fontSize:12,marginBottom:8}}>{scanProgress||'Initializing...'}</div>
+          <div style={{backgroundColor:C.border,borderRadius:4,height:4,width:'100%',maxWidth:300,margin:'0 auto'}}>
+            <div style={{backgroundColor:C.green,height:4,borderRadius:4,
+              width:scanning?'60%':'0%',transition:'width 1s ease'}}/>
+          </div>
         </div>
       )}
 
@@ -2667,10 +2772,10 @@ export default function App() {
               {t.id==='usb' && usbStatus==='recording' && <span style={{marginLeft:5,fontSize:10,color:C.red,fontWeight:'normal'}}>⏺</span>}
             </button>
           ))}
-          {tab==='cameras' && <div style={{display:'flex',gap:6,marginLeft:'auto'}}>
-            <button style={{...st.btn,...st.btnGray}} onClick={()=>setShowAdmins(true)}>👥 Admins</button>
+          {(tab==='cameras'||tab==='discover') && <div style={{display:'flex',gap:6,marginLeft:'auto'}}>
+            {tab==='cameras' && <button style={{...st.btn,...st.btnGray}} onClick={()=>setShowAdmins(true)}>👥 Admins</button>}
             <button style={{...st.btn,backgroundColor:'#4488ff20',color:C.blue,border:`1px solid ${C.blue}`}} onClick={()=>setShowEnroll(true)}>🔳 Enroll Camera</button>
-            <button style={{...st.btn,...st.btnGreen}} onClick={()=>setShowAdd(true)}>+ Add Camera</button>
+            {tab==='cameras' && <button style={{...st.btn,...st.btnGreen}} onClick={()=>setShowAdd(true)}>+ Add Camera</button>}
           </div>}
         </div>
 
