@@ -257,28 +257,68 @@ const startServer = async () => {
       }
     });
 
+    // ── Discovery Agent Report ───────────────────────────────────
+    // Receives scan results from local discovery agent running on home network
+    app.post('/api/discovery/report', authMiddleware, async (req, res) => {
+      try {
+        const { devices } = req.body;
+        const orgId = req.user.organizationId || req.user.org_id;
+        if (!devices || !Array.isArray(devices)) {
+          return res.status(400).json({ success: false, message: 'devices array required' });
+        }
+
+        // Store discovered devices in memory (keyed by org)
+        if (!global.discoveredDevices) global.discoveredDevices = {};
+        global.discoveredDevices[orgId] = {
+          devices,
+          timestamp: new Date().toISOString(),
+          agentIP: req.ip,
+        };
+
+        logger.info('Discovery report received', {
+          orgId, count: devices.length, agentIP: req.ip
+        });
+
+        res.json({ success: true, received: devices.length });
+      } catch(err) {
+        res.status(500).json({ success: false, message: err.message });
+      }
+    });
+
     // ── Device Discovery ─────────────────────────────────────────
     app.get('/api/devices/discover', authMiddleware, async (req, res) => {
       try {
-        // Returns devices that have been seen via mDNS/Socket.io but not yet enrolled
-        // For now returns connected socket devices not in the devices table
         const orgId = req.user.organizationId || req.user.org_id;
+        const results = [];
+
+        // 1. Devices reported by local discovery agent
+        const agentData = global.discoveredDevices?.[orgId];
+        if (agentData) {
+          results.push(...agentData.devices.map(d => ({
+            ...d,
+            source: d.source || 'agent',
+            lastSeen: agentData.timestamp,
+          })));
+        }
+
+        // 2. Active socket streams not yet enrolled
         const enrolled = await db.query(
-          'SELECT ip_address, mac_address FROM devices WHERE organization_id = $1',
+          'SELECT id FROM devices WHERE organization_id = $1',
           [orgId]
         );
-        const enrolledIPs = new Set(enrolled.rows.map(r=>r.ip_address).filter(Boolean));
-        // Return active streams not yet enrolled
+        const enrolledIds = new Set(enrolled.rows.map(r => r.id));
         const streams = getActiveStreams();
-        const unenrolled = streams.filter(s => !enrolledIPs.has(s.deviceId));
-        res.json({ success: true, data: unenrolled.map(s=>({
-          id: s.socketId,
-          name: s.deviceName,
-          type: 'RSCCamera',
-          source: 'socket',
-          ip: '',
-          mac: '',
-        }))});
+        streams
+          .filter(s => !enrolledIds.has(s.deviceId))
+          .forEach(s => results.push({
+            id: s.socketId,
+            name: s.deviceName,
+            type: 'RSCCamera',
+            source: 'socket',
+            ip: '', mac: '',
+          }));
+
+        res.json({ success: true, data: results });
       } catch(err) {
         res.status(500).json({ success: false, message: err.message });
       }
