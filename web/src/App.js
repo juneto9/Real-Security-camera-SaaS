@@ -2195,9 +2195,9 @@ function DiscoverPage({ socket, onDeviceAdded }) {
   const [scanProgress, setScanProgress] = useState('');
   const [discovered,   setDiscovered]   = useState([]);
   const [enrolling,    setEnrolling]    = useState(null);
+  const [removing,     setRemoving]     = useState(null);
   const [mdnsDevices,  setMdnsDevices]  = useState([]);
 
-  // Listen for mDNS devices from backend (via socket)
   useEffect(()=>{
     if (!socket) return;
     socket.on('mdns:device', (device)=>{
@@ -2210,16 +2210,10 @@ function DiscoverPage({ socket, onDeviceAdded }) {
     setScanning(true);
     setScanProgress('Checking backend for discovered devices...');
     setDiscovered([]);
-
     try {
       const res = await api.get('/api/devices/discover');
       const found = res.data.data || [];
-
-      // Also include mDNS devices from socket
-      mdnsDevices.forEach(m => {
-        if (!found.find(d => d.ip === m.ip)) found.push(m);
-      });
-
+      mdnsDevices.forEach(m => { if (!found.find(d => d.ip === m.ip)) found.push(m); });
       setDiscovered(found);
       setScanProgress(found.length > 0
         ? `Found ${found.length} device(s)`
@@ -2227,42 +2221,53 @@ function DiscoverPage({ socket, onDeviceAdded }) {
     } catch(e) {
       setScanProgress('Error: ' + (e.response?.data?.message || e.message));
     }
-
     setScanning(false);
   };
 
   const enroll = async (device) => {
-    setEnrolling(device.id);
+    setEnrolling(device.id || device.ip);
     try {
       await api.post('/api/devices', {
-        device_name: device.name||`Camera ${device.ip}`,
-        location: device.ip||'Local Network',
-        device_type: device.type==='RSCCamera'?'mobile':'ip_camera',
-        ip_address: device.ip,
-        mac_address: device.mac,
+        name: device.name || device.device_name || `Camera ${device.ip}`,
+        location: device.ip || 'Local Network',
+        rtsp_url: device.rtsp_url || '',
       });
-      setDiscovered(d=>d.filter(x=>x.id!==device.id));
+      setDiscovered(d => d.map(x =>
+        (x.id || x.ip) === (device.id || device.ip)
+          ? { ...x, source: 'registered', is_active: true }
+          : x
+      ));
       if (onDeviceAdded) onDeviceAdded();
-      alert(`✅ ${device.name||device.ip} enrolled successfully`);
+      setScanProgress('✅ ' + (device.name || device.ip) + ' enrolled successfully');
     } catch(e) {
-      alert('Enrollment failed: '+(e.response?.data?.message||e.message));
+      alert('Enrollment failed: ' + (e.response?.data?.message || e.message));
     }
     setEnrolling(null);
   };
 
-  const allDevices = [...discovered, ...mdnsDevices.filter(m=>
-    !discovered.find(d=>d.ip===m.ip))];
+  const unenroll = async (device) => {
+    if (!window.confirm(`Remove "${device.name || device.device_name || device.ip}"?`)) return;
+    setRemoving(device.id);
+    try {
+      await api.delete(`/api/devices/${device.id}`);
+      setDiscovered(d => d.filter(x => x.id !== device.id));
+      if (onDeviceAdded) onDeviceAdded();
+    } catch(e) {
+      alert('Remove failed: ' + (e.response?.data?.message || e.message));
+    }
+    setRemoving(null);
+  };
 
+  const allDevices = [...discovered, ...mdnsDevices.filter(m => !discovered.find(d => d.ip === m.ip))];
   const typeIcon = (t) => t==='iOS'?'📱':t==='Android'?'🤖':t==='IPCamera'?'📹':t==='RSCCamera'?'📱':'📡';
+  const isRegistered = (d) => d.source === 'registered';
 
   return (
     <div style={{padding:24,maxWidth:900,margin:'0 auto'}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
         <div>
           <h2 style={{color:C.text,margin:0,fontSize:20}}>🔍 Discover Cameras</h2>
-          <p style={{color:C.sub,fontSize:13,margin:'4px 0 0'}}>
-            Find phones and IP cameras on your network
-          </p>
+          <p style={{color:C.sub,fontSize:13,margin:'4px 0 0'}}>Find phones and IP cameras on your network</p>
         </div>
         <button style={{...st.btn,...st.btnGreen,display:'flex',alignItems:'center',gap:8}}
           onClick={scanNetwork} disabled={scanning}>
@@ -2270,13 +2275,10 @@ function DiscoverPage({ socket, onDeviceAdded }) {
         </button>
       </div>
 
-      {/* Info cards */}
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:20}}>
         <div style={{...st.card,borderColor:C.green+'40',backgroundColor:C.green+'08'}}>
           <div style={{fontWeight:'bold',color:C.green,marginBottom:4}}>🖥️ Discovery Agent</div>
-          <div style={{color:C.sub,fontSize:12}}>
-            Run the local agent on any PC on your network. It scans via ARP + port probing and reports devices here automatically.
-          </div>
+          <div style={{color:C.sub,fontSize:12}}>Run on any PC on your network — scans via ARP + port probing.</div>
           <div style={{marginTop:8,fontFamily:'monospace',fontSize:11,color:C.green,
             backgroundColor:'rgba(0,0,0,0.3)',padding:'6px 8px',borderRadius:4}}>
             node discovery-agent.js
@@ -2284,29 +2286,25 @@ function DiscoverPage({ socket, onDeviceAdded }) {
         </div>
         <div style={{...st.card,borderColor:C.blue+'40',backgroundColor:C.blue+'08'}}>
           <div style={{fontWeight:'bold',color:C.blue,marginBottom:4}}>📱 Mobile App</div>
-          <div style={{color:C.sub,fontSize:12}}>
-            Phones running the Real Security Camera app register automatically via Socket.io when on any network — no local scanning needed.
-          </div>
+          <div style={{color:C.sub,fontSize:12}}>Phones running the RSC app register automatically via Socket.io — no scanning needed.</div>
         </div>
       </div>
 
-      {/* QR Enrollment reminder */}
       <div style={{...st.card,marginBottom:20,display:'flex',alignItems:'center',gap:12}}>
         <span style={{fontSize:24}}>🔳</span>
         <div style={{flex:1}}>
           <div style={{fontWeight:'bold',color:C.text}}>QR Code Enrollment</div>
-          <div style={{color:C.sub,fontSize:12}}>Use the Enroll Camera button to generate a QR code — works anywhere, no network scanning needed</div>
+          <div style={{color:C.sub,fontSize:12}}>Use the Enroll Camera button to generate a QR code — works anywhere</div>
         </div>
       </div>
 
-      {/* Results */}
+      {scanProgress && <div style={{color:C.sub,fontSize:12,marginBottom:12,textAlign:'center'}}>{scanProgress}</div>}
+
       {scanning && (
         <div style={{textAlign:'center',padding:40}}>
           <div style={{color:C.green,fontSize:16,marginBottom:8}}>⏳ Scanning network...</div>
-          <div style={{color:C.sub,fontSize:12,marginBottom:8}}>{scanProgress||'Initializing...'}</div>
           <div style={{backgroundColor:C.border,borderRadius:4,height:4,width:'100%',maxWidth:300,margin:'0 auto'}}>
-            <div style={{backgroundColor:C.green,height:4,borderRadius:4,
-              width:scanning?'60%':'0%',transition:'width 1s ease'}}/>
+            <div style={{backgroundColor:C.green,height:4,borderRadius:4,width:'60%'}}/>
           </div>
         </div>
       )}
@@ -2315,39 +2313,56 @@ function DiscoverPage({ socket, onDeviceAdded }) {
         <div style={{textAlign:'center',padding:60}}>
           <div style={{fontSize:48,marginBottom:16}}>📡</div>
           <div style={{color:C.text,fontSize:18,marginBottom:8}}>No devices found yet</div>
-          <div style={{color:C.sub,fontSize:13}}>
-            Make sure devices are on the same WiFi, then click Scan Network
-          </div>
+          <div style={{color:C.sub,fontSize:13}}>Make sure devices are on the same WiFi, then click Scan Network</div>
         </div>
       )}
 
       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))',gap:12}}>
-        {allDevices.map(d=>(
-          <div key={d.id||d.ip} style={{...st.card}}>
-            <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10}}>
-              <span style={{fontSize:28}}>{typeIcon(d.type)}</span>
-              <div style={{flex:1}}>
-                <div style={{fontWeight:'bold',color:C.text,fontSize:14}}>
-                  {d.name||`${d.type} Device`}
+        {allDevices.map(d => {
+          const enrolled = isRegistered(d);
+          return (
+            <div key={d.id||d.ip} style={{...st.card,
+              borderColor: enrolled ? C.blue+'60' : C.green+'40',
+              backgroundColor: enrolled ? C.blue+'08' : 'transparent'}}>
+              <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10}}>
+                <span style={{fontSize:28}}>{typeIcon(d.type)}</span>
+                <div style={{flex:1}}>
+                  <div style={{fontWeight:'bold',color:C.text,fontSize:14}}>
+                    {d.name || d.device_name || `${d.type||'Camera'} Device`}
+                  </div>
+                  <div style={{color:C.sub,fontSize:11,marginTop:2}}>
+                    {d.ip&&`IP: ${d.ip}`}{d.mac&&` · MAC: ${d.mac}`}
+                    {d.location&&!d.ip&&`📍 ${d.location}`}
+                  </div>
                 </div>
-                <div style={{color:C.sub,fontSize:11,marginTop:2}}>
-                  {d.ip&&`IP: ${d.ip}`}{d.mac&&` · MAC: ${d.mac}`}
-                </div>
+                <span style={{fontSize:10,
+                  backgroundColor: enrolled ? C.blue+'20' : C.green+'20',
+                  color: enrolled ? C.blue : C.green,
+                  padding:'2px 8px',borderRadius:10,fontWeight:'bold'}}>
+                  {enrolled ? 'ACTIVE' : (d.source==='mdns'?'mDNS':'ARP')}
+                </span>
               </div>
-              <span style={{fontSize:10,backgroundColor:C.green+'20',color:C.green,
-                padding:'2px 8px',borderRadius:10,fontWeight:'bold'}}>
-                {d.source==='mdns'?'mDNS':'ARP'}
-              </span>
+              {enrolled ? (
+                <button
+                  style={{...st.btn,width:'100%',backgroundColor:'transparent',
+                    border:`1px solid ${C.red}40`,color:C.red,
+                    opacity:removing===d.id?0.6:1}}
+                  onClick={()=>unenroll(d)}
+                  disabled={removing===d.id}>
+                  {removing===d.id?'Removing...':'🗑 Remove / Un-enroll'}
+                </button>
+              ) : (
+                <button
+                  style={{...st.btn,...st.btnGreen,width:'100%',
+                    opacity:enrolling===(d.id||d.ip)?0.6:1}}
+                  onClick={()=>enroll(d)}
+                  disabled={enrolling===(d.id||d.ip)}>
+                  {enrolling===(d.id||d.ip)?'Enrolling...':'+ Enroll Camera'}
+                </button>
+              )}
             </div>
-            <button
-              style={{...st.btn,...st.btnGreen,width:'100%',
-                opacity:enrolling===d.id?0.6:1}}
-              onClick={()=>enroll(d)}
-              disabled={enrolling===d.id}>
-              {enrolling===d.id?'Enrolling...':'+ Enroll Camera'}
-            </button>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

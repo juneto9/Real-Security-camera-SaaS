@@ -158,8 +158,8 @@ const startServer = async () => {
         const newDeviceId = require('crypto').randomUUID();
         const streamKey = require('crypto').randomUUID();
         const result = await db.query(
-          `INSERT INTO devices (id, user_id, organization_id, name, location, stream_key, status, is_active, is_motion_detection_enabled, motion_sensitivity, created_at, updated_at)
-           VALUES ($1, $2, $3, $4, $5, $6, 'offline', false, true, 50, NOW(), NOW())
+          `INSERT INTO devices (id, user_id, organization_id, name, location, rtsp_url, stream_key, status, is_active, is_motion_detection_enabled, motion_sensitivity, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, '', $6, 'offline', false, true, 50, NOW(), NOW())
            RETURNING id`,
           [newDeviceId, req.user.userId || req.user.id, req.user.organization_id || req.user.org_id, cameraName, location || '', streamKey]
         );
