@@ -84,3 +84,6 @@ backend/adddevicetype.js
 backend/fixpcamera.js
 backend/migrate.js
 backend/checkrecordings.js
+
+backend/checkdevices2.js
+backend/updatepasswords.js
