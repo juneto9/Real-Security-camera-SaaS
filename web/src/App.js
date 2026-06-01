@@ -2143,9 +2143,9 @@ function DiscoverPage({ socket, onDeviceAdded }) {
   const [scanProgress, setScanProgress] = useState('');
   const [discovered,   setDiscovered]   = useState([]);
   const [enrolling,    setEnrolling]    = useState(null);
+  const [removing,     setRemoving]     = useState(null);
   const [mdnsDevices,  setMdnsDevices]  = useState([]);
 
-  // Listen for mDNS devices from backend (via socket)
   useEffect(()=>{
     if (!socket) return;
     socket.on('mdns:device', (device)=>{
@@ -2162,12 +2162,9 @@ function DiscoverPage({ socket, onDeviceAdded }) {
     try {
       const res = await api.get('/api/devices/discover');
       const found = res.data.data || [];
-
-      // Also include mDNS devices from socket
       mdnsDevices.forEach(m => {
         if (!found.find(d => d.ip === m.ip)) found.push(m);
       });
-
       setDiscovered(found);
       setScanProgress(found.length > 0
         ? `Found ${found.length} device(s)`
@@ -2175,33 +2172,53 @@ function DiscoverPage({ socket, onDeviceAdded }) {
     } catch(e) {
       setScanProgress('Error: ' + (e.response?.data?.message || e.message));
     }
-
     setScanning(false);
   };
 
   const enroll = async (device) => {
-    setEnrolling(device.id);
+    setEnrolling(device.id || device.ip);
     try {
       await api.post('/api/devices', {
-        device_name: device.name||`Camera ${device.ip}`,
-        location: device.ip||'Local Network',
-        device_type: device.type==='RSCCamera'?'mobile':'ip_camera',
+        device_name: device.name || `Camera ${device.ip}`,
+        location: device.ip || 'Local Network',
+        device_type: device.type === 'RSCCamera' ? 'mobile' : 'ip_camera',
         ip_address: device.ip,
         mac_address: device.mac,
       });
-      setDiscovered(d=>d.filter(x=>x.id!==device.id));
+      // Mark as registered locally so UI updates immediately
+      setDiscovered(d => d.map(x =>
+        (x.id || x.ip) === (device.id || device.ip)
+          ? { ...x, source: 'registered', is_active: true }
+          : x
+      ));
       if (onDeviceAdded) onDeviceAdded();
-      alert(`✅ ${device.name||device.ip} enrolled successfully`);
+      setScanProgress('✅ ' + (device.name || device.ip) + ' enrolled successfully');
     } catch(e) {
-      alert('Enrollment failed: '+(e.response?.data?.message||e.message));
+      alert('Enrollment failed: ' + (e.response?.data?.message || e.message));
     }
     setEnrolling(null);
   };
 
-  const allDevices = [...discovered, ...mdnsDevices.filter(m=>
-    !discovered.find(d=>d.ip===m.ip))];
+  const unenroll = async (device) => {
+    if (!window.confirm(`Remove "${device.name || device.ip}" from your cameras?`)) return;
+    setRemoving(device.id);
+    try {
+      await api.delete(`/api/devices/${device.id}`);
+      setDiscovered(d => d.filter(x => x.id !== device.id));
+      if (onDeviceAdded) onDeviceAdded();
+      setScanProgress('🗑️ ' + (device.name || device.ip) + ' removed');
+    } catch(e) {
+      alert('Remove failed: ' + (e.response?.data?.message || e.message));
+    }
+    setRemoving(null);
+  };
+
+  const allDevices = [...discovered, ...mdnsDevices.filter(m =>
+    !discovered.find(d => d.ip === m.ip))];
 
   const typeIcon = (t) => t==='iOS'?'📱':t==='Android'?'🤖':t==='IPCamera'?'📹':t==='RSCCamera'?'📱':'📡';
+
+  const isRegistered = (d) => d.source === 'registered';
 
   return (
     <div style={{padding:24,maxWidth:900,margin:'0 auto'}}>
@@ -2247,7 +2264,11 @@ function DiscoverPage({ socket, onDeviceAdded }) {
         </div>
       </div>
 
-      {/* Results */}
+      {/* Scan progress */}
+      {scanProgress && (
+        <div style={{color:C.sub,fontSize:12,marginBottom:12,textAlign:'center'}}>{scanProgress}</div>
+      )}
+
       {scanning && (
         <div style={{textAlign:'center',padding:40}}>
           <div style={{color:C.green,fontSize:16,marginBottom:8}}>⏳ Scanning network...</div>
@@ -2270,32 +2291,55 @@ function DiscoverPage({ socket, onDeviceAdded }) {
       )}
 
       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))',gap:12}}>
-        {allDevices.map(d=>(
-          <div key={d.id||d.ip} style={{...st.card}}>
-            <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10}}>
-              <span style={{fontSize:28}}>{typeIcon(d.type)}</span>
-              <div style={{flex:1}}>
-                <div style={{fontWeight:'bold',color:C.text,fontSize:14}}>
-                  {d.name||`${d.type} Device`}
+        {allDevices.map(d => {
+          const enrolled = isRegistered(d);
+          const cardBorderColor = enrolled ? C.blue+'60' : C.green+'40';
+          const cardBgColor = enrolled ? C.blue+'08' : 'transparent';
+          const badgeColor = enrolled ? C.blue : C.green;
+          const badgeText = enrolled ? 'ACTIVE' : (d.source==='mdns'?'mDNS':'ARP');
+
+          return (
+            <div key={d.id||d.ip} style={{...st.card,borderColor:cardBorderColor,backgroundColor:cardBgColor}}>
+              <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10}}>
+                <span style={{fontSize:28}}>{typeIcon(d.type)}</span>
+                <div style={{flex:1}}>
+                  <div style={{fontWeight:'bold',color:C.text,fontSize:14}}>
+                    {d.name || d.device_name || `${d.type||'Camera'} Device`}
+                  </div>
+                  <div style={{color:C.sub,fontSize:11,marginTop:2}}>
+                    {d.ip && `IP: ${d.ip}`}{d.mac && ` · MAC: ${d.mac}`}
+                    {d.location && !d.ip && `📍 ${d.location}`}
+                  </div>
                 </div>
-                <div style={{color:C.sub,fontSize:11,marginTop:2}}>
-                  {d.ip&&`IP: ${d.ip}`}{d.mac&&` · MAC: ${d.mac}`}
-                </div>
+                <span style={{fontSize:10,backgroundColor:badgeColor+'20',color:badgeColor,
+                  padding:'2px 8px',borderRadius:10,fontWeight:'bold'}}>
+                  {badgeText}
+                </span>
               </div>
-              <span style={{fontSize:10,backgroundColor:C.green+'20',color:C.green,
-                padding:'2px 8px',borderRadius:10,fontWeight:'bold'}}>
-                {d.source==='mdns'?'mDNS':'ARP'}
-              </span>
+
+              {enrolled ? (
+                <button
+                  style={{...st.btn,width:'100%',
+                    backgroundColor:'transparent',
+                    border:`1px solid ${C.red}40`,
+                    color:C.red,
+                    opacity:removing===d.id?0.6:1}}
+                  onClick={()=>unenroll(d)}
+                  disabled={removing===d.id}>
+                  {removing===d.id ? 'Removing...' : '🗑 Remove / Un-enroll'}
+                </button>
+              ) : (
+                <button
+                  style={{...st.btn,...st.btnGreen,width:'100%',
+                    opacity:enrolling===(d.id||d.ip)?0.6:1}}
+                  onClick={()=>enroll(d)}
+                  disabled={enrolling===(d.id||d.ip)}>
+                  {enrolling===(d.id||d.ip)?'Enrolling...':'+ Enroll Camera'}
+                </button>
+              )}
             </div>
-            <button
-              style={{...st.btn,...st.btnGreen,width:'100%',
-                opacity:enrolling===d.id?0.6:1}}
-              onClick={()=>enroll(d)}
-              disabled={enrolling===d.id}>
-              {enrolling===d.id?'Enrolling...':'+ Enroll Camera'}
-            </button>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
