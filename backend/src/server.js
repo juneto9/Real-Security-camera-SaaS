@@ -306,6 +306,31 @@ const startServer = async () => {
       });
     });
 
+    // ── Auto-cleanup expired unactivated QR devices ──────────────────
+    // Runs every hour — removes devices created via QR but never activated
+    const cleanupExpiredDevices = async () => {
+      try {
+        const result = await db.query(
+          `DELETE FROM devices
+           WHERE is_active = false
+             AND created_at < NOW() - INTERVAL '25 hours'
+             AND deleted_at IS NULL
+           RETURNING id, name`
+        );
+        if (result.rows.length > 0) {
+          logger.info('Cleaned up expired unactivated devices', {
+            count: result.rows.length,
+            devices: result.rows.map(r => r.name),
+          });
+        }
+      } catch (err) {
+        logger.error('Cleanup error', { error: err.message });
+      }
+    };
+    // Run immediately then every hour
+    cleanupExpiredDevices();
+    setInterval(cleanupExpiredDevices, 60 * 60 * 1000);
+
     const shutdown = async (signal) => {
       logger.info(`${signal} received, shutting down gracefully`);
       httpServer.close(async () => { await db.close(); process.exit(0); });
