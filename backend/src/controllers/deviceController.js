@@ -14,43 +14,46 @@ exports.getDevices = async (req, res, next) => {
 };
 
 // GET /api/devices/discover
-// Returns devices found by the LAN discovery agent for this org,
-// plus any devices already registered to this user.
+// Returns a flat array combining:
+//   1. Agent-discovered devices from discovery_reports table
+//   2. Registered devices for this user
+// Flat array keeps frontend working exactly as before
 exports.discoverDevices = async (req, res, next) => {
   try {
-    const orgId = req.user.organization_id;
+    const orgId = req.user.organization_id || req.user.organizationId || req.user.org_id;
     const userId = req.user.userId;
 
-    // Pull the latest discovery report for this org
-    const reportResult = await db.query(
-      `SELECT agent_ip, count, discovered_at, devices
-       FROM discovery_reports
-       WHERE org_id = $1
-       ORDER BY discovered_at DESC
-       LIMIT 1`,
-      [orgId]
-    );
+    const results = [];
 
-    const latestReport = reportResult.rows[0] || null;
+    // 1. Pull latest agent discovery report from DB (survives restarts)
+    try {
+      const reportResult = await db.query(
+        `SELECT agent_ip, count, discovered_at, devices
+         FROM discovery_reports
+         WHERE org_id = $1
+         ORDER BY discovered_at DESC
+         LIMIT 1`,
+        [orgId]
+      );
+      if (reportResult.rows.length > 0) {
+        const report = reportResult.rows[0];
+        const deviceList = Array.isArray(report.devices) ? report.devices : [];
+        deviceList.forEach(d => results.push({
+          ...d,
+          source: d.source || 'agent',
+          lastSeen: report.discovered_at,
+        }));
+      }
+    } catch (dbErr) {
+      // discovery_reports table may not exist yet — don't crash
+      logger.warn('Could not read discovery_reports', { error: dbErr.message });
+    }
 
-    // Also return already-registered devices for this user
+    // 2. Also return registered devices for this user
     const registered = await Device.getByUserId(userId, 50, 0);
+    registered.data.forEach(d => results.push({ ...d, source: 'registered' }));
 
-    res.json({
-      success: true,
-      data: {
-        registered: registered.data,
-        registered_total: registered.total,
-        discovery: latestReport
-          ? {
-              agent_ip: latestReport.agent_ip,
-              count: latestReport.count,
-              discovered_at: latestReport.discovered_at,
-              devices: latestReport.devices || [],
-            }
-          : null,
-      },
-    });
+    res.json({ success: true, data: results, total: results.length });
   } catch (err) {
     logger.error('Error discovering devices', { error: err.message });
     next(err);
@@ -71,11 +74,9 @@ exports.getDevice = async (req, res, next) => {
 exports.createDevice = async (req, res, next) => {
   try {
     const { name, location, rtsp_url } = req.body;
-
     if (!name || !location) {
       return res.status(400).json({ success: false, message: 'Name and location are required' });
     }
-
     const device = await Device.create(
       req.user.userId,
       req.user.organization_id,
@@ -83,7 +84,6 @@ exports.createDevice = async (req, res, next) => {
       location,
       rtsp_url || ''
     );
-
     res.status(201).json({ success: true, data: device });
   } catch (err) {
     logger.error('Error creating device', { error: err.message });
