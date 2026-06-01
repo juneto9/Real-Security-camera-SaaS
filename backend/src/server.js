@@ -74,14 +74,6 @@ app.use('/api/recordings', authMiddleware, recordingRoutes);
 app.use('/api/streams',    authMiddleware, streamRoutes);
 app.use('/api/users',      authMiddleware, userRoutes);
 
-// 404 handler
-app.use((req, res) => {
-  res.status(404).json({ success: false, message: 'Route not found', path: req.path });
-});
-
-// Error handler (must be last)
-app.use(errorHandler);
-
 // Start server
 const startServer = async () => {
   try {
@@ -333,6 +325,14 @@ const startServer = async () => {
         res.status(500).json({ success: false, message: 'Failed to fetch streams' });
       }
     });
+
+    // 404 handler — MUST be after all routes
+    app.use((req, res) => {
+      res.status(404).json({ success: false, message: 'Route not found', path: req.path });
+    });
+
+    // Error handler — MUST be last
+    app.use(errorHandler);
 
     httpServer.listen(config.PORT, () => {
       logger.info('Server started successfully', {
