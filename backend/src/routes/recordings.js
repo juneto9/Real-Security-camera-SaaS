@@ -85,8 +85,8 @@ router.post('/upload', upload.single('video'), async (req, res) => {
     try {
       await db.query(
         `INSERT INTO recordings (organization_id, device_id, filename, url, s3_url, size, start_time, end_time, created_at)
-         VALUES ($1, $2, $3, $4, $4, $5, NOW(), NOW(), NOW())`,
-        [orgId, deviceId, filename, url, req.file.size]
+         VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW(), NOW())`,
+        [orgId, deviceId || null, filename, url, url, req.file.size]
       );
       console.log('Recording saved to DB');
     } catch (dbErr) {
