@@ -55,9 +55,9 @@ function connectSocket() {
   return new Promise((resolve, reject) => {
     console.log('🔌 Connecting to relay server...');
 
-    socket = io(API_URL, {
-      auth: { token },
-      transports: ['websocket'],
+    socket = io(API_URL + '/relay', {
+      auth: { token },  // token set after authenticate()
+      transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionDelay: 3000,
     });

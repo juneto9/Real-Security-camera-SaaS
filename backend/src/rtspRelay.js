@@ -24,6 +24,23 @@ function initRelay(io) {
   // Use a separate namespace to keep relay traffic isolated
   const relay = io.of('/relay');
 
+  // Auth middleware for relay namespace
+  // Agents use JWT token, viewers use JWT token
+  // Both must be authenticated
+  relay.use((socket, next) => {
+    try {
+      const token = socket.handshake.auth?.token;
+      if (!token) return next(new Error('No auth token'));
+      const jwt = require('jsonwebtoken');
+      const secret = process.env.JWT_SECRET || 'your_super_secret_jwt_key_change_this_in_production';
+      const decoded = jwt.verify(token, secret);
+      socket.jwtPayload = decoded;
+      next();
+    } catch (err) {
+      next(new Error('Invalid token: ' + err.message));
+    }
+  });
+
   relay.on('connection', (socket) => {
     logger.info('Relay socket connected', { socketId: socket.id });
 
