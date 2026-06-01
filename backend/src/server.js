@@ -1,163 +1,355 @@
 const express = require('express');
+const http = require('http');
 const cors = require('cors');
 const helmet = require('helmet');
 const compression = require('compression');
-const http = require('http');
-const { Server } = require('socket.io');
 const config = require('./config');
 const logger = require('./utils/logger');
 const db = require('./utils/database');
 const errorHandler = require('./middleware/errorHandler');
 const authMiddleware = require('./middleware/auth');
+const { initSignaling } = require('./signalingServer');
 
-const authRoutes = require('./routes/auth');
-const deviceRoutes = require('./routes/devices');
+// Import routes
+const authRoutes      = require('./routes/auth');
+const deviceRoutes    = require('./routes/devices');
 const recordingRoutes = require('./routes/recordings');
-const streamRoutes = require('./routes/streams');
-const userRoutes = require('./routes/users');
-const setupSocket = require('./socket');
-const streamingRoutes  = require('./routes/streaming');
-const enrollmentRoutes = require('./routes/enrollment');
+const streamRoutes    = require('./routes/streams');
+const userRoutes      = require('./routes/users');
 
 const app = express();
-const server = http.createServer(app);
-const io = new Server(server, { cors: { origin: '*', methods: ['GET','POST'] } });
-app.set('io', io);
-app.set('activeStreams', {});
-app.set('db', db); // share db with routes via req.app.get('db')
 
-// ── CORS must come FIRST before any routes ───────────────────────
-app.options('*', cors());
-app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
-  res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type,Authorization');
-  res.header('Access-Control-Allow-Credentials', 'true');
-  if (req.method === 'OPTIONS') return res.sendStatus(200);
-  next();
-});
+// Create HTTP server (required for Socket.io to share the same port)
+const httpServer = http.createServer(app);
 
+// Trust proxy (DigitalOcean App Platform sits behind one)
+app.set('trust proxy', 1);
+
+// Security middleware
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+}));
+app.use(compression());
+
+// CORS configuration
+const corsOrigins = config.SECURITY.corsOrigin;
 app.use(cors({
-  origin: [
-    'http://localhost:3000',
-    'https://real-security-camera-web-a4yq7.ondigitalocean.app',
-  ],
+  origin: corsOrigins,
   credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 
-// ── Then other middleware ────────────────────────────────────────
-app.set('trust proxy', 1);
-app.use(helmet({ crossOriginResourcePolicy: false }));
-app.use(compression());
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ limit: '10mb', extended: true }));
+// Body parsing middleware
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
+// Request logging middleware
 app.use((req, res, next) => {
   const start = Date.now();
   res.on('finish', () => {
+    const duration = Date.now() - start;
     logger.info(`${req.method} ${req.path}`, {
       status: res.statusCode,
-      duration: `${Date.now() - start}ms`,
+      duration: `${duration}ms`,
       ip: req.ip,
     });
   });
   next();
 });
 
-// ── Health check ─────────────────────────────────────────────────
+// Health check
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString(), uptime: process.uptime() });
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+  });
 });
 
-// ── Routes (all AFTER cors) ──────────────────────────────────────
-// Ensure tables exist using shared db — retry up to 20 times
-const initTables = async (attempts = 0) => {
-  try {
-    await db.query(`CREATE TABLE IF NOT EXISTS recordings (
-      id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-      organization_id UUID, device_id UUID, filename TEXT,
-      url TEXT, size BIGINT, created_at TIMESTAMPTZ DEFAULT NOW()
-    )`);
-    // Add missing columns if table already exists with old schema
-    await db.query(`ALTER TABLE recordings ADD COLUMN IF NOT EXISTS filename TEXT`).catch(()=>{});
-    await db.query(`ALTER TABLE recordings ADD COLUMN IF NOT EXISTS start_time TIMESTAMPTZ DEFAULT NOW()`).catch(()=>{});
-    await db.query(`ALTER TABLE recordings ADD COLUMN IF NOT EXISTS end_time TIMESTAMPTZ`).catch(()=>{});
-    await db.query(`ALTER TABLE recordings ADD COLUMN IF NOT EXISTS device_id UUID`).catch(()=>{});
-    await db.query(`ALTER TABLE recordings ADD COLUMN IF NOT EXISTS size BIGINT`).catch(()=>{});
-    await db.query(`ALTER TABLE recordings ADD COLUMN IF NOT EXISTS url TEXT`).catch(()=>{});
-    await db.query(`CREATE TABLE IF NOT EXISTS enrollment_tokens (
-      id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-      token TEXT UNIQUE NOT NULL, organization_id UUID NOT NULL,
-      created_by UUID NOT NULL, camera_name TEXT, location TEXT,
-      expires_at TIMESTAMPTZ NOT NULL, used BOOLEAN DEFAULT FALSE,
-      device_id UUID, created_at TIMESTAMPTZ DEFAULT NOW()
-    )`);
-    console.log('Tables ready');
-  } catch(e) {
-    console.log('Table init error:', e.message, '- attempt', attempts+1);
-    if (attempts < 20) setTimeout(()=>initTables(attempts+1), 3000);
-  }
-};
-setTimeout(()=>initTables(), 5000);
-
-app.use('/api/auth', authRoutes);
-app.use('/api/devices', deviceRoutes);
+// API Routes
+app.use('/api/auth',       authRoutes);
+app.use('/api/devices',    authMiddleware, deviceRoutes);
 app.use('/api/recordings', authMiddleware, recordingRoutes);
-app.use('/api/streams', authMiddleware, streamRoutes);
-app.use('/api/users', authMiddleware, userRoutes);
-app.use('/api/streaming',  streamingRoutes);
-app.use('/api/enrollment', authMiddleware, enrollmentRoutes);
+app.use('/api/streams',    authMiddleware, streamRoutes);
+app.use('/api/users',      authMiddleware, userRoutes);
 
-// ── Socket.io signaling ──────────────────────────────────────────
-setupSocket(io, app);
-
+// 404 handler
 app.use((req, res) => {
   res.status(404).json({ success: false, message: 'Route not found', path: req.path });
 });
+
+// Error handler (must be last)
 app.use(errorHandler);
 
-// ── DB + Spaces ──────────────────────────────────────────────────
-const connectDatabase = async () => {
-  try {
-    const connected = await db.testConnection();
-    if (connected) { logger.info('Database connected successfully'); }
-  } catch (error) {
-    logger.warn('Database connection failed', { error: error.message });
-    setTimeout(connectDatabase, 5000);
-  }
-};
-
-const connectSpaces = async () => {
-  try {
-    const { testConnection: testSpaces } = require('./utils/spacesClient');
-    const ok = await testSpaces();
-    if (ok) { logger.info('Spaces storage connected successfully'); }
-    else { setTimeout(connectSpaces, 5000); }
-  } catch (error) {
-    logger.warn('Spaces connection failed', { error: error.message });
-    setTimeout(connectSpaces, 5000);
-  }
-};
-
-// ── Start ────────────────────────────────────────────────────────
+// Start server
 const startServer = async () => {
   try {
-    server.listen(config.PORT, () => {
-      logger.info('Server started', {
+    const dbConnected = await db.testConnection();
+    if (!dbConnected) throw new Error('Failed to connect to database');
+
+    // Initialize Socket.io signaling — shares same port as Express
+    const { io, getActiveStreams } = initSignaling(httpServer, corsOrigins);
+
+    // ── Upload recording clip to Spaces + DB ──────────────────
+    const multer = require('multer');
+    const { uploadFile } = require('./spacesClient');
+    const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 500*1024*1024 } });
+
+    app.post('/api/recordings/upload', authMiddleware, upload.single('clip'), async (req, res) => {
+      try {
+        if (!req.file) return res.status(400).json({ success: false, message: 'No file' });
+        const { deviceId, organizationId, filename, eventId } = req.body;
+        const orgId = organizationId || req.user.organizationId;
+        const key = `recordings/${orgId}/${deviceId}/${filename || req.file.originalname}`;
+        const url = await uploadFile(req.file.buffer, key, req.file.mimetype || 'video/webm');
+        console.log('Uploaded to Spaces:', url);
+
+        // Insert with start_time to satisfy not-null constraint
+        try {
+          await db.query(
+            `INSERT INTO recordings (organization_id, device_id, filename, url, size, start_time, created_at)
+             VALUES ($1, $2, $3, $4, $5, NOW(), NOW())`,
+            [orgId, deviceId, filename || req.file.originalname, url, req.file.size]
+          );
+        } catch (dbErr) {
+          console.error('DB insert error:', dbErr.message, dbErr.code);
+          // Retry with end_time too in case schema needs both
+          try {
+            await db.query(
+              `INSERT INTO recordings (organization_id, device_id, filename, url, size, start_time, end_time, created_at)
+               VALUES ($1, $2, $3, $4, $5, NOW(), NOW(), NOW())`,
+              [orgId, deviceId, filename || req.file.originalname, url, req.file.size]
+            );
+            console.log('DB insert retry succeeded');
+          } catch (e2) { console.error('DB retry also failed:', e2.message); }
+        }
+
+        res.json({ success: true, url, eventId });
+      } catch (err) {
+        logger.error('Upload error', { error: err.message });
+        res.status(500).json({ success: false, message: err.message });
+      }
+    });
+
+    // ── QR Enrollment ────────────────────────────────────────────
+    app.post('/api/enrollment/generate', authMiddleware, async (req, res) => {
+      try {
+        const { cameraName, location, expiresIn = 24 } = req.body;
+        if (!cameraName) return res.status(400).json({ success:false, message:'Camera name required' });
+        const orgId = req.user.organizationId || req.user.org_id;
+
+        // Create the device in DB
+        const result = await db.query(
+          `INSERT INTO devices (organization_id, device_name, location, device_type, is_active, created_at, updated_at)
+           VALUES ($1, $2, $3, 'mobile', false, NOW(), NOW())
+           RETURNING id`,
+          [orgId, cameraName, location||'']
+        );
+        const deviceId = result.rows[0].id;
+        const expiresAt = new Date(Date.now() + expiresIn * 3600000).toISOString();
+
+        // Generate enrollment token
+        const token = Buffer.from(JSON.stringify({
+          deviceId, orgId, cameraName, expiresAt
+        })).toString('base64url');
+
+        const enrollUrl = `${req.protocol}://${req.get('host')}/enroll?token=${token}`;
+
+        res.json({
+          success: true,
+          data: {
+            deviceId,
+            token,
+            url: enrollUrl,
+            cameraName,
+            location: location||'',
+            expiresAt,
+          }
+        });
+      } catch(err) {
+        logger.error('Enrollment generate error', { error: err.message });
+        res.status(500).json({ success: false, message: err.message });
+      }
+    });
+
+    app.post('/api/enrollment/complete', async (req, res) => {
+      try {
+        const { token } = req.body;
+        if (!token) return res.status(400).json({ success:false, message:'Token required' });
+        const data = JSON.parse(Buffer.from(token, 'base64url').toString());
+        if (new Date(data.expiresAt) < new Date())
+          return res.status(410).json({ success:false, message:'Enrollment link expired' });
+        await db.query(
+          `UPDATE devices SET is_active = true, updated_at = NOW() WHERE id = $1`,
+          [data.deviceId]
+        );
+        res.json({ success: true, data: { deviceId: data.deviceId, orgId: data.orgId } });
+      } catch(err) {
+        res.status(500).json({ success: false, message: err.message });
+      }
+    });
+
+    // ── Org Members ──────────────────────────────────────────────
+    app.get('/api/org/members', authMiddleware, async (req, res) => {
+      try {
+        const orgId = req.user.organizationId || req.user.org_id;
+        const result = await db.query(
+          `SELECT u.id, u.first_name, u.last_name, u.email, u.role, u.created_at
+           FROM users u
+           JOIN organizations o ON u.organization_id = o.id
+           WHERE o.id = $1
+           ORDER BY u.created_at ASC`,
+          [orgId]
+        );
+        res.json({ success: true, data: result.rows });
+      } catch(err) {
+        logger.error('Get members error', { error: err.message });
+        res.status(500).json({ success: false, message: err.message });
+      }
+    });
+
+    app.put('/api/org/members/:userId/role', authMiddleware, async (req, res) => {
+      try {
+        const orgId = req.user.organizationId || req.user.org_id;
+        const { role } = req.body;
+        if (!['admin','viewer'].includes(role))
+          return res.status(400).json({ success:false, message:'Invalid role' });
+        // Check admin limit (max 2 admins)
+        // TODO: ENABLE PAYWALL — check subscription tier for higher limits
+        const MAX_ADMINS = 2;
+        if (role === 'admin') {
+          const count = await db.query(
+            `SELECT COUNT(*) FROM users WHERE organization_id = $1 AND role = 'admin'`,
+            [orgId]
+          );
+          if (parseInt(count.rows[0].count) >= MAX_ADMINS) {
+            return res.status(403).json({ success:false, message:`Admin limit of ${MAX_ADMINS} reached` });
+          }
+        }
+        await db.query(
+          `UPDATE users SET role = $1 WHERE id = $2 AND organization_id = $3`,
+          [role, req.params.userId, orgId]
+        );
+        res.json({ success: true, message: `Role updated to ${role}` });
+      } catch(err) {
+        res.status(500).json({ success: false, message: err.message });
+      }
+    });
+
+    app.post('/api/org/invite', authMiddleware, async (req, res) => {
+      try {
+        const { email } = req.body;
+        if (!email) return res.status(400).json({ success:false, message:'Email required' });
+        const orgId = req.user.organizationId || req.user.org_id;
+        // Check if already a member
+        const existing = await db.query(
+          'SELECT id FROM users WHERE email = $1 AND organization_id = $2',
+          [email, orgId]
+        );
+        if (existing.rows.length > 0)
+          return res.status(409).json({ success:false, message:'User already a member' });
+        // For now just log the invite — email sending would go here
+        logger.info('User invited', { email, orgId, invitedBy: req.user.userId });
+        res.json({ success: true, message: `Invitation sent to ${email}` });
+      } catch(err) {
+        res.status(500).json({ success: false, message: err.message });
+      }
+    });
+
+    // ── Discovery Agent Report ───────────────────────────────────
+    // Receives scan results from local discovery agent running on home network
+    app.post('/api/discovery/report', authMiddleware, async (req, res) => {
+      try {
+        const { devices } = req.body;
+        const orgId = req.user.organizationId || req.user.org_id;
+        if (!devices || !Array.isArray(devices)) {
+          return res.status(400).json({ success: false, message: 'devices array required' });
+        }
+
+        // Store discovered devices in memory (keyed by org)
+        if (!global.discoveredDevices) global.discoveredDevices = {};
+        global.discoveredDevices[orgId] = {
+          devices,
+          timestamp: new Date().toISOString(),
+          agentIP: req.ip,
+        };
+
+        logger.info('Discovery report received', {
+          orgId, count: devices.length, agentIP: req.ip
+        });
+
+        res.json({ success: true, received: devices.length });
+      } catch(err) {
+        res.status(500).json({ success: false, message: err.message });
+      }
+    });
+
+    // ── Device Discovery ─────────────────────────────────────────
+    app.get('/api/devices/discover', authMiddleware, async (req, res) => {
+      try {
+        const orgId = req.user.organizationId || req.user.org_id;
+        const results = [];
+
+        // 1. Devices reported by local discovery agent
+        const agentData = global.discoveredDevices?.[orgId];
+        if (agentData) {
+          results.push(...agentData.devices.map(d => ({
+            ...d,
+            source: d.source || 'agent',
+            lastSeen: agentData.timestamp,
+          })));
+        }
+
+        // 2. Active socket streams not yet enrolled
+        const enrolled = await db.query(
+          'SELECT id FROM devices WHERE organization_id = $1',
+          [orgId]
+        );
+        const enrolledIds = new Set(enrolled.rows.map(r => r.id));
+        const streams = getActiveStreams();
+        streams
+          .filter(s => !enrolledIds.has(s.deviceId))
+          .forEach(s => results.push({
+            id: s.socketId,
+            name: s.deviceName,
+            type: 'RSCCamera',
+            source: 'socket',
+            ip: '', mac: '',
+          }));
+
+        res.json({ success: true, data: results });
+      } catch(err) {
+        res.status(500).json({ success: false, message: err.message });
+      }
+    });
+
+    // Active-streams REST endpoint — needs getActiveStreams closure
+    app.get('/api/streaming/streams', authMiddleware, (req, res) => {
+      try {
+        res.json({ success: true, data: getActiveStreams() });
+      } catch (err) {
+        logger.error('Error fetching streams', { error: err.message });
+        res.status(500).json({ success: false, message: 'Failed to fetch streams' });
+      }
+    });
+
+    httpServer.listen(config.PORT, () => {
+      logger.info('Server started successfully', {
         port: config.PORT,
         env: config.NODE_ENV,
         url: `http://localhost:${config.PORT}`,
+        socketio: 'enabled',
       });
     });
-    connectDatabase();
-    connectSpaces();
 
-    process.on('SIGTERM', async () => {
-      server.close(async () => { await db.close(); process.exit(0); });
-    });
-    process.on('SIGINT', async () => {
-      server.close(async () => { await db.close(); process.exit(0); });
-    });
+    const shutdown = async (signal) => {
+      logger.info(`${signal} received, shutting down gracefully`);
+      httpServer.close(async () => { await db.close(); process.exit(0); });
+    };
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    process.on('SIGINT',  () => shutdown('SIGINT'));
+
   } catch (error) {
     logger.error('Failed to start server', { error: error.message });
     process.exit(1);
@@ -168,8 +360,9 @@ process.on('uncaughtException', (error) => {
   logger.error('Uncaught Exception', { error: error.message, stack: error.stack });
   process.exit(1);
 });
+
 process.on('unhandledRejection', (reason) => {
-  logger.error('Unhandled Rejection', { reason });
+  logger.error('Unhandled Rejection', { reason: String(reason) });
   process.exit(1);
 });
 
