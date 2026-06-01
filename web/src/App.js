@@ -256,10 +256,227 @@ function CameraSettingsPanel({ device, settings, onChange, onClose }) {
 }
 
 // ─── Camera Viewer Card ───────────────────────────────────────────
-function CameraCard({ device, socket, onEvent, onSettings, settings }) {
+// ─── RTSP Relay Viewer ────────────────────────────────────────────
+// Connects to /relay namespace, requests stream from agent,
+// plays fMP4 chunks via MSE. Works from ANYWHERE remotely.
+function RTSPViewer({ device, onClose }) {
+  const videoRef    = useRef(null);
+  const msRef       = useRef(null);   // MediaSource
+  const sbRef       = useRef(null);   // SourceBuffer
+  const queueRef    = useRef([]);     // pending chunks
+  const relayRef    = useRef(null);   // relay socket
+  const [status,    setStatus]    = useState('Connecting...');
+  const [agentOk,   setAgentOk]   = useState(false);
+  const [error,     setError]     = useState('');
+
+  useEffect(() => {
+    const RELAY_URL = 'https://whale-app-hxokg.ondigitalocean.app';
+    const token = localStorage.getItem('rsc_token') || sessionStorage.getItem('rsc_token') || '';
+    const orgId = localStorage.getItem('rsc_org_id') || sessionStorage.getItem('rsc_org_id') || '';
+
+    // Connect to relay namespace
+    const relaySocket = window.io(RELAY_URL + '/relay', {
+      auth: { token },
+      transports: ['websocket'],
+    });
+    relayRef.current = relaySocket;
+
+    relaySocket.on('connect', () => {
+      setStatus('Requesting stream from local agent...');
+      relaySocket.emit('viewer:request-stream', {
+        deviceId: device.id,
+        orgId,
+      });
+    });
+
+    relaySocket.on('connect_error', (err) => {
+      setError('Cannot connect to relay server: ' + err.message);
+    });
+
+    relaySocket.on('relay:waiting-for-agent', ({ message }) => {
+      setStatus('⏳ ' + message);
+    });
+
+    relaySocket.on('relay:stream-ready', ({ mimeType, deviceName }) => {
+      setStatus(`🎥 Stream starting for ${deviceName || device.name}...`);
+      setAgentOk(true);
+      setupMSE(mimeType || 'video/mp4; codecs="avc1.42E01E, mp4a.40.2"');
+    });
+
+    relaySocket.on('relay:stream-chunk', ({ chunk, isInit }) => {
+      const binary = Uint8Array.from(atob(chunk), c => c.charCodeAt(0));
+      appendChunk(binary);
+    });
+
+    relaySocket.on('relay:stream-ended', () => {
+      setStatus('Stream ended');
+      setAgentOk(false);
+    });
+
+    relaySocket.on('relay:stream-error', ({ message }) => {
+      setError(message);
+      setStatus('');
+    });
+
+    return () => {
+      relaySocket.emit('viewer:stop-stream', { deviceId: device.id });
+      relaySocket.disconnect();
+      if (msRef.current && msRef.current.readyState === 'open') {
+        try { msRef.current.endOfStream(); } catch(e) {}
+      }
+    };
+  }, [device.id]);
+
+  function setupMSE(mimeType) {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const ms = new MediaSource();
+    msRef.current = ms;
+    video.src = URL.createObjectURL(ms);
+
+    ms.addEventListener('sourceopen', () => {
+      try {
+        const sb = ms.addSourceBuffer(mimeType);
+        sbRef.current = sb;
+        sb.addEventListener('updateend', () => {
+          if (queueRef.current.length > 0 && !sb.updating) {
+            sb.appendBuffer(queueRef.current.shift());
+          }
+        });
+        setStatus('');
+        video.play().catch(() => {});
+      } catch(e) {
+        setError('MSE error: ' + e.message + '. Try Chrome or Edge.');
+      }
+    });
+  }
+
+  function appendChunk(data) {
+    const sb = sbRef.current;
+    if (!sb) return;
+    if (sb.updating || queueRef.current.length > 0) {
+      queueRef.current.push(data);
+      // Prevent queue from growing too large
+      if (queueRef.current.length > 30) queueRef.current.shift();
+    } else {
+      try { sb.appendBuffer(data); } catch(e) {}
+    }
+  }
+
+  return (
+    <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,
+      backgroundColor:'rgba(0,0,0,0.95)',zIndex:1000,
+      display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center'}}>
+      <div style={{width:'100%',maxWidth:900,padding:16}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+          <div>
+            <h2 style={{color:'#fff',margin:0,fontSize:18}}>📡 {device.name}</h2>
+            <div style={{color:'#888',fontSize:12,marginTop:4}}>
+              Remote RTSP Stream · {device.location}
+              {agentOk && <span style={{color:'#4ade80',marginLeft:8}}>● Live</span>}
+            </div>
+          </div>
+          <button onClick={onClose}
+            style={{background:'#333',border:'none',color:'#fff',
+              padding:'8px 16px',borderRadius:8,cursor:'pointer',fontSize:14}}>
+            ✕ Close
+          </button>
+        </div>
+
+        {error && (
+          <div style={{backgroundColor:'#3d1a1a',border:'1px solid #ff4444',
+            borderRadius:8,padding:16,marginBottom:12,color:'#ff8888'}}>
+            <div style={{fontWeight:'bold',marginBottom:4}}>⚠️ Stream Error</div>
+            <div style={{fontSize:13}}>{error}</div>
+            <div style={{fontSize:12,marginTop:8,color:'#aaa'}}>
+              Make sure stream-agent.js is running on your local network:
+              <code style={{display:'block',marginTop:4,padding:'6px 8px',
+                background:'#222',borderRadius:4}}>
+                node stream-agent.js
+              </code>
+            </div>
+          </div>
+        )}
+
+        {status && !error && (
+          <div style={{textAlign:'center',padding:20,color:'#aaa',fontSize:14}}>
+            {status}
+          </div>
+        )}
+
+        <div style={{position:'relative',backgroundColor:'#000',borderRadius:8,overflow:'hidden'}}>
+          <video
+            ref={videoRef}
+            style={{width:'100%',maxHeight:'60vh',display:'block',backgroundColor:'#000'}}
+            autoPlay
+            muted={false}
+            playsInline
+            controls
+          />
+        </div>
+
+        <div style={{color:'#555',fontSize:11,textAlign:'center',marginTop:8}}>
+          Stream relayed via local agent · {device.rtsp_url?.replace(/:([^:@]+)@/, ':***@') || 'RTSP'}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CameraCard({ device, socket, onEvent, onSettings, settings, onWatchRemote }) {
   const videoRef        = useRef(null);
   const pcRef           = useRef(null);
   const canvasRef       = useRef(null);
+  const hlsRef          = useRef(null);
+  const [hlsPlaying,    setHlsPlaying]    = useState(false);
+  const [hlsError,      setHlsError]      = useState('');
+  const [hlsLoading,    setHlsLoading]    = useState(false);
+
+  // Check if this is an IP camera with RTSP (use HLS instead of WebRTC)
+  const isRtspCamera = !!(device.rtsp_url && device.rtsp_url.startsWith('rtsp://'));
+
+  const startHLSStream = async () => {
+    setHlsLoading(true);
+    setHlsError('');
+    try {
+      const res = await api.post('/api/stream/hls/start', { deviceId: device.id });
+      if (res.data.success) {
+        const streamUrl = res.data.streamUrl;
+        const video = videoRef.current;
+        if (!video) return;
+        // Use HLS.js if available, else native HLS (Safari)
+        if (window.Hls && window.Hls.isSupported()) {
+          const hls = new window.Hls({ lowLatencyMode: true });
+          hls.loadSource(streamUrl);
+          hls.attachMedia(video);
+          hls.on(window.Hls.Events.MANIFEST_PARSED, () => { video.play(); setHlsPlaying(true); });
+          hls.on(window.Hls.Events.ERROR, (e, d) => {
+            if (d.fatal) { setHlsError('Stream error — check camera connection'); hls.destroy(); setHlsPlaying(false); }
+          });
+          hlsRef.current = hls;
+        } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+          video.src = streamUrl;
+          video.play();
+          setHlsPlaying(true);
+        } else {
+          setHlsError('HLS not supported in this browser');
+        }
+      } else {
+        setHlsError(res.data.message || 'Failed to start stream');
+      }
+    } catch(e) {
+      setHlsError(e.response?.data?.message || 'Could not connect to camera');
+    }
+    setHlsLoading(false);
+  };
+
+  const stopHLSStream = async () => {
+    if (hlsRef.current) { hlsRef.current.destroy(); hlsRef.current = null; }
+    if (videoRef.current) { videoRef.current.src = ''; }
+    setHlsPlaying(false);
+    try { await api.post('/api/stream/hls/stop', { deviceId: device.id }); } catch(e) {}
+  };
   const audioCtxRef     = useRef(null);
   const localMicRef     = useRef(null);
   const [online,        setOnline]       = useState(device.is_active || false);
@@ -478,22 +695,33 @@ function CameraCard({ device, socket, onEvent, onSettings, settings }) {
       </div>
 
       <div style={{display:'flex',gap:5,marginTop:8,flexWrap:'wrap'}}>
-        {!watching
+        {!watching && !hlsPlaying
           ? <>
-              <button
-                style={{...st.btn, flex:2,
-                  backgroundColor: online ? C.green : '#4488ff',
-                  color:'#000',
-                  opacity: socket ? 1 : 0.5,
-                }}
-                onClick={startWatching}
-                disabled={!socket}
-              >
-                {online ? '▶ Watch Live' : '▶ Watch Live (wake camera)'}
-              </button>
+              {isRtspCamera ? (
+                <button
+                  style={{...st.btn, flex:2, backgroundColor:'#6366f1', color:'#fff',
+                    fontWeight:'bold'}}
+                  onClick={() => onWatchRemote && onWatchRemote(device)}
+                >
+                  📡 Watch Remote
+                </button>
+              ) : (
+                <button
+                  style={{...st.btn, flex:2,
+                    backgroundColor: online ? C.green : '#4488ff',
+                    color:'#000',
+                    opacity: socket ? 1 : 0.5,
+                  }}
+                  onClick={startWatching}
+                  disabled={!socket}
+                >
+                  {online ? '▶ Watch Live' : '▶ Watch Live (wake camera)'}
+                </button>
+              )}
             </>
           : <>
-              <button style={{...st.btn,...st.btnRed,flex:1}} onClick={stopWatching}>⏹ Stop</button>
+              <button style={{...st.btn,...st.btnRed,flex:1}}
+                onClick={isRtspCamera ? stopHLSStream : stopWatching}>⏹ Stop</button>
               <button style={{...st.btn,...st.btnGray,flex:1,fontSize:11}} onClick={reconnect} title="Reconnect this feed without affecting others">🔄 Reconnect</button>
             </>
         }
@@ -2631,6 +2859,8 @@ function LoginPage({ onLogin }) {
     try {
       const res = await api.post('/api/auth/login',{email,password:pw});
       localStorage.setItem('accessToken',res.data.data.accessToken);
+      sessionStorage.setItem('rsc_token', res.data.data.accessToken);
+      sessionStorage.setItem('rsc_org_id', res.data.data.user?.organization_id || res.data.data.user?.org_id || '');
       onLogin(res.data.data.accessToken);
     } catch(ex) { setErr(ex.response?.data?.message||'Login failed'); }
     setLoading(false);
@@ -2678,6 +2908,7 @@ export default function App() {
   const [user,       setUser]       = useState(null);
   const [onlineMap,  setOnlineMap]  = useState({});
   const [settingsFor,setSettingsFor]= useState(null);
+  const [rtspViewing, setRtspViewing]  = useState(null); // device to view via relay
   const [deviceSettings,setDeviceSettings]=useState({});
   const [showEnroll,   setShowEnroll]   = useState(false);
   const [showAdmins,   setShowAdmins]   = useState(false);
@@ -2864,6 +3095,7 @@ export default function App() {
                     onEvent={e=>addEvent(e)}
                     settings={deviceSettings[d.id]}
                     onSettings={()=>setSettingsFor(d)}
+                    onWatchRemote={(dev)=>setRtspViewing(dev)}
                   />
                 ))}
               </div>
@@ -2907,6 +3139,12 @@ export default function App() {
 
       {showAdd && <AddDeviceModal onClose={()=>setShowAdd(false)} onAdded={()=>{ loadDevices(); showToast('Camera added!'); }}/>}
 
+      {rtspViewing && (
+        <RTSPViewer
+          device={rtspViewing}
+          onClose={() => setRtspViewing(null)}
+        />
+      )}
       {settingsFor && (
         <CameraSettingsPanel
           device={settingsFor}

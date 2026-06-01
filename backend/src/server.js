@@ -9,6 +9,7 @@ const db = require('./utils/database');
 const errorHandler = require('./middleware/errorHandler');
 const authMiddleware = require('./middleware/auth');
 const { initSignaling } = require('./signalingServer');
+const { initRelay, getAgentStatus } = require('./rtspRelay');
 
 // Import routes
 const authRoutes      = require('./routes/auth');
@@ -22,6 +23,154 @@ const httpServer = http.createServer(app);
 
 // Make db available to routes via req.app.get('db')
 app.set('db', db);
+
+// ── HLS Streaming Proxy ───────────────────────────────────────────
+// Pulls RTSP stream via FFmpeg and serves HLS to browser
+// GET /api/stream/hls/:deviceId/index.m3u8  → start/get HLS playlist
+// GET /api/stream/hls/:deviceId/:segment    → serve HLS segments
+const { spawn } = require('child_process');
+const fs = require('fs');
+const path = require('path');
+const hlsStreams = new Map(); // deviceId → { process, dir, lastAccess }
+const HLS_DIR = '/tmp/hls';
+if (!fs.existsSync(HLS_DIR)) fs.mkdirSync(HLS_DIR, { recursive: true });
+
+async function startHLSStream(deviceId, rtspUrl) {
+  // Kill existing stream if any
+  if (hlsStreams.has(deviceId)) {
+    const existing = hlsStreams.get(deviceId);
+    try { existing.process.kill('SIGKILL'); } catch(e) {}
+  }
+
+  const dir = path.join(HLS_DIR, deviceId);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+
+  // Clean old segments
+  try {
+    fs.readdirSync(dir).forEach(f => fs.unlinkSync(path.join(dir, f)));
+  } catch(e) {}
+
+  const ffmpeg = spawn('ffmpeg', [
+    '-rtsp_transport', 'tcp',
+    '-i', rtspUrl,
+    '-c:v', 'libx264',
+    '-preset', 'ultrafast',
+    '-tune', 'zerolatency',
+    '-c:a', 'aac',
+    '-f', 'hls',
+    '-hls_time', '2',
+    '-hls_list_size', '5',
+    '-hls_flags', 'delete_segments+append_list',
+    '-hls_segment_filename', path.join(dir, 'seg%03d.ts'),
+    path.join(dir, 'index.m3u8'),
+  ], { stdio: ['ignore', 'pipe', 'pipe'] });
+
+  ffmpeg.stderr.on('data', (d) => {
+    const msg = d.toString();
+    if (msg.includes('Error') || msg.includes('error')) {
+      logger.warn('FFmpeg error', { deviceId, msg: msg.slice(0, 200) });
+    }
+  });
+
+  ffmpeg.on('close', (code) => {
+    logger.info('FFmpeg process closed', { deviceId, code });
+    hlsStreams.delete(deviceId);
+  });
+
+  hlsStreams.set(deviceId, { process: ffmpeg, dir, lastAccess: Date.now(), rtspUrl });
+  logger.info('HLS stream started', { deviceId, rtspUrl: rtspUrl.replace(/:([^:@]+)@/, ':***@') });
+  return dir;
+}
+
+// Wait for HLS playlist to be ready
+function waitForPlaylist(playlistPath, timeout = 10000) {
+  return new Promise((resolve, reject) => {
+    const start = Date.now();
+    const check = () => {
+      if (fs.existsSync(playlistPath) && fs.statSync(playlistPath).size > 0) {
+        resolve(true);
+      } else if (Date.now() - start > timeout) {
+        reject(new Error('Playlist not ready in time'));
+      } else {
+        setTimeout(check, 500);
+      }
+    };
+    check();
+  });
+}
+
+// Start HLS stream for a device
+app.post('/api/stream/hls/start', authMiddleware, async (req, res) => {
+  try {
+    const { deviceId } = req.body;
+    const orgId = req.user.organization_id;
+
+    const result = await db.query(
+      'SELECT id, name, rtsp_url FROM devices WHERE id = $1 AND organization_id = $2',
+      [deviceId, orgId]
+    );
+    if (!result.rows[0]) return res.status(404).json({ success: false, message: 'Device not found' });
+
+    const device = result.rows[0];
+    if (!device.rtsp_url) return res.status(400).json({ success: false, message: 'No RTSP URL configured for this device' });
+
+    await startHLSStream(deviceId, device.rtsp_url);
+
+    const playlistPath = path.join(HLS_DIR, deviceId, 'index.m3u8');
+    try {
+      await waitForPlaylist(playlistPath, 8000);
+      res.json({ success: true, streamUrl: `/api/stream/hls/${deviceId}/index.m3u8` });
+    } catch(e) {
+      res.status(503).json({ success: false, message: 'Stream not ready — check RTSP URL and camera connectivity' });
+    }
+  } catch (err) {
+    logger.error('HLS start error', { error: err.message });
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Serve HLS playlist and segments
+app.get('/api/stream/hls/:deviceId/:file', authMiddleware, (req, res) => {
+  const { deviceId, file } = req.params;
+  const stream = hlsStreams.get(deviceId);
+
+  if (!stream) return res.status(404).json({ success: false, message: 'Stream not active' });
+  stream.lastAccess = Date.now();
+
+  const filePath = path.join(stream.dir, file);
+  if (!fs.existsSync(filePath)) return res.status(404).send('Segment not found');
+
+  if (file.endsWith('.m3u8')) {
+    res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
+    res.setHeader('Cache-Control', 'no-cache');
+  } else if (file.endsWith('.ts')) {
+    res.setHeader('Content-Type', 'video/mp2t');
+  }
+  res.sendFile(filePath);
+});
+
+// Stop HLS stream
+app.post('/api/stream/hls/stop', authMiddleware, (req, res) => {
+  const { deviceId } = req.body;
+  const stream = hlsStreams.get(deviceId);
+  if (stream) {
+    try { stream.process.kill('SIGKILL'); } catch(e) {}
+    hlsStreams.delete(deviceId);
+  }
+  res.json({ success: true });
+});
+
+// Auto-cleanup idle HLS streams after 60 seconds
+setInterval(() => {
+  const now = Date.now();
+  for (const [deviceId, stream] of hlsStreams.entries()) {
+    if (now - stream.lastAccess > 60000) {
+      logger.info('Stopping idle HLS stream', { deviceId });
+      try { stream.process.kill('SIGKILL'); } catch(e) {}
+      hlsStreams.delete(deviceId);
+    }
+  }
+}, 30000);
 
 app.set('trust proxy', 1);
 
@@ -118,6 +267,8 @@ const startServer = async () => {
     if (!dbConnected) throw new Error('Failed to connect to database');
 
     const { io, getActiveStreams } = initSignaling(httpServer, corsOrigins);
+    const relayNamespace = initRelay(io);
+    logger.info('RTSP relay namespace initialized');
 
     // Upload recording clip to Spaces + DB
     const multer = require('multer');
@@ -289,6 +440,13 @@ const startServer = async () => {
         logger.error('Error fetching streams', { error: err.message });
         res.status(500).json({ success: false, message: 'Failed to fetch streams' });
       }
+    });
+
+    // ── Relay status endpoint ─────────────────────────────────────
+    app.get('/api/relay/status', authMiddleware, (req, res) => {
+      const orgId = req.user.organization_id;
+      const status = getAgentStatus(orgId);
+      res.json({ success: true, data: status });
     });
 
     // 404 handler — MUST be after all routes

@@ -1,10 +1,17 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Real Security Camera — Dashboard</title>
-  <style>*{box-sizing:border-box;margin:0;padding:0}body{background:#0a0a0a}</style>
-</head>
-<body><div id="root"></div></body>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#000000" />
+    <title>Real Security Camera</title>
+    <!-- HLS.js for IP camera RTSP→HLS streaming -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.4.12/hls.min.js"></script>
+    <!-- Socket.io client for RTSP relay namespace -->
+    <script src="https://whale-app-hxokg.ondigitalocean.app/socket.io/socket.io.js"></script>
+  </head>
+  <body>
+    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <div id="root"></div>
+  </body>
 </html>
