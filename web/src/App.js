@@ -3060,7 +3060,7 @@ export default function App() {
             <p style={{...st.statN,color:C.green}}>
               {new Set([
                 ...devices.filter(d=>d.is_active||onlineMap[d.id]?.online||onlineMap[d.id]===true).map(d=>d.id),
-                ....Object.entries(onlineMap).filter(([k,v])=>(v?.online||v===true) && devices.find(d=>d.id===k && d.device_type!=='usb' && d.name!=='PC Camera')).map(([k])=>k)
+                ...Object.entries(onlineMap).filter(([k,v])=>(v?.online||v===true) && devices.find(d=>d.id===k && d.device_type!=='usb' && d.name!=='PC Camera')).map(([k])=>k)
               ]).size}
             </p>
             <p style={st.statL}>Online Now</p>
