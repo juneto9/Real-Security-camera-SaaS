@@ -18,20 +18,13 @@ const streamRoutes    = require('./routes/streams');
 const userRoutes      = require('./routes/users');
 
 const app = express();
-
-// Create HTTP server (required for Socket.io to share the same port)
 const httpServer = http.createServer(app);
 
-// Trust proxy (DigitalOcean App Platform sits behind one)
 app.set('trust proxy', 1);
 
-// Security middleware
-app.use(helmet({
-  crossOriginResourcePolicy: { policy: 'cross-origin' },
-}));
+app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 app.use(compression());
 
-// CORS configuration
 const corsOrigins = config.SECURITY.corsOrigin;
 app.use(cors({
   origin: corsOrigins,
@@ -40,18 +33,15 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 
-// Body parsing middleware
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-// Request logging middleware
 app.use((req, res, next) => {
   const start = Date.now();
   res.on('finish', () => {
-    const duration = Date.now() - start;
     logger.info(`${req.method} ${req.path}`, {
       status: res.statusCode,
-      duration: `${duration}ms`,
+      duration: `${Date.now() - start}ms`,
       ip: req.ip,
     });
   });
@@ -60,14 +50,47 @@ app.use((req, res, next) => {
 
 // Health check
 app.get('/health', (req, res) => {
-  res.json({
-    status: 'ok',
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-  });
+  res.json({ status: 'ok', timestamp: new Date().toISOString(), uptime: process.uptime() });
 });
 
-// API Routes
+// Discovery agent report — no user auth, agent posts here
+app.post('/api/discovery/report', async (req, res) => {
+  try {
+    const { orgId, devices, count, agentIP } = req.body;
+    if (!orgId) return res.status(400).json({ success: false, message: 'orgId required' });
+    if (!global.discoveredDevices) global.discoveredDevices = {};
+    global.discoveredDevices[orgId] = {
+      devices: devices || [],
+      timestamp: new Date().toISOString(),
+      agentIP: agentIP || req.ip,
+      count: count || (devices ? devices.length : 0),
+    };
+    logger.info('Discovery report received', { orgId, count: global.discoveredDevices[orgId].count, agentIP: req.ip });
+    res.json({ success: true, received: global.discoveredDevices[orgId].count });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Enrollment complete — no auth needed (device scans QR)
+app.post('/api/enrollment/complete', async (req, res) => {
+  try {
+    const { token } = req.body;
+    if (!token) return res.status(400).json({ success: false, message: 'Token required' });
+    const data = JSON.parse(Buffer.from(token, 'base64url').toString());
+    if (new Date(data.expiresAt) < new Date())
+      return res.status(410).json({ success: false, message: 'Enrollment link expired' });
+    await db.query(
+      `UPDATE devices SET is_active = true, updated_at = NOW() WHERE id = $1`,
+      [data.deviceId]
+    );
+    res.json({ success: true, data: { deviceId: data.deviceId, orgId: data.orgId } });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// API Routes — /api/devices MUST come after static routes above
 app.use('/api/auth',       authRoutes);
 app.use('/api/devices',    authMiddleware, deviceRoutes);
 app.use('/api/recordings', authMiddleware, recordingRoutes);
@@ -80,13 +103,12 @@ const startServer = async () => {
     const dbConnected = await db.testConnection();
     if (!dbConnected) throw new Error('Failed to connect to database');
 
-    // Initialize Socket.io signaling — shares same port as Express
     const { io, getActiveStreams } = initSignaling(httpServer, corsOrigins);
 
-    // ── Upload recording clip to Spaces + DB ──────────────────
+    // Upload recording clip to Spaces + DB
     const multer = require('multer');
     const { uploadFile } = require('./spacesClient');
-    const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 500*1024*1024 } });
+    const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 500 * 1024 * 1024 } });
 
     app.post('/api/recordings/upload', authMiddleware, upload.single('clip'), async (req, res) => {
       try {
@@ -95,9 +117,6 @@ const startServer = async () => {
         const orgId = organizationId || req.user.organizationId;
         const key = `recordings/${orgId}/${deviceId}/${filename || req.file.originalname}`;
         const url = await uploadFile(req.file.buffer, key, req.file.mimetype || 'video/webm');
-        console.log('Uploaded to Spaces:', url);
-
-        // Insert with start_time to satisfy not-null constraint
         try {
           await db.query(
             `INSERT INTO recordings (organization_id, device_id, filename, url, size, start_time, created_at)
@@ -105,18 +124,14 @@ const startServer = async () => {
             [orgId, deviceId, filename || req.file.originalname, url, req.file.size]
           );
         } catch (dbErr) {
-          console.error('DB insert error:', dbErr.message, dbErr.code);
-          // Retry with end_time too in case schema needs both
           try {
             await db.query(
               `INSERT INTO recordings (organization_id, device_id, filename, url, size, start_time, end_time, created_at)
                VALUES ($1, $2, $3, $4, $5, NOW(), NOW(), NOW())`,
               [orgId, deviceId, filename || req.file.originalname, url, req.file.size]
             );
-            console.log('DB insert retry succeeded');
-          } catch (e2) { console.error('DB retry also failed:', e2.message); }
+          } catch (e2) { logger.error('DB retry also failed:', { error: e2.message }); }
         }
-
         res.json({ success: true, url, eventId });
       } catch (err) {
         logger.error('Upload error', { error: err.message });
@@ -124,79 +139,47 @@ const startServer = async () => {
       }
     });
 
-    // ── QR Enrollment ────────────────────────────────────────────
+    // QR Enrollment generate
     app.post('/api/enrollment/generate', authMiddleware, async (req, res) => {
       try {
         const { cameraName, location, expiresIn = 24 } = req.body;
-        if (!cameraName) return res.status(400).json({ success:false, message:'Camera name required' });
+        if (!cameraName) return res.status(400).json({ success: false, message: 'Camera name required' });
         const orgId = req.user.organizationId || req.user.org_id;
-
-        // Create the device in DB
-        const deviceId = require('crypto').randomUUID();
+        const newDeviceId = require('crypto').randomUUID();
         const streamKey = require('crypto').randomUUID();
         const result = await db.query(
           `INSERT INTO devices (id, user_id, device_name, location, device_type, stream_key, is_active, created_at, updated_at)
            VALUES ($1, $2, $3, $4, 'mobile', $5, false, NOW(), NOW())
            RETURNING id`,
-          [deviceId, req.user.userId || req.user.id, cameraName, location||'', streamKey]
+          [newDeviceId, req.user.userId || req.user.id, cameraName, location || '', streamKey]
         );
-        const deviceId = result.rows[0].id;
+        const createdId = result.rows[0].id;
         const expiresAt = new Date(Date.now() + expiresIn * 3600000).toISOString();
-
-        // Generate enrollment token
         const token = Buffer.from(JSON.stringify({
-          deviceId, orgId, cameraName, expiresAt
+          deviceId: createdId, orgId, cameraName, expiresAt
         })).toString('base64url');
-
         const enrollUrl = `${req.protocol}://${req.get('host')}/enroll?token=${token}`;
-
         res.json({
           success: true,
-          data: {
-            deviceId,
-            token,
-            url: enrollUrl,
-            cameraName,
-            location: location||'',
-            expiresAt,
-          }
+          data: { deviceId: createdId, token, url: enrollUrl, cameraName, location: location || '', expiresAt }
         });
-      } catch(err) {
+      } catch (err) {
         logger.error('Enrollment generate error', { error: err.message });
         res.status(500).json({ success: false, message: err.message });
       }
     });
 
-    app.post('/api/enrollment/complete', async (req, res) => {
-      try {
-        const { token } = req.body;
-        if (!token) return res.status(400).json({ success:false, message:'Token required' });
-        const data = JSON.parse(Buffer.from(token, 'base64url').toString());
-        if (new Date(data.expiresAt) < new Date())
-          return res.status(410).json({ success:false, message:'Enrollment link expired' });
-        await db.query(
-          `UPDATE devices SET is_active = true, updated_at = NOW() WHERE id = $1`,
-          [data.deviceId]
-        );
-        res.json({ success: true, data: { deviceId: data.deviceId, orgId: data.orgId } });
-      } catch(err) {
-        res.status(500).json({ success: false, message: err.message });
-      }
-    });
-
-    // ── Org Members ──────────────────────────────────────────────
+    // Org Members
     app.get('/api/org/members', authMiddleware, async (req, res) => {
       try {
         const orgId = req.user.organizationId || req.user.org_id;
         const result = await db.query(
           `SELECT id, first_name, last_name, email, role, created_at
-           FROM users
-           WHERE organization_id = $1
-           ORDER BY created_at ASC`,
+           FROM users WHERE organization_id = $1 ORDER BY created_at ASC`,
           [orgId]
         );
         res.json({ success: true, data: result.rows });
-      } catch(err) {
+      } catch (err) {
         logger.error('Get members error', { error: err.message });
         res.status(500).json({ success: false, message: err.message });
       }
@@ -206,26 +189,23 @@ const startServer = async () => {
       try {
         const orgId = req.user.organizationId || req.user.org_id;
         const { role } = req.body;
-        if (!['admin','viewer'].includes(role))
-          return res.status(400).json({ success:false, message:'Invalid role' });
-        // Check admin limit (max 2 admins)
-        // TODO: ENABLE PAYWALL — check subscription tier for higher limits
+        if (!['admin', 'viewer'].includes(role))
+          return res.status(400).json({ success: false, message: 'Invalid role' });
         const MAX_ADMINS = 2;
         if (role === 'admin') {
           const count = await db.query(
             `SELECT COUNT(*) FROM users WHERE organization_id = $1 AND role = 'admin'`,
             [orgId]
           );
-          if (parseInt(count.rows[0].count) >= MAX_ADMINS) {
-            return res.status(403).json({ success:false, message:`Admin limit of ${MAX_ADMINS} reached` });
-          }
+          if (parseInt(count.rows[0].count) >= MAX_ADMINS)
+            return res.status(403).json({ success: false, message: `Admin limit of ${MAX_ADMINS} reached` });
         }
         await db.query(
           `UPDATE users SET role = $1, updated_at = NOW() WHERE id = $2 AND organization_id = $3`,
           [role, req.params.userId, orgId]
         );
         res.json({ success: true, message: `Role updated to ${role}` });
-      } catch(err) {
+      } catch (err) {
         res.status(500).json({ success: false, message: err.message });
       }
     });
@@ -233,93 +213,48 @@ const startServer = async () => {
     app.post('/api/org/invite', authMiddleware, async (req, res) => {
       try {
         const { email } = req.body;
-        if (!email) return res.status(400).json({ success:false, message:'Email required' });
+        if (!email) return res.status(400).json({ success: false, message: 'Email required' });
         const orgId = req.user.organizationId || req.user.org_id;
-        // Check if already a member
         const existing = await db.query(
           'SELECT id FROM users WHERE email = $1 AND organization_id = $2',
           [email, orgId]
         );
         if (existing.rows.length > 0)
-          return res.status(409).json({ success:false, message:'User already a member' });
-        // For now just log the invite — email sending would go here
+          return res.status(409).json({ success: false, message: 'User already a member' });
         logger.info('User invited', { email, orgId, invitedBy: req.user.userId });
         res.json({ success: true, message: `Invitation sent to ${email}` });
-      } catch(err) {
+      } catch (err) {
         res.status(500).json({ success: false, message: err.message });
       }
     });
 
-    // ── Discovery Agent Report ───────────────────────────────────
-    // Receives scan results from local discovery agent running on home network
-    app.post('/api/discovery/report', authMiddleware, async (req, res) => {
-      try {
-        const { devices } = req.body;
-        const orgId = req.user.organizationId || req.user.org_id;
-        if (!devices || !Array.isArray(devices)) {
-          return res.status(400).json({ success: false, message: 'devices array required' });
-        }
-
-        // Store discovered devices in memory (keyed by org)
-        if (!global.discoveredDevices) global.discoveredDevices = {};
-        global.discoveredDevices[orgId] = {
-          devices,
-          timestamp: new Date().toISOString(),
-          agentIP: req.ip,
-        };
-
-        logger.info('Discovery report received', {
-          orgId, count: devices.length, agentIP: req.ip
-        });
-
-        res.json({ success: true, received: devices.length });
-      } catch(err) {
-        res.status(500).json({ success: false, message: err.message });
-      }
-    });
-
-    // ── Device Discovery ─────────────────────────────────────────
-    app.get('/api/devices/discover', authMiddleware, async (req, res) => {
+    // Device discover — needs getActiveStreams closure so stays here
+    app.get('/api/device-discover', authMiddleware, async (req, res) => {
       try {
         const orgId = req.user.organizationId || req.user.org_id;
         const results = [];
-
-        // 1. Devices reported by local discovery agent
         const agentData = global.discoveredDevices?.[orgId];
         if (agentData) {
           results.push(...agentData.devices.map(d => ({
-            ...d,
-            source: d.source || 'agent',
-            lastSeen: agentData.timestamp,
+            ...d, source: d.source || 'agent', lastSeen: agentData.timestamp,
           })));
         }
-
-        // 2. Active socket streams not yet enrolled
         const enrolled = await db.query(
-          `SELECT d.id FROM devices d
-           JOIN users u ON d.user_id = u.id
-           WHERE u.organization_id = $1`,
+          `SELECT d.id FROM devices d JOIN users u ON d.user_id = u.id WHERE u.organization_id = $1`,
           [orgId]
         );
         const enrolledIds = new Set(enrolled.rows.map(r => r.id));
         const streams = getActiveStreams();
-        streams
-          .filter(s => !enrolledIds.has(s.deviceId))
-          .forEach(s => results.push({
-            id: s.socketId,
-            name: s.deviceName,
-            type: 'RSCCamera',
-            source: 'socket',
-            ip: '', mac: '',
-          }));
-
+        streams.filter(s => !enrolledIds.has(s.deviceId)).forEach(s => results.push({
+          id: s.socketId, name: s.deviceName, type: 'RSCCamera', source: 'socket', ip: '', mac: '',
+        }));
         res.json({ success: true, data: results });
-      } catch(err) {
+      } catch (err) {
         res.status(500).json({ success: false, message: err.message });
       }
     });
 
-    // Active-streams REST endpoint — needs getActiveStreams closure
+    // Active streams
     app.get('/api/streaming/streams', authMiddleware, (req, res) => {
       try {
         res.json({ success: true, data: getActiveStreams() });
@@ -339,10 +274,8 @@ const startServer = async () => {
 
     httpServer.listen(config.PORT, () => {
       logger.info('Server started successfully', {
-        port: config.PORT,
-        env: config.NODE_ENV,
-        url: `http://localhost:${config.PORT}`,
-        socketio: 'enabled',
+        port: config.PORT, env: config.NODE_ENV,
+        url: `http://localhost:${config.PORT}`, socketio: 'enabled',
       });
     });
 
