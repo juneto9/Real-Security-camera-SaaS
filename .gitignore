@@ -71,3 +71,7 @@ public/uploads/
 *.pem
 *.key
 *.crt
+backend/migrate.js
+backend/checkrecordings.js
+backend/adddevicetype.js
+backend/fixpcamera.js
