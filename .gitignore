@@ -75,3 +75,12 @@ backend/migrate.js
 backend/checkrecordings.js
 backend/adddevicetype.js
 backend/fixpcamera.js
+
+backend/checkclips.js
+backend/cleandevices.js
+backend/listdevices.js
+backend/setrtsps.js
+backend/adddevicetype.js
+backend/fixpcamera.js
+backend/migrate.js
+backend/checkrecordings.js
