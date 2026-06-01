@@ -6,34 +6,19 @@ exports.getRecordings = async (req, res, next) => {
     const { device_id, page = 1, limit = 50 } = req.query;
     const offset = (page - 1) * parseInt(limit);
     const orgId = req.user.organization_id;
-    const userId = req.user.userId || req.user.id;
 
-    // Try org-based query first (newer schema), fall back to user-based
-    let queryText, params;
+    let queryText = `
+      SELECT r.id, r.device_id, r.organization_id,
+             r.filename, r.url, r.s3_url, r.size,
+             r.start_time, r.end_time, r.created_at,
+             r.motion_detected, r.thumbnail_url,
+             d.name as camera_name
+      FROM recordings r
+      LEFT JOIN devices d ON r.device_id = d.id
+      WHERE r.organization_id = $1
+        AND (r.is_deleted IS NULL OR r.is_deleted = false)`;
 
-    if (orgId) {
-      queryText = `SELECT r.id, r.device_id, r.organization_id,
-                          r.filename, r.url, r.s3_url, r.size,
-                          r.start_time, r.end_time, r.created_at,
-                          r.motion_detected, r.thumbnail_url,
-                          d.device_name as camera_name
-                   FROM recordings r
-                   LEFT JOIN devices d ON r.device_id = d.id
-                   WHERE r.organization_id = $1
-                   AND (r.is_deleted IS NULL OR r.is_deleted = false)`;
-      params = [orgId];
-    } else {
-      queryText = `SELECT r.id, r.device_id, r.organization_id,
-                          r.filename, r.url, r.s3_url, r.size,
-                          r.start_time, r.end_time, r.created_at,
-                          r.motion_detected, r.thumbnail_url,
-                          d.device_name as camera_name
-                   FROM recordings r
-                   LEFT JOIN devices d ON r.device_id = d.id
-                   WHERE d.user_id = $1
-                   AND (r.is_deleted IS NULL OR r.is_deleted = false)`;
-      params = [userId];
-    }
+    const params = [orgId];
 
     if (device_id) {
       params.push(device_id);
@@ -54,21 +39,10 @@ exports.getRecordings = async (req, res, next) => {
 exports.getRecording = async (req, res, next) => {
   try {
     const orgId = req.user.organization_id;
-    const userId = req.user.userId || req.user.id;
-
-    let result;
-    if (orgId) {
-      result = await db.query(
-        `SELECT r.* FROM recordings r WHERE r.id = $1 AND r.organization_id = $2`,
-        [req.params.recordingId, orgId]
-      );
-    } else {
-      result = await db.query(
-        `SELECT r.* FROM recordings r JOIN devices d ON r.device_id = d.id WHERE r.id = $1 AND d.user_id = $2`,
-        [req.params.recordingId, userId]
-      );
-    }
-
+    const result = await db.query(
+      `SELECT r.* FROM recordings r WHERE r.id = $1 AND r.organization_id = $2`,
+      [req.params.recordingId, orgId]
+    );
     if (!result.rows[0]) return res.status(404).json({ success: false, message: 'Not found' });
     res.json({ success: true, data: result.rows[0] });
   } catch (err) {
@@ -80,24 +54,10 @@ exports.getRecording = async (req, res, next) => {
 exports.deleteRecording = async (req, res, next) => {
   try {
     const orgId = req.user.organization_id;
-    const userId = req.user.userId || req.user.id;
-
-    let result;
-    if (orgId) {
-      result = await db.query(
-        `DELETE FROM recordings WHERE id = $1 AND organization_id = $2 RETURNING id`,
-        [req.params.recordingId, orgId]
-      );
-    } else {
-      result = await db.query(
-        `DELETE FROM recordings USING devices
-         WHERE recordings.device_id = devices.id
-         AND recordings.id = $1 AND devices.user_id = $2
-         RETURNING recordings.id`,
-        [req.params.recordingId, userId]
-      );
-    }
-
+    const result = await db.query(
+      `DELETE FROM recordings WHERE id = $1 AND organization_id = $2 RETURNING id`,
+      [req.params.recordingId, orgId]
+    );
     if (!result.rows[0]) return res.status(404).json({ success: false, message: 'Not found' });
     res.json({ success: true, message: 'Deleted' });
   } catch (err) {
