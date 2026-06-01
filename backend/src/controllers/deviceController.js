@@ -13,43 +13,31 @@ exports.getDevices = async (req, res, next) => {
   }
 };
 
-// GET /api/devices/discover
-// Returns a flat array combining:
-//   1. Agent-discovered devices from discovery_reports table
-//   2. Registered devices for this user
-// Flat array keeps frontend working exactly as before
+// GET /api/devices/discover — MUST be before /:deviceId
 exports.discoverDevices = async (req, res, next) => {
   try {
     const orgId = req.user.organization_id || req.user.organizationId || req.user.org_id;
     const userId = req.user.userId;
-
     const results = [];
 
-    // 1. Pull latest agent discovery report from DB (survives restarts)
     try {
       const reportResult = await db.query(
         `SELECT agent_ip, count, discovered_at, devices
-         FROM discovery_reports
-         WHERE org_id = $1
-         ORDER BY discovered_at DESC
-         LIMIT 1`,
+         FROM discovery_reports WHERE org_id = $1
+         ORDER BY discovered_at DESC LIMIT 1`,
         [orgId]
       );
       if (reportResult.rows.length > 0) {
         const report = reportResult.rows[0];
         const deviceList = Array.isArray(report.devices) ? report.devices : [];
         deviceList.forEach(d => results.push({
-          ...d,
-          source: d.source || 'agent',
-          lastSeen: report.discovered_at,
+          ...d, source: d.source || 'agent', lastSeen: report.discovered_at,
         }));
       }
     } catch (dbErr) {
-      // discovery_reports table may not exist yet — don't crash
       logger.warn('Could not read discovery_reports', { error: dbErr.message });
     }
 
-    // 2. Also return registered devices for this user
     const registered = await Device.getByUserId(userId, 50, 0);
     registered.data.forEach(d => results.push({ ...d, source: 'registered' }));
 
@@ -73,17 +61,23 @@ exports.getDevice = async (req, res, next) => {
 
 exports.createDevice = async (req, res, next) => {
   try {
-    const { name, location, rtsp_url } = req.body;
+    // Accept both 'name' and 'device_name' for compatibility with web + mobile
+    const name = req.body.name || req.body.device_name;
+    const location = req.body.location;
+    const rtsp_url = req.body.rtsp_url || '';
+
     if (!name || !location) {
       return res.status(400).json({ success: false, message: 'Name and location are required' });
     }
+
     const device = await Device.create(
       req.user.userId,
       req.user.organization_id,
       name,
       location,
-      rtsp_url || ''
+      rtsp_url
     );
+
     res.status(201).json({ success: true, data: device });
   } catch (err) {
     logger.error('Error creating device', { error: err.message });
