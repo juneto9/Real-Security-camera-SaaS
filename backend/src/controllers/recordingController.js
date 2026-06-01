@@ -12,16 +12,26 @@ exports.getRecordings = async (req, res, next) => {
     let queryText, params;
 
     if (orgId) {
-      queryText = `SELECT r.*, d.device_name as camera_name
+      queryText = `SELECT r.id, r.device_id, r.organization_id,
+                          r.filename, r.url, r.s3_url, r.size,
+                          r.start_time, r.end_time, r.created_at,
+                          r.motion_detected, r.thumbnail_url,
+                          d.device_name as camera_name
                    FROM recordings r
                    LEFT JOIN devices d ON r.device_id = d.id
-                   WHERE r.organization_id = $1`;
+                   WHERE r.organization_id = $1
+                   AND (r.is_deleted IS NULL OR r.is_deleted = false)`;
       params = [orgId];
     } else {
-      queryText = `SELECT r.*, d.device_name as camera_name
+      queryText = `SELECT r.id, r.device_id, r.organization_id,
+                          r.filename, r.url, r.s3_url, r.size,
+                          r.start_time, r.end_time, r.created_at,
+                          r.motion_detected, r.thumbnail_url,
+                          d.device_name as camera_name
                    FROM recordings r
                    LEFT JOIN devices d ON r.device_id = d.id
-                   WHERE d.user_id = $1`;
+                   WHERE d.user_id = $1
+                   AND (r.is_deleted IS NULL OR r.is_deleted = false)`;
       params = [userId];
     }
 

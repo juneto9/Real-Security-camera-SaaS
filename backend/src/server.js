@@ -129,19 +129,18 @@ const startServer = async () => {
         const key = `recordings/${orgId}/${deviceId}/${filename || req.file.originalname}`;
         const url = await uploadFile(req.file.buffer, key, req.file.mimetype || 'video/webm');
         try {
+          // end_time is NOT NULL — set it to NOW() for uploaded clips
           await db.query(
-            `INSERT INTO recordings (organization_id, device_id, filename, url, size, start_time, created_at)
-             VALUES ($1, $2, $3, $4, $5, NOW(), NOW())`,
+            `INSERT INTO recordings
+               (id, organization_id, device_id, filename, url, size,
+                s3_url, start_time, end_time, created_at)
+             VALUES
+               (gen_random_uuid(), $1, $2, $3, $4, $5, $4, NOW(), NOW(), NOW())`,
             [orgId, deviceId, filename || req.file.originalname, url, req.file.size]
           );
+          logger.info('Recording saved to DB', { orgId, deviceId, filename });
         } catch (dbErr) {
-          try {
-            await db.query(
-              `INSERT INTO recordings (organization_id, device_id, filename, url, size, start_time, end_time, created_at)
-               VALUES ($1, $2, $3, $4, $5, NOW(), NOW(), NOW())`,
-              [orgId, deviceId, filename || req.file.originalname, url, req.file.size]
-            );
-          } catch (e2) { logger.error('DB retry also failed:', { error: e2.message }); }
+          logger.error('DB insert error', { error: dbErr.message });
         }
         res.json({ success: true, url, eventId });
       } catch (err) {
