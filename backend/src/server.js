@@ -133,10 +133,10 @@ const startServer = async () => {
 
         // Create the device in DB
         const result = await db.query(
-          `INSERT INTO devices (organization_id, device_name, location, device_type, is_active, created_at, updated_at)
-           VALUES ($1, $2, $3, 'mobile', false, NOW(), NOW())
+          `INSERT INTO devices (user_id, name, location, status, created_at, updated_at)
+           VALUES ($1, $2, $3, 'offline', NOW(), NOW())
            RETURNING id`,
-          [orgId, cameraName, location||'']
+          [req.user.userId || req.user.id, cameraName, location||'']
         );
         const deviceId = result.rows[0].id;
         const expiresAt = new Date(Date.now() + expiresIn * 3600000).toISOString();
@@ -173,7 +173,7 @@ const startServer = async () => {
         if (new Date(data.expiresAt) < new Date())
           return res.status(410).json({ success:false, message:'Enrollment link expired' });
         await db.query(
-          `UPDATE devices SET is_active = true, updated_at = NOW() WHERE id = $1`,
+          `UPDATE devices SET status = 'online', updated_at = NOW() WHERE id = $1`,
           [data.deviceId]
         );
         res.json({ success: true, data: { deviceId: data.deviceId, orgId: data.orgId } });
@@ -187,11 +187,10 @@ const startServer = async () => {
       try {
         const orgId = req.user.organizationId || req.user.org_id;
         const result = await db.query(
-          `SELECT u.id, u.first_name, u.last_name, u.email, u.role, u.created_at
-           FROM users u
-           JOIN organizations o ON u.organization_id = o.id
-           WHERE o.id = $1
-           ORDER BY u.created_at ASC`,
+          `SELECT id, first_name, last_name, email, role, created_at
+           FROM users
+           WHERE organization_id = $1
+           ORDER BY created_at ASC`,
           [orgId]
         );
         res.json({ success: true, data: result.rows });
@@ -220,7 +219,7 @@ const startServer = async () => {
           }
         }
         await db.query(
-          `UPDATE users SET role = $1 WHERE id = $2 AND organization_id = $3`,
+          `UPDATE users SET role = $1, updated_at = NOW() WHERE id = $2 AND organization_id = $3`,
           [role, req.params.userId, orgId]
         );
         res.json({ success: true, message: `Role updated to ${role}` });
@@ -295,7 +294,7 @@ const startServer = async () => {
 
         // 2. Active socket streams not yet enrolled
         const enrolled = await db.query(
-          'SELECT id FROM devices WHERE organization_id = $1',
+          'SELECT id FROM devices WHERE user_id IN (SELECT id FROM users WHERE organization_id = $1)',
           [orgId]
         );
         const enrolledIds = new Set(enrolled.rows.map(r => r.id));
