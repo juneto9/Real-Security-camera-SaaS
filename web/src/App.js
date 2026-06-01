@@ -2867,6 +2867,7 @@ export default function App() {
                   // Exclude USB/Webcam device — managed from USB/Webcam tab only
                   if (usbLinkedDevice && d.id === usbLinkedDevice) return false;
                   if (d.device_type === 'usb' || d.device_type === 'webcam') return false;
+                  if (d.name === 'PC Camera' || d.device_name === 'PC Camera') return false;
                   return true;
                 }).map(d=>(
                   <CameraCard key={d.id}
