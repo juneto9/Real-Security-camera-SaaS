@@ -1,79 +1,72 @@
-// recordings.js — clip management and cloud upload
+// recordings.js – clip management and cloud upload
 const express  = require('express');
 const router   = express.Router();
 const multer   = require('multer');
 const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
-const path     = require('path');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 500 * 1024 * 1024 } });
 
-// Log Spaces config on startup (keys masked)
-console.log('Spaces config:', {
-  endpoint: process.env.STORAGE_ENDPOINT || process.env.SPACES_ENDPOINT || 'https://nyc3.digitaloceanspaces.com',
-  region:   process.env.STORAGE_REGION   || process.env.SPACES_REGION   || 'nyc3',
-  bucket:   process.env.STORAGE_BUCKET   || process.env.SPACES_BUCKET   || 'real-security-camera',
-  hasKey:   !!(process.env.STORAGE_ACCESS_KEY || process.env.SPACES_KEY),
-  hasSecret:!!(process.env.STORAGE_SECRET_KEY || process.env.SPACES_SECRET),
-});
-
 const s3 = new S3Client({
-  endpoint: process.env.STORAGE_ENDPOINT || process.env.SPACES_ENDPOINT || 'https://nyc3.digitaloceanspaces.com',
-  region: process.env.STORAGE_REGION || process.env.SPACES_REGION || 'nyc3',
+  endpoint: process.env.STORAGE_ENDPOINT || 'https://nyc3.digitaloceanspaces.com',
+  region:   process.env.STORAGE_REGION   || 'nyc3',
   credentials: {
-    accessKeyId:     process.env.STORAGE_ACCESS_KEY || process.env.SPACES_KEY,
-    secretAccessKey: process.env.STORAGE_SECRET_KEY || process.env.SPACES_SECRET,
+    accessKeyId:     process.env.STORAGE_ACCESS_KEY,
+    secretAccessKey: process.env.STORAGE_SECRET_KEY,
   },
   forcePathStyle: false,
 });
 
-
+// Helper to get orgId from req.user regardless of field name
+const getOrgId = (req) =>
+  req.user.organization_id || req.user.organizationId || req.user.org_id || null;
 
 // GET /api/recordings — list recordings for org
 router.get('/', async (req, res) => {
   try {
-    const result = await req.app.get('db').query(
-      'SELECT * FROM recordings WHERE organization_id = $1 ORDER BY created_at DESC LIMIT 100',
-      [req.user.organizationId]
-    );
+    const orgId = getOrgId(req);
+    const db = req.app.get('db');
+    const { device_id, limit = 100, offset = 0 } = req.query;
+
+    let query = `SELECT r.id, r.device_id, r.organization_id,
+                        r.filename, r.url, r.size, r.created_at,
+                        r.start_time, r.end_time, r.motion_detected,
+                        d.name as camera_name
+                 FROM recordings r
+                 LEFT JOIN devices d ON r.device_id = d.id
+                 WHERE r.organization_id = $1
+                   AND (r.is_deleted IS NULL OR r.is_deleted = false)`;
+    const params = [orgId];
+
+    if (device_id) {
+      params.push(device_id);
+      query += ` AND r.device_id = $${params.length}`;
+    }
+
+    query += ` ORDER BY r.created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+    params.push(parseInt(limit), parseInt(offset));
+
+    const result = await db.query(query, params);
     res.json({ success: true, data: result.rows });
   } catch (e) {
+    console.error('GET recordings error:', e.message);
     res.json({ success: true, data: [] });
   }
 });
-
-// Ensure recordings table exists  
-const ensureTable = async (appDb) => {
-  try {
-    await appDb.query(`
-      CREATE TABLE IF NOT EXISTS recordings (
-        id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-        organization_id UUID,
-        device_id UUID,
-        filename TEXT,
-        url TEXT,
-        size BIGINT,
-        created_at TIMESTAMPTZ DEFAULT NOW()
-      )
-    `);
-  } catch(e) { console.log('Table create error:', e.message); }
-};
-// Table created at startup
 
 // POST /api/recordings/upload — upload clip to DigitalOcean Spaces
 router.post('/upload', upload.single('video'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ success: false, message: 'No file provided' });
 
-    const filename  = req.body.filename || `clip_${Date.now()}.webm`;
-    const deviceId  = req.body.device_id || null;
-    const orgId     = req.user.organizationId;
-    const bucket    = process.env.STORAGE_BUCKET || process.env.SPACES_BUCKET || 'real-security-camera';
-    const region    = process.env.STORAGE_REGION  || process.env.SPACES_REGION  || 'nyc3';
-    const key       = `recordings/${orgId}/${deviceId||'usb'}/${filename}`;
+    const filename = req.body.filename || `clip_${Date.now()}.webm`;
+    const deviceId = req.body.device_id || null;
+    const orgId    = getOrgId(req);
+    const bucket   = process.env.STORAGE_BUCKET || 'real-security-camera-recordings';
+    const region   = process.env.STORAGE_REGION || 'nyc3';
+    const key      = `recordings/${orgId}/${deviceId || 'usb'}/${filename}`;
+    const db       = req.app.get('db');
 
     let url = null;
-
-    // Try Spaces upload — fail gracefully if not configured
     try {
       await s3.send(new PutObjectCommand({
         Bucket:      bucket,
@@ -84,33 +77,26 @@ router.post('/upload', upload.single('video'), async (req, res) => {
       }));
       url = `https://${bucket}.${region}.digitaloceanspaces.com/${key}`;
       console.log('Uploaded to Spaces:', url);
-    } catch(spacesErr) {
+    } catch (spacesErr) {
       console.error('Spaces upload error:', spacesErr.message);
-      // Still save record with null URL so DB knows about the clip
-      url = null;
     }
 
-    // Save to DB regardless of Spaces success
+    // Save to DB
     try {
-      await req.app.get('db').query(
-        `INSERT INTO recordings (organization_id, device_id, filename, url, size, created_at)
-         VALUES ($1, $2, $3, $4, $5, NOW())`,
+      await db.query(
+        `INSERT INTO recordings (organization_id, device_id, filename, url, s3_url, size, start_time, end_time, created_at)
+         VALUES ($1, $2, $3, $4, $4, $5, NOW(), NOW(), NOW())`,
         [orgId, deviceId, filename, url, req.file.size]
       );
-    } catch(dbErr) {
-      console.error('DB insert error:', dbErr.message, dbErr.code);
-      // Try to create table and retry
-      try {
-        await req.app.get('db').query(`CREATE TABLE IF NOT EXISTS recordings (id UUID DEFAULT gen_random_uuid() PRIMARY KEY, organization_id UUID, device_id UUID, filename TEXT, url TEXT, size BIGINT, created_at TIMESTAMPTZ DEFAULT NOW())`);
-        await req.app.get('db').query(`INSERT INTO recordings (organization_id, device_id, filename, url, size, start_time, end_time, created_at) VALUES ($1, $2, $3, $4, $5, NOW(), NOW(), NOW())`, [orgId, deviceId, filename, url, req.file.size]);
-        console.log('DB insert retry succeeded');
-      } catch(retryErr) { console.error('DB retry error:', retryErr.message); }
+      console.log('Recording saved to DB');
+    } catch (dbErr) {
+      console.error('DB insert error:', dbErr.message);
     }
 
     if (url) {
       res.json({ success: true, data: { url, filename, size: req.file.size } });
     } else {
-      res.status(207).json({ success: false, message: 'Spaces upload failed — check STORAGE credentials', data: { filename, size: req.file.size } });
+      res.status(207).json({ success: false, message: 'Spaces upload failed', data: { filename, size: req.file.size } });
     }
   } catch (e) {
     console.error('Upload error:', e.message);
@@ -118,17 +104,18 @@ router.post('/upload', upload.single('video'), async (req, res) => {
   }
 });
 
-// GET /api/recordings/:id/url — get presigned URL for private clip
+// GET /api/recordings/:id/url
 router.get('/:id/url', async (req, res) => {
   try {
-    const result = await req.app.get('db').query(
+    const orgId = getOrgId(req);
+    const db    = req.app.get('db');
+    const result = await db.query(
       'SELECT url, filename FROM recordings WHERE id = $1 AND organization_id = $2',
-      [req.params.id, req.user.organizationId]
+      [req.params.id, orgId]
     );
-    if (!result.rows[0]) return res.status(404).json({ success:false, message:'Not found' });
-    // Return the URL directly - clips are now public-read
+    if (!result.rows[0]) return res.status(404).json({ success: false, message: 'Not found' });
     res.json({ success: true, data: { url: result.rows[0].url } });
-  } catch(e) {
+  } catch (e) {
     res.status(500).json({ success: false, message: e.message });
   }
 });
@@ -136,7 +123,12 @@ router.get('/:id/url', async (req, res) => {
 // DELETE /api/recordings/:id
 router.delete('/:id', async (req, res) => {
   try {
-    await req.app.get('db').query('DELETE FROM recordings WHERE id = $1 AND organization_id = $2', [req.params.id, req.user.organizationId]);
+    const orgId = getOrgId(req);
+    const db    = req.app.get('db');
+    await db.query(
+      'DELETE FROM recordings WHERE id = $1 AND organization_id = $2',
+      [req.params.id, orgId]
+    );
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ success: false, message: e.message });

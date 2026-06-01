@@ -20,6 +20,9 @@ const userRoutes      = require('./routes/users');
 const app = express();
 const httpServer = http.createServer(app);
 
+// Make db available to routes via req.app.get('db')
+app.set('db', db);
+
 app.set('trust proxy', 1);
 
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
