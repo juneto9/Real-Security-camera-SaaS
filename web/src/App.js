@@ -2031,73 +2031,92 @@ function SubscriptionPage() {
 
 // ─── Login ────────────────────────────────────────────────────────
 
-// ─── Network Scanner (browser-based) ────────────────────────────
-// Uses the browser's ability to fetch local IPs since it's on the same network
-async function scanLocalNetwork() {
-  const results = [];
-
-  // Step 1: Get local gateway IP via WebRTC trick
-  let localIP = null;
-  try {
-    const pc = new RTCPeerConnection({ iceServers: [] });
+// ─── Network Scanner (WebRTC-based — works on HTTPS) ─────────────
+async function getLocalIPs() {
+  return new Promise((resolve) => {
+    const ips = new Set();
+    const pc = new RTCPeerConnection({ iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' }
+    ]});
     pc.createDataChannel('');
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-    await new Promise(resolve => setTimeout(resolve, 500));
-    const sdp = pc.localDescription?.sdp || '';
-    const match = sdp.match(/(\d+\.\d+\.\d+)\.\d+/);
-    if (match) localIP = match[1]; // e.g. 192.168.1
-    pc.close();
-  } catch {}
-
-  if (!localIP) {
-    // Fallback: try common subnets
-    localIP = '192.168.1';
-  }
-
-  // Step 2: Ping sweep the subnet
-  const promises = [];
-  for (let i = 1; i <= 254; i++) {
-    const ip = `${localIP}.${i}`;
-    promises.push(
-      Promise.race([
-        fetch(`http://${ip}`, { mode: 'no-cors', signal: AbortSignal.timeout(300) })
-          .then(() => ({ ip, alive: true }))
-          .catch(() => null),
-      ])
-    );
-  }
-
-  // Run in batches of 30
-  for (let i = 0; i < promises.length; i += 30) {
-    const batch = await Promise.allSettled(promises.slice(i, i + 30));
-    batch.forEach(r => {
-      if (r.status === 'fulfilled' && r.value?.alive) {
-        results.push(r.value.ip);
+    pc.onicecandidate = (e) => {
+      if (!e.candidate) {
+        pc.close();
+        resolve([...ips]);
+        return;
       }
-    });
-  }
-
-  return results;
+      // Extract IP from ICE candidate
+      const parts = e.candidate.candidate.split(' ');
+      const ip = parts[4];
+      if (ip && !ip.includes(':') && ip !== '0.0.0.0') {
+        ips.add(ip);
+        // Also add subnet range
+        const subnet = ip.split('.').slice(0,3).join('.');
+        ips.add(subnet);
+      }
+    };
+    pc.createOffer().then(o => pc.setLocalDescription(o));
+    // Timeout after 3 seconds
+    setTimeout(() => { pc.close(); resolve([...ips]); }, 3000);
+  });
 }
 
-// Check if an IP is running an RTSP/camera port
+async function scanLocalNetwork() {
+  const localData = await getLocalIPs();
+  // Extract subnet (e.g. "192.168.1" from "192.168.1.5" or direct subnet)
+  let subnet = '192.168.1';
+  for (const ip of localData) {
+    const parts = ip.split('.');
+    if (parts.length === 3) { subnet = ip; break; }
+    if (parts.length === 4 && parts[0] !== '169') {
+      subnet = parts.slice(0,3).join('.');
+      break;
+    }
+  }
+
+  // Use WebSocket probing — works cross-origin on HTTPS
+  const alive = [];
+  const probe = (ip) => new Promise((resolve) => {
+    const ws = new WebSocket(`ws://${ip}:80`);
+    const timer = setTimeout(() => { ws.close(); resolve(null); }, 400);
+    ws.onopen = () => { clearTimeout(timer); ws.close(); resolve(ip); };
+    ws.onerror = (e) => {
+      clearTimeout(timer);
+      // onerror fires on connection refused — means host exists!
+      // If error is not timeout, the IP is reachable
+      resolve(e.type === 'error' ? ip : null);
+    };
+  });
+
+  const promises = [];
+  for (let i = 1; i <= 254; i++) {
+    promises.push(probe(`${subnet}.${i}`));
+  }
+
+  // Batch of 40 at a time
+  for (let i = 0; i < promises.length; i += 40) {
+    const batch = await Promise.allSettled(promises.slice(i, i+40));
+    batch.forEach(r => { if (r.value) alive.push(r.value); });
+  }
+  return alive;
+}
+
+// Probe for camera ports using WebSocket
 async function probeDevice(ip) {
   const ports = [
-    { port: 80,   type: 'IPCamera', label: 'HTTP Camera' },
-    { port: 8080, type: 'IPCamera', label: 'IP Camera (8080)' },
-    { port: 554,  type: 'IPCamera', label: 'RTSP Camera' },
+    { port: 554,  type: 'IPCamera',  label: 'RTSP Camera' },
+    { port: 8080, type: 'IPCamera',  label: 'IP Camera (8080)' },
+    { port: 80,   type: 'IPCamera',  label: 'HTTP Camera' },
     { port: 8081, type: 'RSCCamera', label: 'Real Security Camera' },
   ];
-
   for (const p of ports) {
-    try {
-      await fetch(`http://${ip}:${p.port}`, {
-        mode: 'no-cors',
-        signal: AbortSignal.timeout(400),
-      });
-      return { type: p.type, label: p.label, port: p.port };
-    } catch {}
+    const found = await new Promise((resolve) => {
+      const ws = new WebSocket(`ws://${ip}:${p.port}`);
+      const t = setTimeout(() => { ws.close(); resolve(false); }, 500);
+      ws.onopen = () => { clearTimeout(t); ws.close(); resolve(true); };
+      ws.onerror = () => { clearTimeout(t); resolve(true); }; // host exists
+    });
+    if (found) return { type: p.type, label: p.label, port: p.port };
   }
   return null;
 }
