@@ -158,10 +158,10 @@ const startServer = async () => {
         const newDeviceId = require('crypto').randomUUID();
         const streamKey = require('crypto').randomUUID();
         const result = await db.query(
-          `INSERT INTO devices (id, user_id, device_name, location, device_type, stream_key, is_active, created_at, updated_at)
-           VALUES ($1, $2, $3, $4, 'mobile', $5, false, NOW(), NOW())
+          `INSERT INTO devices (id, user_id, organization_id, name, location, stream_key, status, is_active, is_motion_detection_enabled, motion_sensitivity, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, 'offline', false, true, 50, NOW(), NOW())
            RETURNING id`,
-          [newDeviceId, req.user.userId || req.user.id, cameraName, location || '', streamKey]
+          [newDeviceId, req.user.userId || req.user.id, req.user.organization_id || req.user.org_id, cameraName, location || '', streamKey]
         );
         const createdId = result.rows[0].id;
         const expiresAt = new Date(Date.now() + expiresIn * 3600000).toISOString();
