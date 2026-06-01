@@ -279,7 +279,7 @@ const startServer = async () => {
       try {
         if (!req.file) return res.status(400).json({ success: false, message: 'No file' });
         const { deviceId, organizationId, filename, eventId } = req.body;
-        const orgId = organizationId || req.user.organizationId;
+        const orgId = organizationId || req.user.organization_id || req.user.organizationId;
         const key = `recordings/${orgId}/${deviceId}/${filename || req.file.originalname}`;
         const url = await uploadFile(req.file.buffer, key, req.file.mimetype || 'video/webm');
         try {

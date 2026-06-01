@@ -20,6 +20,15 @@
  */
 
 const { spawn }  = require('child_process');
+// Use @ffmpeg-installer/ffmpeg if system ffmpeg not available
+let FFMPEG_PATH = 'ffmpeg';
+try {
+  const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
+  FFMPEG_PATH = ffmpegInstaller.path;
+  console.log('  Using bundled FFmpeg:', FFMPEG_PATH);
+} catch(e) {
+  console.log('  Using system FFmpeg');
+}
 const axios      = require('axios');
 const { io }     = require('socket.io-client');
 const os         = require('os');
@@ -149,7 +158,7 @@ async function startStreamForDevice(deviceId, viewerSocketId) {
   activeStreams.set(deviceId, { viewers, ffmpeg: null, deviceName: device.name });
 
   // FFmpeg: RTSP → fragmented MP4 (fMP4) for MSE streaming
-  const ffmpeg = spawn('ffmpeg', [
+  const ffmpeg = spawn(FFMPEG_PATH, [
     '-rtsp_transport', 'tcp',
     '-i', device.rtsp_url,
     '-c:v', 'libx264',
