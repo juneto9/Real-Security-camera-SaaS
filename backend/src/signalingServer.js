@@ -1,17 +1,18 @@
 /**
  * signalingServer.js
- * ─────────────────────────────────────────────────────────────────
+ * ─────────────────────────────────────────────────────────────────────────
  * WebRTC Signaling Server via Socket.io
  *
  * Roles:
- *   camera  — a device (phone, PC webcam via USB tab, any device on LAN/WAN)
+ *   camera  – a device (phone, PC webcam via USB tab, any device on LAN/WAN)
  *             that pushes a video stream
- *   viewer  — a browser admin watching one or more streams
+ *   viewer  – a browser admin watching one or more streams
  *
  * Flow:
  *   1. Camera connects → emits 'auth' with deviceId + role:'camera'
  *      Server stores socketId → deviceId mapping, emits camera:online to all
  *      viewers in the same org
+ *      AUTO-ENROLL: if deviceId not in DB, creates device record automatically
  *
  *   2. Viewer connects → emits 'auth' with role:'viewer'
  *      Server stores viewer socket in org room
@@ -29,29 +30,16 @@
  *      Server relays to target
  *
  *   7. Peer connection established — media flows P2P (or via TURN)
- *
- * Supports multiple viewers watching the same camera simultaneously.
- * Each viewer gets a dedicated RTCPeerConnection on the camera side.
- *
- * Also handles:
- *   - /api/streaming/streams  REST endpoint (active streams list)
- *   - camera:command          viewer → camera remote control
- *   - motion:detected         camera → all org viewers
- *   - disconnect cleanup
  */
 
 const { Server } = require('socket.io');
 const jwt = require('jsonwebtoken');
 const logger = require('./utils/logger');
+const db = require('./utils/database');
 
-// In-memory registry (survives reconnects within session)
-// orgId → { cameras: Map<deviceId, socketId>, viewers: Set<socketId> }
+// In-memory registry
 const orgRooms = new Map();
-
-// socketId → { role, deviceId, organizationId, userId, deviceName, socketId }
 const socketMeta = new Map();
-
-// deviceId → socketId (quick reverse lookup)
 const deviceSocketMap = new Map();
 
 function getOrCreateRoom(orgId) {
@@ -59,6 +47,40 @@ function getOrCreateRoom(orgId) {
     orgRooms.set(orgId, { cameras: new Map(), viewers: new Set() });
   }
   return orgRooms.get(orgId);
+}
+
+// ── Auto-enroll: insert device into DB if not already there ──────────────
+async function autoEnrollDevice({ deviceId, deviceName, orgId, userId }) {
+  try {
+    // Check if device already exists
+    const existing = await db.query(
+      `SELECT id FROM devices WHERE id = $1`,
+      [deviceId]
+    );
+    if (existing.rows.length > 0) {
+      // Device exists — make sure it's marked active
+      await db.query(
+        `UPDATE devices SET is_active = true, last_heartbeat = NOW(), updated_at = NOW() WHERE id = $1`,
+        [deviceId]
+      );
+      logger.info('Auto-enroll: device already registered, updated heartbeat', { deviceId });
+      return { enrolled: false, deviceId };
+    }
+
+    // Device not in DB — auto-register it
+    const streamKey = require('crypto').randomUUID();
+    await db.query(
+      `INSERT INTO devices (id, user_id, device_name, location, device_type, stream_key, is_active, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, 'mobile', $5, true, NOW(), NOW())`,
+      [deviceId, userId, deviceName || `Phone Camera`, 'Auto-enrolled via app', streamKey]
+    );
+
+    logger.info('Auto-enroll: new device registered', { deviceId, deviceName, orgId, userId });
+    return { enrolled: true, deviceId, deviceName };
+  } catch (err) {
+    logger.error('Auto-enroll error', { error: err.message, deviceId });
+    return { enrolled: false, error: err.message };
+  }
 }
 
 function initSignaling(httpServer, corsOrigins) {
@@ -73,7 +95,7 @@ function initSignaling(httpServer, corsOrigins) {
     pingInterval: 25000,
   });
 
-  // ── Auth middleware ──────────────────────────────────────────
+  // ── Auth middleware ────────────────────────────────────────────────────
   io.use((socket, next) => {
     try {
       const token = socket.handshake.auth?.token;
@@ -88,13 +110,13 @@ function initSignaling(httpServer, corsOrigins) {
     }
   });
 
-  // ── Connection ───────────────────────────────────────────────
+  // ── Connection ─────────────────────────────────────────────────────────
   io.on('connection', (socket) => {
     logger.info('Socket connected', { socketId: socket.id });
 
     // Intercept ALL incoming packets at the lowest level
     socket.conn.on('packet', (packet) => {
-      if (packet.type === 2) { // type 2 = EVENT
+      if (packet.type === 2) {
         try {
           const data = JSON.parse(packet.data);
           logger.info('RAW PACKET', { socketId: socket.id, event: data[0], type: packet.type });
@@ -102,24 +124,25 @@ function initSignaling(httpServer, corsOrigins) {
       }
     });
 
-    // ── auth ─────────────────────────────────────────────────
-    // Sent by both cameras and viewers right after connect
-    socket.on('auth', (data) => {
+    // ── auth ──────────────────────────────────────────────────────────────
+    socket.on('auth', async (data) => {
       const { role, deviceId, deviceName, organizationId, userId } = data || {};
 
-      // Use client-provided orgId first (camera sends it explicitly),
-      // fall back to JWT, then 'default'
       const orgId = organizationId
         || socket.jwtPayload?.organizationId
         || socket.jwtPayload?.org_id
         || 'default';
+
+      const resolvedUserId = userId
+        || socket.jwtPayload?.userId
+        || socket.jwtPayload?.id;
 
       const meta = {
         role: role || 'viewer',
         deviceId: deviceId || null,
         deviceName: deviceName || 'Unknown',
         organizationId: orgId,
-        userId: userId || socket.jwtPayload?.userId,
+        userId: resolvedUserId,
         socketId: socket.id,
       };
 
@@ -131,7 +154,38 @@ function initSignaling(httpServer, corsOrigins) {
         room.cameras.set(deviceId, socket.id);
         deviceSocketMap.set(deviceId, socket.id);
 
-        // Notify all viewers in this org that this camera is online
+        // ── AUTO-ENROLL ──────────────────────────────────────────────────
+        // Runs async — doesn't block the socket response
+        autoEnrollDevice({
+          deviceId,
+          deviceName: deviceName || 'Phone Camera',
+          orgId,
+          userId: resolvedUserId,
+        }).then(result => {
+          if (result.enrolled) {
+            // Notify all viewers in org that a NEW device was auto-enrolled
+            io.to(`org:${orgId}`).emit('device:enrolled', {
+              deviceId,
+              deviceName: deviceName || 'Phone Camera',
+              source: 'auto',
+              message: `${deviceName || 'A phone'} was automatically enrolled`,
+            });
+            logger.info('Auto-enroll: notified org of new device', { deviceId, orgId });
+          }
+          // Confirm auth back to the camera
+          socket.emit('camera:auth', {
+            success: true,
+            deviceId,
+            enrolled: result.enrolled,
+            message: result.enrolled ? 'Auto-enrolled successfully' : 'Device recognized',
+          });
+        }).catch(err => {
+          logger.error('Auto-enroll failed', { error: err.message });
+          socket.emit('camera:auth', { success: true, deviceId, enrolled: false });
+        });
+        // ── END AUTO-ENROLL ──────────────────────────────────────────────
+
+        // Notify all viewers this camera is online
         socket.to(`org:${orgId}`).emit('camera:online', {
           deviceId,
           deviceName: deviceName || 'Camera',
@@ -148,8 +202,7 @@ function initSignaling(httpServer, corsOrigins) {
       }
     });
 
-    // ── viewer:watch ─────────────────────────────────────────
-    // Viewer wants to start watching a specific device
+    // ── viewer:watch ───────────────────────────────────────────────────────
     socket.on('viewer:watch', ({ deviceId }) => {
       const cameraSocketId = deviceSocketMap.get(deviceId);
       if (!cameraSocketId) {
@@ -157,49 +210,31 @@ function initSignaling(httpServer, corsOrigins) {
         logger.warn('viewer:watch — camera not found', { deviceId, viewerSocket: socket.id });
         return;
       }
-
       logger.info('Viewer requesting stream', {
-        deviceId,
-        cameraSocket: cameraSocketId,
-        viewerSocket: socket.id,
+        deviceId, cameraSocket: cameraSocketId, viewerSocket: socket.id,
       });
-
-      // Tell the camera a viewer wants its stream
       io.to(cameraSocketId).emit('viewer:request', {
-        viewerSocketId: socket.id,
-        deviceId,
+        viewerSocketId: socket.id, deviceId,
       });
     });
 
-    // ── WebRTC relay ─────────────────────────────────────────
-    // All three events are simple point-to-point relays
-
+    // ── WebRTC relay ───────────────────────────────────────────────────────
     socket.on('webrtc:offer', ({ targetSocketId, offer }) => {
       if (!targetSocketId) return;
-      io.to(targetSocketId).emit('webrtc:offer', {
-        offer,
-        fromSocketId: socket.id,
-      });
+      io.to(targetSocketId).emit('webrtc:offer', { offer, fromSocketId: socket.id });
     });
 
     socket.on('webrtc:answer', ({ targetSocketId, answer }) => {
       if (!targetSocketId) return;
-      io.to(targetSocketId).emit('webrtc:answer', {
-        answer,
-        fromSocketId: socket.id,
-      });
+      io.to(targetSocketId).emit('webrtc:answer', { answer, fromSocketId: socket.id });
     });
 
     socket.on('webrtc:ice', ({ targetSocketId, candidate }) => {
       if (!targetSocketId || !candidate) return;
-      io.to(targetSocketId).emit('webrtc:ice', {
-        candidate,
-        fromSocketId: socket.id,
-      });
+      io.to(targetSocketId).emit('webrtc:ice', { candidate, fromSocketId: socket.id });
     });
 
-    // ── camera:command ───────────────────────────────────────
-    // Viewer sends a command to a camera (start, stop, arm, etc.)
+    // ── camera:command ─────────────────────────────────────────────────────
     socket.on('camera:command', ({ deviceId, command, params }) => {
       const cameraSocketId = deviceSocketMap.get(deviceId);
       logger.info('camera:command received', {
@@ -217,8 +252,7 @@ function initSignaling(httpServer, corsOrigins) {
       logger.info('Camera command relayed', { deviceId, command, cameraSocketId });
     });
 
-    // ── motion:detected ──────────────────────────────────────
-    // Camera reports motion — relay to all viewers in org
+    // ── motion:detected ────────────────────────────────────────────────────
     socket.on('motion:detected', (data) => {
       const meta = socketMeta.get(socket.id);
       if (!meta) return;
@@ -230,48 +264,41 @@ function initSignaling(httpServer, corsOrigins) {
       });
     });
 
-    // ── camera:offline (explicit) ─────────────────────────────
+    // ── camera:offline (explicit) ──────────────────────────────────────────
     socket.on('camera:offline', ({ deviceId }) => {
       handleCameraOffline(socket, deviceId || socketMeta.get(socket.id)?.deviceId);
     });
 
-    // ── disconnect ───────────────────────────────────────────
+    // ── disconnect ─────────────────────────────────────────────────────────
     socket.on('disconnect', (reason) => {
       const meta = socketMeta.get(socket.id);
       if (!meta) return;
-
       logger.info('Socket disconnected', { socketId: socket.id, role: meta.role, reason });
-
       if (meta.role === 'camera' && meta.deviceId) {
         handleCameraOffline(socket, meta.deviceId);
       } else if (meta.organizationId) {
         const room = orgRooms.get(meta.organizationId);
         if (room) room.viewers.delete(socket.id);
       }
-
       socketMeta.delete(socket.id);
     });
   });
 
-  // ── Helper: handle camera going offline ─────────────────────
+  // ── Helper: handle camera going offline ───────────────────────────────
   function handleCameraOffline(socket, deviceId) {
     if (!deviceId) return;
     const meta = socketMeta.get(socket.id);
     const orgId = meta?.organizationId;
-
     deviceSocketMap.delete(deviceId);
-
     if (orgId) {
       const room = orgRooms.get(orgId);
       if (room) room.cameras.delete(deviceId);
       socket.to(`org:${orgId}`).emit('camera:offline', { deviceId });
     }
-
     logger.info('Camera offline', { deviceId, orgId });
   }
 
-  // ── REST helper: active streams snapshot ────────────────────
-  // Used by GET /api/streaming/streams
+  // ── REST helper: active streams snapshot ──────────────────────────────
   function getActiveStreams() {
     const streams = [];
     for (const [deviceId, socketId] of deviceSocketMap.entries()) {
