@@ -132,11 +132,13 @@ const startServer = async () => {
         const orgId = req.user.organizationId || req.user.org_id;
 
         // Create the device in DB
+        const deviceId = require('crypto').randomUUID();
+        const streamKey = require('crypto').randomUUID();
         const result = await db.query(
-          `INSERT INTO devices (user_id, name, location, status, created_at, updated_at)
-           VALUES ($1, $2, $3, 'offline', NOW(), NOW())
+          `INSERT INTO devices (id, user_id, device_name, location, device_type, stream_key, is_active, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, 'mobile', $5, false, NOW(), NOW())
            RETURNING id`,
-          [req.user.userId || req.user.id, cameraName, location||'']
+          [deviceId, req.user.userId || req.user.id, cameraName, location||'', streamKey]
         );
         const deviceId = result.rows[0].id;
         const expiresAt = new Date(Date.now() + expiresIn * 3600000).toISOString();
@@ -173,7 +175,7 @@ const startServer = async () => {
         if (new Date(data.expiresAt) < new Date())
           return res.status(410).json({ success:false, message:'Enrollment link expired' });
         await db.query(
-          `UPDATE devices SET status = 'online', updated_at = NOW() WHERE id = $1`,
+          `UPDATE devices SET is_active = true, updated_at = NOW() WHERE id = $1`,
           [data.deviceId]
         );
         res.json({ success: true, data: { deviceId: data.deviceId, orgId: data.orgId } });
@@ -294,7 +296,9 @@ const startServer = async () => {
 
         // 2. Active socket streams not yet enrolled
         const enrolled = await db.query(
-          'SELECT id FROM devices WHERE user_id IN (SELECT id FROM users WHERE organization_id = $1)',
+          `SELECT d.id FROM devices d
+           JOIN users u ON d.user_id = u.id
+           WHERE u.organization_id = $1`,
           [orgId]
         );
         const enrolledIds = new Set(enrolled.rows.map(r => r.id));
