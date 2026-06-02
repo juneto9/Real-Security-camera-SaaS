@@ -314,8 +314,8 @@ const createCheckoutSession = async (req, res, next) => {
       payment_method_types: ['card'],
       line_items: [{ price: planConfig.stripe_price_id, quantity: 1 }],
       mode: 'subscription',
-      success_url: `${process.env.FRONTEND_URL}/dashboard?billing=success&plan=${plan}`,
-      cancel_url: `${process.env.FRONTEND_URL}/dashboard?billing=cancelled`,
+      success_url: `${process.env.FRONTEND_URL}/?billing=success&plan=${plan}`,
+      cancel_url: `${process.env.FRONTEND_URL}/?billing=cancelled`,
       metadata: { user_id: userId.toString(), plan },
       subscription_data: {
         metadata: { user_id: userId.toString(), plan },
@@ -397,8 +397,8 @@ const purchaseAddon = async (req, res, next) => {
       payment_method_types: ['card'],
       line_items: [{ price: stripePriceId, quantity: 1 }],
       mode,
-      success_url: `${process.env.FRONTEND_URL}/dashboard?addon=success&item=${addon_id || bundle_id}`,
-      cancel_url: `${process.env.FRONTEND_URL}/dashboard?addon=cancelled`,
+      success_url: `${process.env.FRONTEND_URL}/?addon=success&item=${addon_id || bundle_id}`,
+      cancel_url: `${process.env.FRONTEND_URL}/?addon=cancelled`,
       metadata: {
         user_id: userId.toString(),
         addon_id: addon_id || '',
