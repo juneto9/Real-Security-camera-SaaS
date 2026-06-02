@@ -977,6 +977,12 @@ full remote-controlled night vision capability — a feature
 their original cloud providers locked behind subscriptions
 or never exposed at all.
 
+Also announced: AI Intelligence, which transforms generic
+"Motion Detected" alerts into human-readable notifications
+such as "Tim is home" and "Buddy is in the dining room,"
+using on-device facial recognition and pet detection that
+never transmits biometric data outside the user's network.
+
 [Contact info]
 ```
 
@@ -993,4 +999,4 @@ or never exposed at all.
 
 *Real Security Camera LLC — Confidential Marketing Document*
 *Created: June 2, 2026*
-*Last Updated: June 2, 2026 — Night vision disclosures added (Section 6, all marketing copy)*
+*Last Updated: June 2, 2026 — Night vision disclosures added (Section 6, all marketing copy); AI Intelligence feature added (Section 7, all marketing copy)*
