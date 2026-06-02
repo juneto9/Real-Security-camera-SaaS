@@ -2232,726 +2232,334 @@ function AddDeviceModal({ onClose, onAdded }) {
 }
 
 // ─── Subscription Page ────────────────────────────────────────────
+// ─── Subscription Page ────────────────────────────────────────────────────────
+// Drop-in replacement for the SubscriptionPage function in App.js
+// Connects to real /api/billing endpoints and Stripe checkout
+
 function SubscriptionPage() {
-  // TODO: ENABLE PAYWALL — this page controls all subscription gating
-  const TIERS = {
-    free:       { label:'Free',       price:'$0/mo',    color:C.sub,   features:['Local recording','Night Vision','1 camera','Basic motion alerts'] },
-    pro:        { label:'Pro',        price:'$9.99/mo', color:C.green, features:['Everything in Free','Loop Forever recording','Cloud storage 50GB','5 cameras','Priority support','Web dashboard'] },
-    enterprise: { label:'Enterprise', price:'$24.99/mo',color:C.gold,  features:['Everything in Pro','Unlimited cameras','Cloud storage 500GB','Multi-admin (3 users)','Advanced analytics','API access','White-label option'] },
-  };
-  const [current,setCurrent]=useState(localStorage.getItem('subscription')||'free');
-
-  const subscribe = (tier) => {
-    localStorage.setItem('subscription', tier);
-    setCurrent(tier);
-    if (tier === 'free') {
-      alert('Downgraded to Free plan.');
-    } else {
-      alert(`✅ ${TIERS[tier].label} activated!\n\nAll ${TIERS[tier].label} features are now unlocked.\n\nNote: In production this would process payment first.`);
-    }
-  };
-
-  return (
-    <div style={{maxWidth:900,margin:'0 auto'}}>
-      <h2 style={{color:C.green,marginBottom:4}}>⭐ Subscription</h2>
-      <p style={{color:C.sub,marginBottom:8}}>Unlock the full power of Real Security Camera</p>
-      <div style={{backgroundColor:'#ffd70015',border:`1px solid ${C.gold}`,borderRadius:8,padding:'10px 14px',marginBottom:20,fontSize:13,color:C.gold}}>
-        🧪 <strong>Test Mode:</strong> All tiers are freely activatable. Click any plan to switch instantly.
-      </div>
-      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(260px,1fr))',gap:16}}>
-        {Object.entries(TIERS).map(([key,tier])=>(
-          <div key={key} style={{...st.card, border:`2px solid ${current===key?tier.color:C.border}`, position:'relative'}}>
-            {current===key && (
-              <div style={{position:'absolute',top:-10,right:12,backgroundColor:tier.color,color:'#000',padding:'2px 10px',borderRadius:10,fontSize:11,fontWeight:'bold'}}>
-                ACTIVE
-              </div>
-            )}
-            <div style={{marginBottom:12}}>
-              <div style={{fontSize:20,fontWeight:'bold',color:tier.color}}>{tier.label}</div>
-              <div style={{fontSize:18,color:C.text,marginTop:2,fontWeight:'bold'}}>{tier.price}</div>
-            </div>
-            <ul style={{paddingLeft:16,margin:'0 0 16px',color:'rgba(255,255,255,0.8)',fontSize:13}}>
-              {tier.features.map((f,i)=>(
-                <li key={i} style={{marginBottom:5}}>✓ {f}</li>
-              ))}
-            </ul>
-            {current!==key ? (
-              <button style={{
-                ...st.btn, width:'100%', padding:12,
-                backgroundColor: tier.color,
-                color: key==='free' ? C.text : '#000',
-              }} onClick={()=>subscribe(key)}>
-                {key==='free' ? 'Switch to Free' : `Activate ${tier.label}`}
-              </button>
-            ) : (
-              <div style={{textAlign:'center',padding:'10px',color:tier.color,fontWeight:'bold',fontSize:13}}>
-                ✓ Current Plan
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-      <div style={{marginTop:24,backgroundColor:C.card,borderRadius:10,padding:16,border:`1px solid ${C.border}`}}>
-        <p style={{color:C.text,fontWeight:'bold',marginBottom:8}}>💰 Pricing Breakdown</p>
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:12,fontSize:13}}>
-          <div style={{color:C.sub}}>
-            <div style={{color:C.text,marginBottom:4}}>Pro $9.99/mo covers:</div>
-            <div>• 50GB storage (~$1/mo)</div>
-            <div>• Server costs ~$2/mo</div>
-            <div>• Bandwidth ~$1/mo</div>
-            <div style={{color:C.green,marginTop:4}}>Margin: ~$6/mo</div>
-          </div>
-          <div style={{color:C.sub}}>
-            <div style={{color:C.text,marginBottom:4}}>Enterprise $24.99/mo covers:</div>
-            <div>• 500GB storage (~$10/mo)</div>
-            <div>• Server costs ~$4/mo</div>
-            <div>• Bandwidth ~$3/mo</div>
-            <div style={{color:C.gold,marginTop:4}}>Margin: ~$8/mo</div>
-          </div>
-          <div style={{color:C.sub}}>
-            <div style={{color:C.text,marginBottom:4}}>Storage rates:</div>
-            <div>• DO Spaces: $0.02/GB/mo</div>
-            <div>• Bandwidth: $0.01/GB</div>
-            <div>• 1hr 1080p ≈ 2GB</div>
-            <div style={{color:'#aaa',marginTop:4}}>Break-even: ~8 Pro users</div>
-          </div>
-        </div>
-      </div>
-      <p style={{color:'#444',fontSize:12,textAlign:'center',marginTop:16}}>
-        Payments via Stripe · Cancel anytime · Data retained 30 days after cancellation
-      </p>
-    </div>
-  );
-}
-
-// ─── Login ────────────────────────────────────────────────────────
-
-// ─── Network Scanner (WebRTC-based — works on HTTPS) ─────────────
-async function getLocalIPs() {
-  return new Promise((resolve) => {
-    const ips = new Set();
-    const pc = new RTCPeerConnection({ iceServers: [
-      { urls: 'stun:stun.l.google.com:19302' }
-    ]});
-    pc.createDataChannel('');
-    pc.onicecandidate = (e) => {
-      if (!e.candidate) {
-        pc.close();
-        resolve([...ips]);
-        return;
-      }
-      // Extract IP from ICE candidate
-      const parts = e.candidate.candidate.split(' ');
-      const ip = parts[4];
-      if (ip && !ip.includes(':') && ip !== '0.0.0.0') {
-        ips.add(ip);
-        // Also add subnet range
-        const subnet = ip.split('.').slice(0,3).join('.');
-        ips.add(subnet);
-      }
-    };
-    pc.createOffer().then(o => pc.setLocalDescription(o));
-    // Timeout after 3 seconds
-    setTimeout(() => { pc.close(); resolve([...ips]); }, 3000);
-  });
-}
-
-async function scanLocalNetwork() {
-  const localData = await getLocalIPs();
-  // Extract subnet (e.g. "192.168.1" from "192.168.1.5" or direct subnet)
-  let subnet = '192.168.1';
-  for (const ip of localData) {
-    const parts = ip.split('.');
-    if (parts.length === 3) { subnet = ip; break; }
-    if (parts.length === 4 && parts[0] !== '169') {
-      subnet = parts.slice(0,3).join('.');
-      break;
-    }
-  }
-
-  // Use WebSocket probing — works cross-origin on HTTPS
-  const alive = [];
-  const probe = (ip) => new Promise((resolve) => {
-    const ws = new WebSocket(`ws://${ip}:80`);
-    const timer = setTimeout(() => { ws.close(); resolve(null); }, 400);
-    ws.onopen = () => { clearTimeout(timer); ws.close(); resolve(ip); };
-    ws.onerror = (e) => {
-      clearTimeout(timer);
-      // onerror fires on connection refused — means host exists!
-      // If error is not timeout, the IP is reachable
-      resolve(e.type === 'error' ? ip : null);
-    };
-  });
-
-  const promises = [];
-  for (let i = 1; i <= 254; i++) {
-    promises.push(probe(`${subnet}.${i}`));
-  }
-
-  // Batch of 40 at a time
-  for (let i = 0; i < promises.length; i += 40) {
-    const batch = await Promise.allSettled(promises.slice(i, i+40));
-    batch.forEach(r => { if (r.value) alive.push(r.value); });
-  }
-  return alive;
-}
-
-// Probe for camera ports using WebSocket
-async function probeDevice(ip) {
-  const ports = [
-    { port: 554,  type: 'IPCamera',  label: 'RTSP Camera' },
-    { port: 8080, type: 'IPCamera',  label: 'IP Camera (8080)' },
-    { port: 80,   type: 'IPCamera',  label: 'HTTP Camera' },
-    { port: 8081, type: 'RSCCamera', label: 'Real Security Camera' },
-  ];
-  for (const p of ports) {
-    const found = await new Promise((resolve) => {
-      const ws = new WebSocket(`ws://${ip}:${p.port}`);
-      const t = setTimeout(() => { ws.close(); resolve(false); }, 500);
-      ws.onopen = () => { clearTimeout(t); ws.close(); resolve(true); };
-      ws.onerror = () => { clearTimeout(t); resolve(true); }; // host exists
-    });
-    if (found) return { type: p.type, label: p.label, port: p.port };
-  }
-  return null;
-}
-
-// ─── MAC OUI Database ─────────────────────────────────────────────
-const OUI_MAP = {
-  '00:03:93':'iOS','00:0A:95':'iOS','00:1C:B3':'iOS','00:21:E9':'iOS',
-  '04:0C:CE':'iOS','04:26:65':'iOS','04:52:F3':'iOS','04:54:53':'iOS',
-  '00:07:AB':'Android','00:12:47':'Android','00:15:99':'Android',
-  '00:1A:8A':'Android','00:1D:25':'Android','04:18:0F':'Android',
-  'F4:F5:D8':'Android','3C:5A:B4':'Android',
-  '00:12:17':'IPCamera','44:19:B6':'IPCamera','4C:BD:8F':'IPCamera',
-  'BC:AD:28':'IPCamera','B4:A3:82':'IPCamera','EC:71:DB':'IPCamera',
-  '00:40:8C':'IPCamera','AC:CC:8E':'IPCamera','28:57:BE':'IPCamera',
-};
-function identifyDevice(mac) {
-  if (!mac) return 'Unknown';
-  return OUI_MAP[mac.substring(0,8).toUpperCase()] || 'Unknown';
-}
-
-// ─── MAC → Brand/RTSP detection ──────────────────────────────────
-const MAC_BRANDS = {
-  // Zmodo/Monitorix
-  'B8:3A:9D':'Zmodo','54:C4:15':'Zmodo',
-  // Hikvision
-  '00:12:17':'Hikvision','44:19:B6':'Hikvision','4C:BD:8F':'Hikvision',
-  'BC:AD:28':'Hikvision','C0:56:E3':'Hikvision',
-  // Dahua
-  '00:12:45':'Dahua','28:57:BE':'Dahua','34:E1:D0':'Dahua',
-  'E0:50:8B':'Dahua','90:02:A9':'Dahua',
-  // Reolink
-  'B4:A3:82':'Reolink','EC:71:DB':'Reolink','00:62:6E':'Reolink',
-  // Axis
-  '00:40:8C':'Axis','AC:CC:8E':'Axis','B8:A4:4F':'Axis',
-  // Amcrest
-  '9C:8E:CD':'Amcrest','00:0C:E5':'Amcrest',
-  // TP-Link
-  '50:C7:BF':'TP-Link','B0:4E:26':'TP-Link',
-  // Foscam
-  'C4:D9:87':'Foscam','00:00:C0':'Foscam',
-  // Wyze
-  '2C:AA:8E':'Wyze','D0:3F:27':'Wyze',
-};
-
-const RTSP_TEMPLATES = {
-  'Hikvision': (ip) => `rtsp://admin:password@${ip}:554/Streaming/Channels/101`,
-  'Dahua':     (ip) => `rtsp://admin:password@${ip}:554/cam/realmonitor?channel=1&subtype=0`,
-  'Reolink':   (ip) => `rtsp://admin:password@${ip}:554/h264Preview_01_main`,
-  'Zmodo':     (ip) => `rtsp://admin:password@${ip}:554/live/main`,
-  'Axis':      (ip) => `rtsp://admin:password@${ip}:554/axis-media/media.amp`,
-  'Amcrest':   (ip) => `rtsp://admin:password@${ip}:554/cam/realmonitor?channel=1`,
-  'TP-Link':   (ip) => `rtsp://admin:password@${ip}:554/stream1`,
-  'Foscam':    (ip) => `rtsp://admin:password@${ip}:554/videoMain`,
-  'Wyze':      (ip) => `rtsp://admin:password@${ip}:554/live`,
-  'default':   (ip) => `rtsp://admin:password@${ip}:554/stream`,
-};
-
-function getMacBrand(mac) {
-  if (!mac) return null;
-  const prefix = mac.substring(0,8).toUpperCase().replace(/-/g,':');
-  return MAC_BRANDS[prefix] || null;
-}
-
-function getRtspSuggestion(ip, mac) {
-  const brand = getMacBrand(mac);
-  const template = brand ? RTSP_TEMPLATES[brand] : RTSP_TEMPLATES['default'];
-  return { brand, rtsp: template ? template(ip) : RTSP_TEMPLATES['default'](ip) };
-}
-
-// ─── Discover Page ────────────────────────────────────────────────
-function DiscoverPage({ socket, onDeviceAdded }) {
-  const [scanning,     setScanning]     = useState(false);
-  const [scanProgress, setScanProgress] = useState('');
-  const [discovered,   setDiscovered]   = useState([]);
-  const [enrolling,    setEnrolling]    = useState(null);
-  const [removing,     setRemoving]     = useState(null);
-  const [mdnsDevices,  setMdnsDevices]  = useState([]);
+  const [billing,      setBilling]      = useState(null);
+  const [plans,        setPlans]        = useState([]);
+  const [loading,      setLoading]      = useState(true);
+  const [upgrading,    setUpgrading]    = useState('');
+  const [coupon,       setCoupon]       = useState('');
+  const [couponInput,  setCouponInput]  = useState('');
+  const [portalLoading,setPortalLoading]= useState(false);
+  const [error,        setError]        = useState('');
 
   useEffect(()=>{
-    if (!socket) return;
-    socket.on('mdns:device', (device)=>{
-      setMdnsDevices(d=>[...d.filter(x=>x.id!==device.id), device]);
-    });
-    return ()=>socket.off('mdns:device');
-  },[socket]);
+    loadBillingData();
+  },[]);
 
-  // Auto-scan on page load
-  useEffect(() => { scanNetwork(); }, []);
-
-  const scanNetwork = async () => {
-    setScanning(true);
-    setScanProgress('Checking backend for discovered devices...');
-    setDiscovered([]);
-    try {
-      const res = await api.get('/api/devices/discover');
-      const found = res.data.data || [];
-      mdnsDevices.forEach(m => { if (!found.find(d => d.ip === m.ip)) found.push(m); });
-      setDiscovered(found);
-      setScanProgress(found.length > 0
-        ? `Found ${found.length} device(s)`
-        : 'No devices found — run the discovery agent on your local network');
-    } catch(e) {
-      setScanProgress('Error: ' + (e.response?.data?.message || e.message));
+  // Check for billing success/cancel in URL
+  useEffect(()=>{
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('billing') === 'success') {
+      const plan = params.get('plan');
+      showToastMsg(`✅ ${plan ? plan.charAt(0).toUpperCase()+plan.slice(1) : 'Plan'} activated! Welcome aboard.`);
+      window.history.replaceState({}, '', window.location.pathname);
+      loadBillingData();
     }
-    setScanning(false);
+    if (params.get('billing') === 'cancelled') {
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  },[]);
+
+  const showToastMsg = (msg) => {
+    // Use the parent app's toast if available, else alert
+    const event = new CustomEvent('rsc:toast', { detail: msg });
+    window.dispatchEvent(event);
   };
 
-  const enroll = async (device) => {
-    setEnrolling(device.id || device.ip);
+  const loadBillingData = async () => {
+    setLoading(true);
     try {
-      const { brand, rtsp } = getRtspSuggestion(device.ip, device.mac);
-      const cameraName = brand ? `${brand} Camera (${device.ip})` : (device.name || device.device_name || `Camera ${device.ip}`);
-      await api.post('/api/devices', {
-        name: cameraName,
-        location: device.ip || 'Local Network',
-        rtsp_url: rtsp || '',
+      const [billingRes, plansRes] = await Promise.all([
+        api.get('/api/billing/status'),
+        api.get('/api/billing/plans'),
+      ]);
+      setBilling(billingRes.data.billing);
+      setPlans(plansRes.data.plans);
+    } catch(e) {
+      setError('Failed to load billing info: ' + (e.response?.data?.message || e.message));
+    }
+    setLoading(false);
+  };
+
+  const subscribe = async (planId) => {
+    if (planId === 'free') return;
+    setUpgrading(planId);
+    setError('');
+    try {
+      const res = await api.post('/api/billing/subscribe', {
+        plan: planId,
+        coupon: coupon || undefined,
       });
-      setDiscovered(d => d.map(x =>
-        (x.id || x.ip) === (device.id || device.ip)
-          ? { ...x, source: 'registered', is_active: true }
-          : x
-      ));
-      if (onDeviceAdded) onDeviceAdded();
-      setScanProgress(`✅ ${cameraName} enrolled${brand ? ` as ${brand}` : ''} — set RTSP password in Camera Settings`);
+      if (res.data.checkout_url) {
+        window.location.href = res.data.checkout_url;
+      }
     } catch(e) {
-      alert('Enrollment failed: ' + (e.response?.data?.message || e.message));
+      setError(e.response?.data?.message || 'Failed to start checkout');
+      setUpgrading('');
     }
-    setEnrolling(null);
   };
 
-  const unenroll = async (device) => {
-    if (!window.confirm(`Remove "${device.name || device.device_name || device.ip}"?`)) return;
-    setRemoving(device.id);
+  const openPortal = async () => {
+    setPortalLoading(true);
     try {
-      await api.delete(`/api/devices/${device.id}`);
-      setDiscovered(d => d.filter(x => x.id !== device.id));
-      if (onDeviceAdded) onDeviceAdded();
+      const res = await api.post('/api/billing/portal');
+      if (res.data.portal_url) window.location.href = res.data.portal_url;
     } catch(e) {
-      alert('Remove failed: ' + (e.response?.data?.message || e.message));
+      setError('Failed to open billing portal: ' + (e.response?.data?.message || e.message));
     }
-    setRemoving(null);
+    setPortalLoading(false);
   };
 
-  // Deduplicate: if same IP appears as both 'registered' and 'agent', keep registered only
-  const deduped = [];
-  const seenIPs = new Set();
-  const seenIDs = new Set();
-  // First pass: registered devices
-  discovered.filter(d => d.source === 'registered').forEach(d => {
-    if (!seenIDs.has(d.id)) { deduped.push(d); seenIDs.add(d.id); if(d.location) seenIPs.add(d.location); }
-  });
-  // Second pass: agent/ARP devices not already registered
-  discovered.filter(d => d.source !== 'registered').forEach(d => {
-    if (!seenIPs.has(d.ip) && !seenIDs.has(d.id||d.ip)) {
-      deduped.push(d); if(d.ip) seenIPs.add(d.ip);
-    }
-  });
-  mdnsDevices.filter(m => !seenIPs.has(m.ip)).forEach(m => deduped.push(m));
-  const allDevices = deduped;
-  const typeIcon = (t) => t==='iOS'?'📱':t==='Android'?'🤖':t==='IPCamera'?'📹':t==='RSCCamera'?'📱':'📡';
-  const isRegistered = (d) => d.source === 'registered';
+  const applyCoupon = () => {
+    setCoupon(couponInput.trim().toUpperCase());
+    setCouponInput('');
+  };
+
+  const removeCoupon = () => {
+    setCoupon('');
+    setCouponInput('');
+  };
+
+  // Plan display config
+  const PLAN_CONFIG = {
+    free:       { color: C.sub,   icon: '🔓', popular: false },
+    pro:        { color: C.green, icon: '⚡', popular: true  },
+    business:   { color: C.blue,  icon: '🏢', popular: false },
+    enterprise: { color: C.gold,  icon: '👑', popular: false },
+  };
+
+  const currentPlan = billing?.plan || 'free';
+  const isPaid = currentPlan !== 'free';
+
+  if (loading) return (
+    <div style={{textAlign:'center',padding:60,color:C.sub}}>
+      <div style={{fontSize:32,marginBottom:12}}>⏳</div>
+      Loading billing info...
+    </div>
+  );
 
   return (
-    <div style={{padding:24,maxWidth:900,margin:'0 auto'}}>
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
+    <div style={{maxWidth:1000,margin:'0 auto'}}>
+      <div style={{...st.flexBetween,marginBottom:8,flexWrap:'wrap',gap:8}}>
         <div>
-          <h2 style={{color:C.text,margin:0,fontSize:20}}>🔍 Discover Cameras</h2>
-          <p style={{color:C.sub,fontSize:13,margin:'4px 0 0'}}>Find phones and IP cameras on your network</p>
+          <h2 style={{color:C.green,margin:0}}>⭐ Subscription</h2>
+          <p style={{color:C.sub,margin:'4px 0 0',fontSize:13}}>
+            Current plan: <span style={{color:C.text,fontWeight:'bold'}}>{billing?.plan_name || 'Free'}</span>
+            {billing?.plan_expires_at && (
+              <span style={{color:C.sub}}> · Renews {new Date(billing.plan_expires_at).toLocaleDateString()}</span>
+            )}
+          </p>
         </div>
-        <button style={{...st.btn,...st.btnGreen,display:'flex',alignItems:'center',gap:8}}
-          onClick={scanNetwork} disabled={scanning}>
-          {scanning ? '⏳ Scanning...' : '🔍 Scan Network'}
-        </button>
+        {isPaid && (
+          <button
+            style={{...st.btn,...st.btnGray,fontSize:13}}
+            onClick={openPortal}
+            disabled={portalLoading}
+          >
+            {portalLoading ? 'Opening...' : '💳 Manage Billing'}
+          </button>
+        )}
       </div>
 
-      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:20}}>
-        <div style={{...st.card,borderColor:C.green+'40',backgroundColor:C.green+'08'}}>
-          <div style={{fontWeight:'bold',color:C.green,marginBottom:4}}>🖥️ Discovery Agent</div>
-          <div style={{color:C.sub,fontSize:12}}>Run on any PC on your network — scans via ARP + port probing + credential detection.</div>
-          <div style={{marginTop:8,fontFamily:'monospace',fontSize:11,color:C.green,
-            backgroundColor:'rgba(0,0,0,0.3)',padding:'6px 8px',borderRadius:4}}>
-            node discovery-agent.js
-          </div>
-        </div>
-        <div style={{...st.card,borderColor:C.blue+'40',backgroundColor:C.blue+'08'}}>
-          <div style={{fontWeight:'bold',color:C.blue,marginBottom:4}}>📱 Mobile App</div>
-          <div style={{color:C.sub,fontSize:12}}>Phones running the RSC app register automatically via Socket.io — no scanning needed.</div>
-        </div>
-      </div>
-
-      <div style={{...st.card,marginBottom:20,display:'flex',alignItems:'center',gap:12}}>
-        <span style={{fontSize:24}}>🔳</span>
-        <div style={{flex:1}}>
-          <div style={{fontWeight:'bold',color:C.text}}>QR Code Enrollment</div>
-          <div style={{color:C.sub,fontSize:12}}>Use the Enroll Camera button to generate a QR code — works anywhere</div>
-        </div>
-      </div>
-
-      {scanProgress && <div style={{color:C.sub,fontSize:12,marginBottom:12,textAlign:'center'}}>{scanProgress}</div>}
-
-      {scanning && (
-        <div style={{textAlign:'center',padding:40}}>
-          <div style={{color:C.green,fontSize:16,marginBottom:8}}>⏳ Scanning network...</div>
-          <div style={{backgroundColor:C.border,borderRadius:4,height:4,width:'100%',maxWidth:300,margin:'0 auto'}}>
-            <div style={{backgroundColor:C.green,height:4,borderRadius:4,width:'60%'}}/>
-          </div>
+      {error && (
+        <div style={{backgroundColor:'#ff444420',border:`1px solid ${C.red}`,borderRadius:8,
+          padding:'10px 14px',marginBottom:16,color:C.red,fontSize:13}}>
+          {error}
         </div>
       )}
 
-      {!scanning && allDevices.length===0 && (
-        <div style={{textAlign:'center',padding:60}}>
-          <div style={{fontSize:48,marginBottom:16}}>📡</div>
-          <div style={{color:C.text,fontSize:18,marginBottom:8}}>No devices found yet</div>
-          <div style={{color:C.sub,fontSize:13}}>Make sure devices are on the same WiFi, then click Scan Network</div>
-        </div>
-      )}
-
-      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))',gap:12}}>
-        {allDevices.map(d => {
-          const enrolled = isRegistered(d);
-          const brand = getMacBrand(d.mac);
-          return (
-            <div key={d.id||d.ip} style={{...st.card,
-              borderColor: enrolled ? C.blue+'60' : C.green+'40',
-              backgroundColor: enrolled ? C.blue+'08' : 'transparent'}}>
-              <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10}}>
-                <span style={{fontSize:28}}>{typeIcon(d.type)}</span>
-                <div style={{flex:1}}>
-                  <div style={{fontWeight:'bold',color:C.text,fontSize:14}}>
-                    {d.name || d.device_name || `${d.type||'Camera'} Device`}
-                  </div>
-                  <div style={{color:C.sub,fontSize:11,marginTop:2}}>
-                    {d.ip&&`IP: ${d.ip}`}{d.mac&&` · MAC: ${d.mac}`}
-                    {d.location&&!d.ip&&`📍 ${d.location}`}
-                  </div>
-                  {brand && !enrolled && (
-                    <div style={{color:C.green,fontSize:10,marginTop:2,fontWeight:'bold'}}>
-                      🏷 {brand} · RTSP ready
-                    </div>
-                  )}
+      {/* Current usage */}
+      {billing?.usage && (
+        <div style={{...st.card,marginBottom:20,display:'grid',
+          gridTemplateColumns:'repeat(auto-fit,minmax(120px,1fr))',gap:12}}>
+          {[
+            { label:'Cameras',     used: billing.usage.cameras,     limit: billing.limits.cameras,     unit:'' },
+            { label:'SSIDs',       used: billing.usage.ssids,       limit: billing.limits.ssids,       unit:'' },
+            { label:'Storage',     used: billing.usage.storage_gb,  limit: billing.limits.storage_gb,  unit:'GB' },
+            { label:'Liberations', used: billing.usage.liberations_this_month, limit: billing.limits.liberations_per_month, unit:'/mo' },
+          ].map(item => {
+            const pct = item.limit > 0 ? Math.min(100, (item.used / item.limit) * 100) : 0;
+            const isUnlimited = item.limit === -1;
+            const color = pct > 90 ? C.red : pct > 70 ? C.gold : C.green;
+            return (
+              <div key={item.label} style={{textAlign:'center'}}>
+                <div style={{fontSize:11,color:C.sub,marginBottom:4}}>{item.label}</div>
+                <div style={{fontSize:16,fontWeight:'bold',color}}>
+                  {item.used}{item.unit}
+                  <span style={{fontSize:11,color:C.sub,fontWeight:'normal'}}>
+                    /{isUnlimited ? '∞' : item.limit+item.unit}
+                  </span>
                 </div>
-                <span style={{fontSize:10,
-                  backgroundColor: enrolled ? C.blue+'20' : C.green+'20',
-                  color: enrolled ? C.blue : C.green,
-                  padding:'2px 8px',borderRadius:10,fontWeight:'bold'}}>
-                  {enrolled ? 'ACTIVE' : (d.source==='mdns'?'mDNS':'ARP')}
-                </span>
+                {!isUnlimited && (
+                  <div style={{backgroundColor:C.border,borderRadius:4,height:3,marginTop:4}}>
+                    <div style={{backgroundColor:color,height:3,borderRadius:4,width:pct+'%',transition:'width 0.3s'}}/>
+                  </div>
+                )}
               </div>
-              {enrolled ? (
+            );
+          })}
+        </div>
+      )}
+
+      {/* Coupon input */}
+      {!isPaid && (
+        <div style={{...st.card,marginBottom:20,display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+          <span style={{fontSize:13,color:C.sub}}>🎟 Coupon code:</span>
+          {coupon ? (
+            <>
+              <span style={{backgroundColor:C.green+'20',color:C.green,padding:'4px 10px',borderRadius:6,fontSize:13,fontWeight:'bold',border:`1px solid ${C.green}40`}}>
+                {coupon} ✓
+              </span>
+              <button style={{...st.btn,...st.btnGray,fontSize:12,padding:'4px 10px'}} onClick={removeCoupon}>Remove</button>
+            </>
+          ) : (
+            <>
+              <input
+                style={{...st.input,flex:1,minWidth:140,maxWidth:200,fontSize:13,padding:'6px 10px'}}
+                placeholder="e.g. BETA_TESTER"
+                value={couponInput}
+                onChange={e=>setCouponInput(e.target.value)}
+                onKeyDown={e=>e.key==='Enter'&&applyCoupon()}
+              />
+              <button style={{...st.btn,...st.btnGreen,fontSize:12}} onClick={applyCoupon} disabled={!couponInput.trim()}>
+                Apply
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Plans grid */}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:16,marginBottom:24}}>
+        {plans.map(plan => {
+          const cfg = PLAN_CONFIG[plan.id] || { color: C.sub, icon: '📦', popular: false };
+          const isCurrent = currentPlan === plan.id;
+          const isDowngrade = plan.id === 'free' && isPaid;
+          const price = plan.price === 0 ? '$0' : `$${(plan.price/100).toFixed(2)}`;
+
+          return (
+            <div key={plan.id} style={{
+              ...st.card,
+              border: `2px solid ${isCurrent ? cfg.color : C.border}`,
+              position:'relative',
+              transition:'border-color 0.2s',
+            }}>
+              {cfg.popular && !isCurrent && (
+                <div style={{position:'absolute',top:-10,left:'50%',transform:'translateX(-50%)',
+                  backgroundColor:C.green,color:'#000',padding:'2px 12px',borderRadius:10,
+                  fontSize:10,fontWeight:'bold',whiteSpace:'nowrap'}}>
+                  MOST POPULAR
+                </div>
+              )}
+              {isCurrent && (
+                <div style={{position:'absolute',top:-10,right:12,
+                  backgroundColor:cfg.color,color:'#000',padding:'2px 10px',borderRadius:10,
+                  fontSize:10,fontWeight:'bold'}}>
+                  CURRENT
+                </div>
+              )}
+
+              <div style={{marginBottom:12}}>
+                <div style={{fontSize:22,marginBottom:4}}>{cfg.icon}</div>
+                <div style={{fontSize:18,fontWeight:'bold',color:cfg.color}}>{plan.name}</div>
+                <div style={{fontSize:22,fontWeight:'bold',color:C.text,marginTop:4}}>
+                  {price}<span style={{fontSize:13,color:C.sub,fontWeight:'normal'}}>/mo</span>
+                </div>
+              </div>
+
+              <div style={{marginBottom:16,fontSize:12,color:C.sub}}>
+                {[
+                  `${plan.cameras === -1 ? 'Unlimited' : plan.cameras} cameras`,
+                  `${plan.ssids} SSIDs`,
+                  `${plan.retention_days}-day retention`,
+                  `${plan.storage_gb === 1024 ? '1TB' : plan.storage_gb+'GB'} storage`,
+                  plan.ai_intelligence ? '🤖 AI Intelligence' : null,
+                  plan.liberations_per_month === -1 ? 'Unlimited liberations' :
+                    plan.liberations_per_month > 0 ? `${plan.liberations_per_month} liberations/mo` : null,
+                  `${plan.admins === -1 ? 'Unlimited' : plan.admins} admin${plan.admins === 1 ? '' : 's'}`,
+                ].filter(Boolean).map((f,i)=>(
+                  <div key={i} style={{display:'flex',alignItems:'center',gap:6,marginBottom:5}}>
+                    <span style={{color:cfg.color}}>✓</span> {f}
+                  </div>
+                ))}
+              </div>
+
+              {isCurrent ? (
+                <div style={{textAlign:'center',padding:'10px',color:cfg.color,fontWeight:'bold',fontSize:13,
+                  border:`1px solid ${cfg.color}40`,borderRadius:6}}>
+                  ✓ Active Plan
+                </div>
+              ) : isDowngrade ? (
                 <button
-                  style={{...st.btn,width:'100%',backgroundColor:'transparent',
-                    border:`1px solid ${C.red}40`,color:C.red,
-                    opacity:removing===d.id?0.6:1}}
-                  onClick={()=>unenroll(d)}
-                  disabled={removing===d.id}>
-                  {removing===d.id?'Removing...':'🗑 Remove / Un-enroll'}
+                  style={{...st.btn,width:'100%',padding:10,backgroundColor:'transparent',
+                    color:C.sub,border:`1px solid ${C.border}`,fontSize:13}}
+                  onClick={openPortal}
+                  disabled={portalLoading}
+                >
+                  Downgrade via Portal
                 </button>
+              ) : plan.id === 'free' ? (
+                <div style={{textAlign:'center',padding:10,color:C.sub,fontSize:12}}>
+                  Free forever
+                </div>
               ) : (
                 <button
-                  style={{...st.btn,...st.btnGreen,width:'100%',
-                    opacity:enrolling===(d.id||d.ip)?0.6:1}}
-                  onClick={()=>enroll(d)}
-                  disabled={enrolling===(d.id||d.ip)}>
-                  {enrolling===(d.id||d.ip)?'Enrolling...':'+ Enroll Camera'}
+                  style={{...st.btn,width:'100%',padding:10,fontSize:13,fontWeight:'bold',
+                    backgroundColor:cfg.color,
+                    color: plan.id==='enterprise'?'#000':'#000',
+                    opacity: upgrading===plan.id ? 0.7 : 1,
+                  }}
+                  onClick={()=>subscribe(plan.id)}
+                  disabled={!!upgrading}
+                >
+                  {upgrading===plan.id ? '⏳ Redirecting...' :
+                    coupon ? `Upgrade with ${coupon}` : `Upgrade to ${plan.name}`}
                 </button>
               )}
             </div>
           );
         })}
       </div>
+
+      {/* Overage rates */}
+      <div style={{...st.card,marginBottom:16}}>
+        <div style={{fontWeight:'bold',color:C.text,marginBottom:12,fontSize:14}}>💰 Overage & Add-On Rates</div>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))',gap:12,fontSize:12,color:C.sub}}>
+          <div>
+            <div style={{color:C.text,fontWeight:'bold',marginBottom:6}}>Storage Overages (per 5GB chunk)</div>
+            <div>Free: $0.99/GB</div>
+            <div>Pro: $0.49/GB</div>
+            <div>Business: $0.39/GB</div>
+            <div>Enterprise: $0.33/GB</div>
+          </div>
+          <div>
+            <div style={{color:C.text,fontWeight:'bold',marginBottom:6}}>Camera Liberations</div>
+            <div>Free: $9.99/device</div>
+            <div>Pro: $4.99/device (after 3 free)</div>
+            <div>Business: $2.99/device (after 10 free)</div>
+            <div>Enterprise: Included</div>
+          </div>
+          <div>
+            <div style={{color:C.text,fontWeight:'bold',marginBottom:6}}>Grace Periods</div>
+            <div>Low usage: 72 hours</div>
+            <div>Medium usage: 48 hours</div>
+            <div>High usage: 24 hours</div>
+            <div style={{marginTop:4,color:C.green,fontSize:11}}>✓ 60-day add-on optimization</div>
+          </div>
+        </div>
+      </div>
+
+      <p style={{color:'#444',fontSize:12,textAlign:'center'}}>
+        Payments via Stripe · Cancel anytime · Unused liberations expire monthly
+      </p>
     </div>
   );
 }
 
-// ─── Admin Page ───────────────────────────────────────────────────
-function AdminPage({ user }) {
-  const [members,  setMembers]  = useState([]);
-  const [loading,  setLoading]  = useState(true);
-  const [invEmail, setInvEmail] = useState('');
-  const [inviting, setInviting] = useState(false);
-
-  // TODO: ENABLE PAYWALL — max 2 admins on free plan
-  const MAX_ADMINS = 2;
-
-  useEffect(()=>{ loadMembers(); },[]);
-
-  const loadMembers = async () => {
-    setLoading(true);
-    try {
-      const res = await api.get('/api/org/members');
-      setMembers(res.data.data||[]);
-    } catch(e) { console.log(e.message); }
-    setLoading(false);
-  };
-
-  const grantAdmin = async (userId) => {
-    const adminCount = members.filter(m=>m.role==='admin').length;
-    if (adminCount >= MAX_ADMINS) {
-      // TODO: ENABLE PAYWALL — show upgrade modal here
-      alert(`Admin limit reached. Your plan allows ${MAX_ADMINS} admins. Upgrade to add more.`);
-      return;
-    }
-    try {
-      await api.put(`/api/org/members/${userId}/role`, { role:'admin' });
-      loadMembers();
-    } catch(e) { alert('Failed to grant admin'); }
-  };
-
-  const revokeAdmin = async (userId) => {
-    if (!window.confirm('Remove admin access for this user?')) return;
-    try {
-      await api.put(`/api/org/members/${userId}/role`, { role:'viewer' });
-      loadMembers();
-    } catch(e) { alert('Failed to revoke admin'); }
-  };
-
-  const inviteUser = async () => {
-    if (!invEmail) return;
-    setInviting(true);
-    try {
-      await api.post('/api/org/invite', { email: invEmail });
-      alert(`Invitation sent to ${invEmail}`);
-      setInvEmail('');
-      loadMembers();
-    } catch(e) { alert(e.response?.data?.message||'Invitation failed'); }
-    setInviting(false);
-  };
-
-  const adminCount = members.filter(m=>m.role==='admin').length;
-
-  return (
-    <div style={{padding:24,maxWidth:800,margin:'0 auto'}}>
-      <h2 style={{color:C.text,marginBottom:20}}>👥 Admin Management</h2>
-
-      {/* Org Stats */}
-      <div style={{...st.card,marginBottom:20}}>
-        <div style={{display:'flex',gap:24,flexWrap:'wrap'}}>
-          <div style={{textAlign:'center'}}>
-            <div style={{fontSize:24,fontWeight:'bold',color:C.green}}>{members.length}</div>
-            <div style={{color:C.sub,fontSize:11}}>Members</div>
-          </div>
-          <div style={{textAlign:'center'}}>
-            <div style={{fontSize:24,fontWeight:'bold',color:C.green}}>{adminCount}</div>
-            <div style={{color:C.sub,fontSize:11}}>Admins</div>
-          </div>
-          <div style={{textAlign:'center'}}>
-            <div style={{fontSize:24,fontWeight:'bold',
-              color:adminCount>=MAX_ADMINS?C.red:C.green}}>
-              {MAX_ADMINS-adminCount}
-            </div>
-            <div style={{color:C.sub,fontSize:11}}>Slots Left</div>
-          </div>
-        </div>
-      </div>
-
-      {/* TODO: ENABLE PAYWALL banner */}
-      {adminCount >= MAX_ADMINS && (
-        <div style={{...st.card,marginBottom:20,borderColor:C.gold,
-          backgroundColor:C.gold+'10'}}>
-          <div style={{color:C.gold,fontWeight:'bold',marginBottom:4}}>
-            ⭐ Upgrade for More Admins
-          </div>
-          <div style={{color:C.sub,fontSize:13}}>
-            Your plan includes {MAX_ADMINS} admins. Upgrade to Pro for up to 5 admins.
-          </div>
-          {/* TODO: ENABLE PAYWALL — uncomment before production deploy */}
-          {/* <button style={{...st.btn,...st.btnGold,marginTop:10}} onClick={()=>{}}>
-            Upgrade Plan
-          </button> */}
-        </div>
-      )}
-
-      {/* Invite */}
-      <div style={{...st.card,marginBottom:20}}>
-        <div style={{fontWeight:'bold',color:C.text,marginBottom:12}}>✉️ Invite User</div>
-        <div style={{display:'flex',gap:8}}>
-          <input style={{...st.input,flex:1}} type="email"
-            placeholder="Email address"
-            value={invEmail} onChange={e=>setInvEmail(e.target.value)}/>
-          <button style={{...st.btn,...st.btnGreen}}
-            onClick={inviteUser} disabled={inviting||!invEmail}>
-            {inviting?'Sending...':'Send Invite'}
-          </button>
-        </div>
-      </div>
-
-      {/* Members */}
-      <div style={{fontWeight:'bold',color:C.text,marginBottom:12,fontSize:15}}>
-        Members
-      </div>
-      {loading ? <div style={{color:C.sub}}>Loading...</div> :
-        members.map(m=>(
-          <div key={m.id} style={{...st.card,marginBottom:8,
-            display:'flex',alignItems:'center',gap:12}}>
-            <div style={{width:40,height:40,borderRadius:'50%',
-              backgroundColor:C.green+'20',display:'flex',alignItems:'center',
-              justifyContent:'center',fontWeight:'bold',color:C.green,fontSize:16,flexShrink:0}}>
-              {(m.first_name||m.email||'?')[0].toUpperCase()}
-            </div>
-            <div style={{flex:1}}>
-              <div style={{fontWeight:'bold',color:C.text,fontSize:14}}>
-                {m.first_name} {m.last_name}
-              </div>
-              <div style={{color:C.sub,fontSize:12}}>{m.email}</div>
-            </div>
-            <span style={{fontSize:11,padding:'2px 8px',borderRadius:10,fontWeight:'bold',
-              backgroundColor:m.role==='admin'?C.green+'20':'rgba(100,100,100,0.15)',
-              color:m.role==='admin'?C.green:C.sub}}>
-              {m.role==='admin'?'Admin':'Viewer'}
-            </span>
-            {m.id !== user?.userId && (
-              m.role==='admin' ? (
-                <button style={{...st.btn,backgroundColor:'transparent',
-                  color:C.red,border:`1px solid ${C.red}`,fontSize:12,padding:'4px 10px'}}
-                  onClick={()=>revokeAdmin(m.id)}>
-                  Revoke
-                </button>
-              ) : (
-                <button style={{...st.btn,backgroundColor:'transparent',
-                  color:C.green,border:`1px solid ${C.green}`,fontSize:12,padding:'4px 10px'}}
-                  onClick={()=>grantAdmin(m.id)}>
-                  Make Admin
-                </button>
-              )
-            )}
-          </div>
-        ))
-      }
-    </div>
-  );
-}
-
-// ─── Settings Page ────────────────────────────────────────────────
-function SettingsPage({ currentTheme, onThemeChange, user }) {
-  const [customColor, setCustomColor] = useState(
-    localStorage.getItem('rsc_custom_color')||'#00ff88'
-  );
-
-  const COLOR_PRESETS = [
-    '#00ff88','#4488ff','#ff4444','#ff9500',
-    '#af52de','#ff2d55','#00c7be','#ffd700','#ff6b35','#00d4aa',
-  ];
-
-  const applyCustomColor = (color) => {
-    setCustomColor(color);
-    localStorage.setItem('rsc_custom_color', color);
-    onThemeChange('custom', {
-      ...THEMES.custom,
-      green: color,
-      primary: color,
-    });
-  };
-
-  return (
-    <div style={{padding:24,maxWidth:800,margin:'0 auto'}}>
-      <h2 style={{color:C.text,marginBottom:20}}>⚙️ Settings</h2>
-
-      {/* Theme Selector */}
-      <div style={{...st.card,marginBottom:20}}>
-        <div style={{fontWeight:'bold',color:C.text,marginBottom:16,fontSize:15}}>
-          🎨 App Theme
-        </div>
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
-          {Object.entries(THEMES).map(([key, t])=>(
-            <button key={key}
-              style={{
-                padding:14, borderRadius:12, cursor:'pointer',
-                border:`2px solid ${currentTheme===key?t.green:C.border}`,
-                backgroundColor:currentTheme===key?t.green+'18':C.bg,
-                textAlign:'left', display:'flex', alignItems:'center', gap:10,
-              }}
-              onClick={()=>onThemeChange(key)}>
-              <div style={{width:24,height:24,borderRadius:12,
-                backgroundColor:t.green,flexShrink:0}}/>
-              <div>
-                <div style={{fontWeight:'bold',color:C.text,fontSize:13}}>{t.name}</div>
-                <div style={{color:C.sub,fontSize:11,marginTop:2}}>
-                  {key==='operator'?'Dark tactical neon'
-                   :key==='life360'?'Clean white with blue accents'
-                   :key==='bubble'?'Frosted glass minimal style'
-                   :'Pick your own colors'}
-                </div>
-              </div>
-              {currentTheme===key&&(
-                <span style={{marginLeft:'auto',color:t.green,fontSize:16,fontWeight:'bold'}}>✓</span>
-              )}
-            </button>
-          ))}
-        </div>
-
-        {/* Custom color picker */}
-        {currentTheme==='custom'&&(
-          <div style={{marginTop:16,paddingTop:16,borderTop:`1px solid ${C.border}`}}>
-            <div style={{fontWeight:'bold',color:C.text,marginBottom:10,fontSize:13}}>
-              Primary Color
-            </div>
-            <div style={{display:'flex',gap:10,flexWrap:'wrap',alignItems:'center'}}>
-              {COLOR_PRESETS.map(c=>(
-                <div key={c}
-                  style={{width:36,height:36,borderRadius:18,backgroundColor:c,
-                    cursor:'pointer',border:customColor===c?'3px solid #fff':'3px solid transparent',
-                    boxShadow:customColor===c?`0 0 0 2px ${c}`:'none'}}
-                  onClick={()=>applyCustomColor(c)}/>
-              ))}
-              <input type="color" value={customColor}
-                onChange={e=>applyCustomColor(e.target.value)}
-                style={{width:36,height:36,borderRadius:18,border:'none',
-                  cursor:'pointer',backgroundColor:'transparent'}}/>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Account */}
-      <div style={{...st.card,marginBottom:20}}>
-        <div style={{fontWeight:'bold',color:C.text,marginBottom:12,fontSize:15}}>
-          👤 Account
-        </div>
-        <div style={{color:C.sub,fontSize:12,marginBottom:4}}>Logged in as</div>
-        <div style={{color:C.text,fontWeight:'bold',fontSize:15}}>{user?.email}</div>
-        <div style={{color:C.sub,fontSize:12,marginTop:4}}>
-          {user?.role==='admin'?'Administrator':'Viewer'}
-        </div>
-      </div>
-
-      {/* TODO: ENABLE PAYWALL — Subscription */}
-      <div style={{...st.card,borderColor:C.gold,marginBottom:20}}>
-        <div style={{color:C.gold,fontWeight:'bold',marginBottom:4,fontSize:15}}>
-          ⭐ Subscription
-        </div>
-        <div style={{color:C.text,fontSize:13,marginBottom:8}}>Free Plan · 14-day clip retention</div>
-        {/* TODO: ENABLE PAYWALL — uncomment before production deploy */}
-        {/* <button style={{...st.btn,...st.btnGold}} onClick={()=>{}}>Upgrade to Pro</button> */}
-        <div style={{color:C.sub,fontSize:12}}>
-          Pro: 60-day retention · 5 admins · Priority support — Coming soon
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function LoginPage({ onLogin }) {
   const [email,setEmail]=useState(''); const [pw,setPw]=useState(''); const [err,setErr]=useState(''); const [loading,setLoading]=useState(false);
