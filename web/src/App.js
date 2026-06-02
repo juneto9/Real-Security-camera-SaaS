@@ -3251,6 +3251,7 @@ export default function App() {
   const [deviceSettings,setDeviceSettings]=useState({});
   const [showEnroll,   setShowEnroll]   = useState(false);
   const [showAdmins,   setShowAdmins]   = useState(false);
+  const [adminSubTab,  setAdminSubTab]  = useState('members');
   const [usbStatus,    setUsbStatus]    = useState(''); // 'armed' | 'recording' | ''
   const [usbLinkedDevice, setUsbLinkedDevice] = useState(()=>sessionStorage.getItem('usbLinkedDevice')||'');
   const [theme, setTheme] = useState(()=>localStorage.getItem('rsc_theme')||'operator');
@@ -3349,8 +3350,6 @@ export default function App() {
     {id:'clips',    label:'🎬 Clips'},
     {id:'events',   label:'🚨 Events'},
     {id:'admin',    label:'👥 Admin'},
-    {id:'settings', label:'⚙️ Settings'},
-    {id:'sub',      label:'⭐ Subscription'},
   ];
 
   const switchTab = (newTab) => {
@@ -3472,10 +3471,23 @@ export default function App() {
           <DiscoverPage socket={socket} onDeviceAdded={()=>loadDevices()}/>
         </div>
         <div style={{display: tab==='admin' ? 'block' : 'none'}}>
-          <AdminPage user={user}/>
-        </div>
-        <div style={{display: tab==='settings' ? 'block' : 'none'}}>
-          <SettingsPage currentTheme={theme} onThemeChange={applyTheme} user={user}/>
+          <div style={{display:'flex',gap:4,marginBottom:20,borderBottom:`1px solid ${C.border}`,paddingBottom:12}}>
+            {[
+              {id:'members',      label:'👥 Members'},
+              {id:'settings',     label:'⚙️ Settings'},
+              {id:'subscription', label:'⭐ Subscription'},
+            ].map(st2=>(
+              <button key={st2.id} onClick={()=>setAdminSubTab(st2.id)} style={{
+                padding:'7px 16px', borderRadius:6, cursor:'pointer', fontSize:13,
+                fontWeight:'bold', border:'none',
+                backgroundColor: adminSubTab===st2.id ? C.green : C.card,
+                color: adminSubTab===st2.id ? '#000' : C.text,
+              }}>{st2.label}</button>
+            ))}
+          </div>
+          {adminSubTab==='members'      && <AdminPage user={user}/>}
+          {adminSubTab==='settings'     && <SettingsPage currentTheme={theme} onThemeChange={applyTheme} user={user}/>}
+          {adminSubTab==='subscription' && <SubscriptionPage/>}
         </div>
       </main>
 
