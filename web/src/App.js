@@ -2561,6 +2561,635 @@ function SubscriptionPage() {
 }
 
 
+// ─── Login ────────────────────────────────────────────────────────
+
+// ─── Network Scanner (WebRTC-based — works on HTTPS) ─────────────
+async function getLocalIPs() {
+  return new Promise((resolve) => {
+    const ips = new Set();
+    const pc = new RTCPeerConnection({ iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' }
+    ]});
+    pc.createDataChannel('');
+    pc.onicecandidate = (e) => {
+      if (!e.candidate) {
+        pc.close();
+        resolve([...ips]);
+        return;
+      }
+      // Extract IP from ICE candidate
+      const parts = e.candidate.candidate.split(' ');
+      const ip = parts[4];
+      if (ip && !ip.includes(':') && ip !== '0.0.0.0') {
+        ips.add(ip);
+        // Also add subnet range
+        const subnet = ip.split('.').slice(0,3).join('.');
+        ips.add(subnet);
+      }
+    };
+    pc.createOffer().then(o => pc.setLocalDescription(o));
+    // Timeout after 3 seconds
+    setTimeout(() => { pc.close(); resolve([...ips]); }, 3000);
+  });
+}
+
+async function scanLocalNetwork() {
+  const localData = await getLocalIPs();
+  // Extract subnet (e.g. "192.168.1" from "192.168.1.5" or direct subnet)
+  let subnet = '192.168.1';
+  for (const ip of localData) {
+    const parts = ip.split('.');
+    if (parts.length === 3) { subnet = ip; break; }
+    if (parts.length === 4 && parts[0] !== '169') {
+      subnet = parts.slice(0,3).join('.');
+      break;
+    }
+  }
+
+  // Use WebSocket probing — works cross-origin on HTTPS
+  const alive = [];
+  const probe = (ip) => new Promise((resolve) => {
+    const ws = new WebSocket(`ws://${ip}:80`);
+    const timer = setTimeout(() => { ws.close(); resolve(null); }, 400);
+    ws.onopen = () => { clearTimeout(timer); ws.close(); resolve(ip); };
+    ws.onerror = (e) => {
+      clearTimeout(timer);
+      // onerror fires on connection refused — means host exists!
+      // If error is not timeout, the IP is reachable
+      resolve(e.type === 'error' ? ip : null);
+    };
+  });
+
+  const promises = [];
+  for (let i = 1; i <= 254; i++) {
+    promises.push(probe(`${subnet}.${i}`));
+  }
+
+  // Batch of 40 at a time
+  for (let i = 0; i < promises.length; i += 40) {
+    const batch = await Promise.allSettled(promises.slice(i, i+40));
+    batch.forEach(r => { if (r.value) alive.push(r.value); });
+  }
+  return alive;
+}
+
+// Probe for camera ports using WebSocket
+async function probeDevice(ip) {
+  const ports = [
+    { port: 554,  type: 'IPCamera',  label: 'RTSP Camera' },
+    { port: 8080, type: 'IPCamera',  label: 'IP Camera (8080)' },
+    { port: 80,   type: 'IPCamera',  label: 'HTTP Camera' },
+    { port: 8081, type: 'RSCCamera', label: 'Real Security Camera' },
+  ];
+  for (const p of ports) {
+    const found = await new Promise((resolve) => {
+      const ws = new WebSocket(`ws://${ip}:${p.port}`);
+      const t = setTimeout(() => { ws.close(); resolve(false); }, 500);
+      ws.onopen = () => { clearTimeout(t); ws.close(); resolve(true); };
+      ws.onerror = () => { clearTimeout(t); resolve(true); }; // host exists
+    });
+    if (found) return { type: p.type, label: p.label, port: p.port };
+  }
+  return null;
+}
+
+// ─── MAC OUI Database ─────────────────────────────────────────────
+const OUI_MAP = {
+  '00:03:93':'iOS','00:0A:95':'iOS','00:1C:B3':'iOS','00:21:E9':'iOS',
+  '04:0C:CE':'iOS','04:26:65':'iOS','04:52:F3':'iOS','04:54:53':'iOS',
+  '00:07:AB':'Android','00:12:47':'Android','00:15:99':'Android',
+  '00:1A:8A':'Android','00:1D:25':'Android','04:18:0F':'Android',
+  'F4:F5:D8':'Android','3C:5A:B4':'Android',
+  '00:12:17':'IPCamera','44:19:B6':'IPCamera','4C:BD:8F':'IPCamera',
+  'BC:AD:28':'IPCamera','B4:A3:82':'IPCamera','EC:71:DB':'IPCamera',
+  '00:40:8C':'IPCamera','AC:CC:8E':'IPCamera','28:57:BE':'IPCamera',
+};
+function identifyDevice(mac) {
+  if (!mac) return 'Unknown';
+  return OUI_MAP[mac.substring(0,8).toUpperCase()] || 'Unknown';
+}
+
+// ─── MAC → Brand/RTSP detection ──────────────────────────────────
+const MAC_BRANDS = {
+  // Zmodo/Monitorix
+  'B8:3A:9D':'Zmodo','54:C4:15':'Zmodo',
+  // Hikvision
+  '00:12:17':'Hikvision','44:19:B6':'Hikvision','4C:BD:8F':'Hikvision',
+  'BC:AD:28':'Hikvision','C0:56:E3':'Hikvision',
+  // Dahua
+  '00:12:45':'Dahua','28:57:BE':'Dahua','34:E1:D0':'Dahua',
+  'E0:50:8B':'Dahua','90:02:A9':'Dahua',
+  // Reolink
+  'B4:A3:82':'Reolink','EC:71:DB':'Reolink','00:62:6E':'Reolink',
+  // Axis
+  '00:40:8C':'Axis','AC:CC:8E':'Axis','B8:A4:4F':'Axis',
+  // Amcrest
+  '9C:8E:CD':'Amcrest','00:0C:E5':'Amcrest',
+  // TP-Link
+  '50:C7:BF':'TP-Link','B0:4E:26':'TP-Link',
+  // Foscam
+  'C4:D9:87':'Foscam','00:00:C0':'Foscam',
+  // Wyze
+  '2C:AA:8E':'Wyze','D0:3F:27':'Wyze',
+};
+
+const RTSP_TEMPLATES = {
+  'Hikvision': (ip) => `rtsp://admin:password@${ip}:554/Streaming/Channels/101`,
+  'Dahua':     (ip) => `rtsp://admin:password@${ip}:554/cam/realmonitor?channel=1&subtype=0`,
+  'Reolink':   (ip) => `rtsp://admin:password@${ip}:554/h264Preview_01_main`,
+  'Zmodo':     (ip) => `rtsp://admin:password@${ip}:554/live/main`,
+  'Axis':      (ip) => `rtsp://admin:password@${ip}:554/axis-media/media.amp`,
+  'Amcrest':   (ip) => `rtsp://admin:password@${ip}:554/cam/realmonitor?channel=1`,
+  'TP-Link':   (ip) => `rtsp://admin:password@${ip}:554/stream1`,
+  'Foscam':    (ip) => `rtsp://admin:password@${ip}:554/videoMain`,
+  'Wyze':      (ip) => `rtsp://admin:password@${ip}:554/live`,
+  'default':   (ip) => `rtsp://admin:password@${ip}:554/stream`,
+};
+
+function getMacBrand(mac) {
+  if (!mac) return null;
+  const prefix = mac.substring(0,8).toUpperCase().replace(/-/g,':');
+  return MAC_BRANDS[prefix] || null;
+}
+
+function getRtspSuggestion(ip, mac) {
+  const brand = getMacBrand(mac);
+  const template = brand ? RTSP_TEMPLATES[brand] : RTSP_TEMPLATES['default'];
+  return { brand, rtsp: template ? template(ip) : RTSP_TEMPLATES['default'](ip) };
+}
+
+// ─── Discover Page ────────────────────────────────────────────────
+function DiscoverPage({ socket, onDeviceAdded }) {
+  const [scanning,     setScanning]     = useState(false);
+  const [scanProgress, setScanProgress] = useState('');
+  const [discovered,   setDiscovered]   = useState([]);
+  const [enrolling,    setEnrolling]    = useState(null);
+  const [removing,     setRemoving]     = useState(null);
+  const [mdnsDevices,  setMdnsDevices]  = useState([]);
+
+  useEffect(()=>{
+    if (!socket) return;
+    socket.on('mdns:device', (device)=>{
+      setMdnsDevices(d=>[...d.filter(x=>x.id!==device.id), device]);
+    });
+    return ()=>socket.off('mdns:device');
+  },[socket]);
+
+  // Auto-scan on page load
+  useEffect(() => { scanNetwork(); }, []);
+
+  const scanNetwork = async () => {
+    setScanning(true);
+    setScanProgress('Checking backend for discovered devices...');
+    setDiscovered([]);
+    try {
+      const res = await api.get('/api/devices/discover');
+      const found = res.data.data || [];
+      mdnsDevices.forEach(m => { if (!found.find(d => d.ip === m.ip)) found.push(m); });
+      setDiscovered(found);
+      setScanProgress(found.length > 0
+        ? `Found ${found.length} device(s)`
+        : 'No devices found — run the discovery agent on your local network');
+    } catch(e) {
+      setScanProgress('Error: ' + (e.response?.data?.message || e.message));
+    }
+    setScanning(false);
+  };
+
+  const enroll = async (device) => {
+    setEnrolling(device.id || device.ip);
+    try {
+      const { brand, rtsp } = getRtspSuggestion(device.ip, device.mac);
+      const cameraName = brand ? `${brand} Camera (${device.ip})` : (device.name || device.device_name || `Camera ${device.ip}`);
+      await api.post('/api/devices', {
+        name: cameraName,
+        location: device.ip || 'Local Network',
+        rtsp_url: rtsp || '',
+      });
+      setDiscovered(d => d.map(x =>
+        (x.id || x.ip) === (device.id || device.ip)
+          ? { ...x, source: 'registered', is_active: true }
+          : x
+      ));
+      if (onDeviceAdded) onDeviceAdded();
+      setScanProgress(`✅ ${cameraName} enrolled${brand ? ` as ${brand}` : ''} — set RTSP password in Camera Settings`);
+    } catch(e) {
+      alert('Enrollment failed: ' + (e.response?.data?.message || e.message));
+    }
+    setEnrolling(null);
+  };
+
+  const unenroll = async (device) => {
+    if (!window.confirm(`Remove "${device.name || device.device_name || device.ip}"?`)) return;
+    setRemoving(device.id);
+    try {
+      await api.delete(`/api/devices/${device.id}`);
+      setDiscovered(d => d.filter(x => x.id !== device.id));
+      if (onDeviceAdded) onDeviceAdded();
+    } catch(e) {
+      alert('Remove failed: ' + (e.response?.data?.message || e.message));
+    }
+    setRemoving(null);
+  };
+
+  // Deduplicate: if same IP appears as both 'registered' and 'agent', keep registered only
+  const deduped = [];
+  const seenIPs = new Set();
+  const seenIDs = new Set();
+  // First pass: registered devices
+  discovered.filter(d => d.source === 'registered').forEach(d => {
+    if (!seenIDs.has(d.id)) { deduped.push(d); seenIDs.add(d.id); if(d.location) seenIPs.add(d.location); }
+  });
+  // Second pass: agent/ARP devices not already registered
+  discovered.filter(d => d.source !== 'registered').forEach(d => {
+    if (!seenIPs.has(d.ip) && !seenIDs.has(d.id||d.ip)) {
+      deduped.push(d); if(d.ip) seenIPs.add(d.ip);
+    }
+  });
+  mdnsDevices.filter(m => !seenIPs.has(m.ip)).forEach(m => deduped.push(m));
+  const allDevices = deduped;
+  const typeIcon = (t) => t==='iOS'?'📱':t==='Android'?'🤖':t==='IPCamera'?'📹':t==='RSCCamera'?'📱':'📡';
+  const isRegistered = (d) => d.source === 'registered';
+
+  return (
+    <div style={{padding:24,maxWidth:900,margin:'0 auto'}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
+        <div>
+          <h2 style={{color:C.text,margin:0,fontSize:20}}>🔍 Discover Cameras</h2>
+          <p style={{color:C.sub,fontSize:13,margin:'4px 0 0'}}>Find phones and IP cameras on your network</p>
+        </div>
+        <button style={{...st.btn,...st.btnGreen,display:'flex',alignItems:'center',gap:8}}
+          onClick={scanNetwork} disabled={scanning}>
+          {scanning ? '⏳ Scanning...' : '🔍 Scan Network'}
+        </button>
+      </div>
+
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:20}}>
+        <div style={{...st.card,borderColor:C.green+'40',backgroundColor:C.green+'08'}}>
+          <div style={{fontWeight:'bold',color:C.green,marginBottom:4}}>🖥️ Discovery Agent</div>
+          <div style={{color:C.sub,fontSize:12}}>Run on any PC on your network — scans via ARP + port probing + credential detection.</div>
+          <div style={{marginTop:8,fontFamily:'monospace',fontSize:11,color:C.green,
+            backgroundColor:'rgba(0,0,0,0.3)',padding:'6px 8px',borderRadius:4}}>
+            node discovery-agent.js
+          </div>
+        </div>
+        <div style={{...st.card,borderColor:C.blue+'40',backgroundColor:C.blue+'08'}}>
+          <div style={{fontWeight:'bold',color:C.blue,marginBottom:4}}>📱 Mobile App</div>
+          <div style={{color:C.sub,fontSize:12}}>Phones running the RSC app register automatically via Socket.io — no scanning needed.</div>
+        </div>
+      </div>
+
+      <div style={{...st.card,marginBottom:20,display:'flex',alignItems:'center',gap:12}}>
+        <span style={{fontSize:24}}>🔳</span>
+        <div style={{flex:1}}>
+          <div style={{fontWeight:'bold',color:C.text}}>QR Code Enrollment</div>
+          <div style={{color:C.sub,fontSize:12}}>Use the Enroll Camera button to generate a QR code — works anywhere</div>
+        </div>
+      </div>
+
+      {scanProgress && <div style={{color:C.sub,fontSize:12,marginBottom:12,textAlign:'center'}}>{scanProgress}</div>}
+
+      {scanning && (
+        <div style={{textAlign:'center',padding:40}}>
+          <div style={{color:C.green,fontSize:16,marginBottom:8}}>⏳ Scanning network...</div>
+          <div style={{backgroundColor:C.border,borderRadius:4,height:4,width:'100%',maxWidth:300,margin:'0 auto'}}>
+            <div style={{backgroundColor:C.green,height:4,borderRadius:4,width:'60%'}}/>
+          </div>
+        </div>
+      )}
+
+      {!scanning && allDevices.length===0 && (
+        <div style={{textAlign:'center',padding:60}}>
+          <div style={{fontSize:48,marginBottom:16}}>📡</div>
+          <div style={{color:C.text,fontSize:18,marginBottom:8}}>No devices found yet</div>
+          <div style={{color:C.sub,fontSize:13}}>Make sure devices are on the same WiFi, then click Scan Network</div>
+        </div>
+      )}
+
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))',gap:12}}>
+        {allDevices.map(d => {
+          const enrolled = isRegistered(d);
+          const brand = getMacBrand(d.mac);
+          return (
+            <div key={d.id||d.ip} style={{...st.card,
+              borderColor: enrolled ? C.blue+'60' : C.green+'40',
+              backgroundColor: enrolled ? C.blue+'08' : 'transparent'}}>
+              <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10}}>
+                <span style={{fontSize:28}}>{typeIcon(d.type)}</span>
+                <div style={{flex:1}}>
+                  <div style={{fontWeight:'bold',color:C.text,fontSize:14}}>
+                    {d.name || d.device_name || `${d.type||'Camera'} Device`}
+                  </div>
+                  <div style={{color:C.sub,fontSize:11,marginTop:2}}>
+                    {d.ip&&`IP: ${d.ip}`}{d.mac&&` · MAC: ${d.mac}`}
+                    {d.location&&!d.ip&&`📍 ${d.location}`}
+                  </div>
+                  {brand && !enrolled && (
+                    <div style={{color:C.green,fontSize:10,marginTop:2,fontWeight:'bold'}}>
+                      🏷 {brand} · RTSP ready
+                    </div>
+                  )}
+                </div>
+                <span style={{fontSize:10,
+                  backgroundColor: enrolled ? C.blue+'20' : C.green+'20',
+                  color: enrolled ? C.blue : C.green,
+                  padding:'2px 8px',borderRadius:10,fontWeight:'bold'}}>
+                  {enrolled ? 'ACTIVE' : (d.source==='mdns'?'mDNS':'ARP')}
+                </span>
+              </div>
+              {enrolled ? (
+                <button
+                  style={{...st.btn,width:'100%',backgroundColor:'transparent',
+                    border:`1px solid ${C.red}40`,color:C.red,
+                    opacity:removing===d.id?0.6:1}}
+                  onClick={()=>unenroll(d)}
+                  disabled={removing===d.id}>
+                  {removing===d.id?'Removing...':'🗑 Remove / Un-enroll'}
+                </button>
+              ) : (
+                <button
+                  style={{...st.btn,...st.btnGreen,width:'100%',
+                    opacity:enrolling===(d.id||d.ip)?0.6:1}}
+                  onClick={()=>enroll(d)}
+                  disabled={enrolling===(d.id||d.ip)}>
+                  {enrolling===(d.id||d.ip)?'Enrolling...':'+ Enroll Camera'}
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── Admin Page ───────────────────────────────────────────────────
+function AdminPage({ user }) {
+  const [members,  setMembers]  = useState([]);
+  const [loading,  setLoading]  = useState(true);
+  const [invEmail, setInvEmail] = useState('');
+  const [inviting, setInviting] = useState(false);
+
+  // TODO: ENABLE PAYWALL — max 2 admins on free plan
+  const MAX_ADMINS = 2;
+
+  useEffect(()=>{ loadMembers(); },[]);
+
+  const loadMembers = async () => {
+    setLoading(true);
+    try {
+      const res = await api.get('/api/org/members');
+      setMembers(res.data.data||[]);
+    } catch(e) { console.log(e.message); }
+    setLoading(false);
+  };
+
+  const grantAdmin = async (userId) => {
+    const adminCount = members.filter(m=>m.role==='admin').length;
+    if (adminCount >= MAX_ADMINS) {
+      // TODO: ENABLE PAYWALL — show upgrade modal here
+      alert(`Admin limit reached. Your plan allows ${MAX_ADMINS} admins. Upgrade to add more.`);
+      return;
+    }
+    try {
+      await api.put(`/api/org/members/${userId}/role`, { role:'admin' });
+      loadMembers();
+    } catch(e) { alert('Failed to grant admin'); }
+  };
+
+  const revokeAdmin = async (userId) => {
+    if (!window.confirm('Remove admin access for this user?')) return;
+    try {
+      await api.put(`/api/org/members/${userId}/role`, { role:'viewer' });
+      loadMembers();
+    } catch(e) { alert('Failed to revoke admin'); }
+  };
+
+  const inviteUser = async () => {
+    if (!invEmail) return;
+    setInviting(true);
+    try {
+      await api.post('/api/org/invite', { email: invEmail });
+      alert(`Invitation sent to ${invEmail}`);
+      setInvEmail('');
+      loadMembers();
+    } catch(e) { alert(e.response?.data?.message||'Invitation failed'); }
+    setInviting(false);
+  };
+
+  const adminCount = members.filter(m=>m.role==='admin').length;
+
+  return (
+    <div style={{padding:24,maxWidth:800,margin:'0 auto'}}>
+      <h2 style={{color:C.text,marginBottom:20}}>👥 Admin Management</h2>
+
+      {/* Org Stats */}
+      <div style={{...st.card,marginBottom:20}}>
+        <div style={{display:'flex',gap:24,flexWrap:'wrap'}}>
+          <div style={{textAlign:'center'}}>
+            <div style={{fontSize:24,fontWeight:'bold',color:C.green}}>{members.length}</div>
+            <div style={{color:C.sub,fontSize:11}}>Members</div>
+          </div>
+          <div style={{textAlign:'center'}}>
+            <div style={{fontSize:24,fontWeight:'bold',color:C.green}}>{adminCount}</div>
+            <div style={{color:C.sub,fontSize:11}}>Admins</div>
+          </div>
+          <div style={{textAlign:'center'}}>
+            <div style={{fontSize:24,fontWeight:'bold',
+              color:adminCount>=MAX_ADMINS?C.red:C.green}}>
+              {MAX_ADMINS-adminCount}
+            </div>
+            <div style={{color:C.sub,fontSize:11}}>Slots Left</div>
+          </div>
+        </div>
+      </div>
+
+      {/* TODO: ENABLE PAYWALL banner */}
+      {adminCount >= MAX_ADMINS && (
+        <div style={{...st.card,marginBottom:20,borderColor:C.gold,
+          backgroundColor:C.gold+'10'}}>
+          <div style={{color:C.gold,fontWeight:'bold',marginBottom:4}}>
+            ⭐ Upgrade for More Admins
+          </div>
+          <div style={{color:C.sub,fontSize:13}}>
+            Your plan includes {MAX_ADMINS} admins. Upgrade to Pro for up to 5 admins.
+          </div>
+          {/* TODO: ENABLE PAYWALL — uncomment before production deploy */}
+          {/* <button style={{...st.btn,...st.btnGold,marginTop:10}} onClick={()=>{}}>
+            Upgrade Plan
+          </button> */}
+        </div>
+      )}
+
+      {/* Invite */}
+      <div style={{...st.card,marginBottom:20}}>
+        <div style={{fontWeight:'bold',color:C.text,marginBottom:12}}>✉️ Invite User</div>
+        <div style={{display:'flex',gap:8}}>
+          <input style={{...st.input,flex:1}} type="email"
+            placeholder="Email address"
+            value={invEmail} onChange={e=>setInvEmail(e.target.value)}/>
+          <button style={{...st.btn,...st.btnGreen}}
+            onClick={inviteUser} disabled={inviting||!invEmail}>
+            {inviting?'Sending...':'Send Invite'}
+          </button>
+        </div>
+      </div>
+
+      {/* Members */}
+      <div style={{fontWeight:'bold',color:C.text,marginBottom:12,fontSize:15}}>
+        Members
+      </div>
+      {loading ? <div style={{color:C.sub}}>Loading...</div> :
+        members.map(m=>(
+          <div key={m.id} style={{...st.card,marginBottom:8,
+            display:'flex',alignItems:'center',gap:12}}>
+            <div style={{width:40,height:40,borderRadius:'50%',
+              backgroundColor:C.green+'20',display:'flex',alignItems:'center',
+              justifyContent:'center',fontWeight:'bold',color:C.green,fontSize:16,flexShrink:0}}>
+              {(m.first_name||m.email||'?')[0].toUpperCase()}
+            </div>
+            <div style={{flex:1}}>
+              <div style={{fontWeight:'bold',color:C.text,fontSize:14}}>
+                {m.first_name} {m.last_name}
+              </div>
+              <div style={{color:C.sub,fontSize:12}}>{m.email}</div>
+            </div>
+            <span style={{fontSize:11,padding:'2px 8px',borderRadius:10,fontWeight:'bold',
+              backgroundColor:m.role==='admin'?C.green+'20':'rgba(100,100,100,0.15)',
+              color:m.role==='admin'?C.green:C.sub}}>
+              {m.role==='admin'?'Admin':'Viewer'}
+            </span>
+            {m.id !== user?.userId && (
+              m.role==='admin' ? (
+                <button style={{...st.btn,backgroundColor:'transparent',
+                  color:C.red,border:`1px solid ${C.red}`,fontSize:12,padding:'4px 10px'}}
+                  onClick={()=>revokeAdmin(m.id)}>
+                  Revoke
+                </button>
+              ) : (
+                <button style={{...st.btn,backgroundColor:'transparent',
+                  color:C.green,border:`1px solid ${C.green}`,fontSize:12,padding:'4px 10px'}}
+                  onClick={()=>grantAdmin(m.id)}>
+                  Make Admin
+                </button>
+              )
+            )}
+          </div>
+        ))
+      }
+    </div>
+  );
+}
+
+// ─── Settings Page ────────────────────────────────────────────────
+function SettingsPage({ currentTheme, onThemeChange, user }) {
+  const [customColor, setCustomColor] = useState(
+    localStorage.getItem('rsc_custom_color')||'#00ff88'
+  );
+
+  const COLOR_PRESETS = [
+    '#00ff88','#4488ff','#ff4444','#ff9500',
+    '#af52de','#ff2d55','#00c7be','#ffd700','#ff6b35','#00d4aa',
+  ];
+
+  const applyCustomColor = (color) => {
+    setCustomColor(color);
+    localStorage.setItem('rsc_custom_color', color);
+    onThemeChange('custom', {
+      ...THEMES.custom,
+      green: color,
+      primary: color,
+    });
+  };
+
+  return (
+    <div style={{padding:24,maxWidth:800,margin:'0 auto'}}>
+      <h2 style={{color:C.text,marginBottom:20}}>⚙️ Settings</h2>
+
+      {/* Theme Selector */}
+      <div style={{...st.card,marginBottom:20}}>
+        <div style={{fontWeight:'bold',color:C.text,marginBottom:16,fontSize:15}}>
+          🎨 App Theme
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+          {Object.entries(THEMES).map(([key, t])=>(
+            <button key={key}
+              style={{
+                padding:14, borderRadius:12, cursor:'pointer',
+                border:`2px solid ${currentTheme===key?t.green:C.border}`,
+                backgroundColor:currentTheme===key?t.green+'18':C.bg,
+                textAlign:'left', display:'flex', alignItems:'center', gap:10,
+              }}
+              onClick={()=>onThemeChange(key)}>
+              <div style={{width:24,height:24,borderRadius:12,
+                backgroundColor:t.green,flexShrink:0}}/>
+              <div>
+                <div style={{fontWeight:'bold',color:C.text,fontSize:13}}>{t.name}</div>
+                <div style={{color:C.sub,fontSize:11,marginTop:2}}>
+                  {key==='operator'?'Dark tactical neon'
+                   :key==='life360'?'Clean white with blue accents'
+                   :key==='bubble'?'Frosted glass minimal style'
+                   :'Pick your own colors'}
+                </div>
+              </div>
+              {currentTheme===key&&(
+                <span style={{marginLeft:'auto',color:t.green,fontSize:16,fontWeight:'bold'}}>✓</span>
+              )}
+            </button>
+          ))}
+        </div>
+
+        {/* Custom color picker */}
+        {currentTheme==='custom'&&(
+          <div style={{marginTop:16,paddingTop:16,borderTop:`1px solid ${C.border}`}}>
+            <div style={{fontWeight:'bold',color:C.text,marginBottom:10,fontSize:13}}>
+              Primary Color
+            </div>
+            <div style={{display:'flex',gap:10,flexWrap:'wrap',alignItems:'center'}}>
+              {COLOR_PRESETS.map(c=>(
+                <div key={c}
+                  style={{width:36,height:36,borderRadius:18,backgroundColor:c,
+                    cursor:'pointer',border:customColor===c?'3px solid #fff':'3px solid transparent',
+                    boxShadow:customColor===c?`0 0 0 2px ${c}`:'none'}}
+                  onClick={()=>applyCustomColor(c)}/>
+              ))}
+              <input type="color" value={customColor}
+                onChange={e=>applyCustomColor(e.target.value)}
+                style={{width:36,height:36,borderRadius:18,border:'none',
+                  cursor:'pointer',backgroundColor:'transparent'}}/>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Account */}
+      <div style={{...st.card,marginBottom:20}}>
+        <div style={{fontWeight:'bold',color:C.text,marginBottom:12,fontSize:15}}>
+          👤 Account
+        </div>
+        <div style={{color:C.sub,fontSize:12,marginBottom:4}}>Logged in as</div>
+        <div style={{color:C.text,fontWeight:'bold',fontSize:15}}>{user?.email}</div>
+        <div style={{color:C.sub,fontSize:12,marginTop:4}}>
+          {user?.role==='admin'?'Administrator':'Viewer'}
+        </div>
+      </div>
+
+      {/* TODO: ENABLE PAYWALL — Subscription */}
+      <div style={{...st.card,borderColor:C.gold,marginBottom:20}}>
+        <div style={{color:C.gold,fontWeight:'bold',marginBottom:4,fontSize:15}}>
+          ⭐ Subscription
+        </div>
+        <div style={{color:C.text,fontSize:13,marginBottom:8}}>Free Plan · 14-day clip retention</div>
+        {/* TODO: ENABLE PAYWALL — uncomment before production deploy */}
+        {/* <button style={{...st.btn,...st.btnGold}} onClick={()=>{}}>Upgrade to Pro</button> */}
+        <div style={{color:C.sub,fontSize:12}}>
+          Pro: 60-day retention · 5 admins · Priority support — Coming soon
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function LoginPage({ onLogin }) {
   const [email,setEmail]=useState(''); const [pw,setPw]=useState(''); const [err,setErr]=useState(''); const [loading,setLoading]=useState(false);
   const login = async e => {
