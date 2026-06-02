@@ -40,6 +40,69 @@ const THEMES = {
     gold:'#ffd700', text:'#ffffff', sub:'#666666', border:'#222222',
     radius:10, font:'system-ui,sans-serif',
   },
+  urban: {
+    name:'🏙 Urban',
+    bg:'#1a1a18', surface:'#242420', card:'#2e2e28',
+    green:'#ff6b00', blue:'#c8c8b4', red:'#ff2244',
+    gold:'#f0e040', text:'#e8e8d8', sub:'#7a7a68', border:'#3a3a32',
+    radius:2, font:"'Arial Black',impact,sans-serif",
+  },
+  psychedelic: {
+    name:'🌀 Psychedelic',
+    bg:'#0d0015', surface:'#150025', card:'#1e0035',
+    green:'#00ffaa', blue:'#ff00ff', red:'#ff2200',
+    gold:'#ffee00', text:'#f0e0ff', sub:'#9966cc', border:'#4400aa',
+    radius:20, font:"'Georgia',serif",
+  },
+  modern: {
+    name:'⚪ Modern',
+    bg:'#f5f5f3', surface:'#ffffff', card:'#ffffff',
+    green:'#0066ff', blue:'#0066ff', red:'#ff3300',
+    gold:'#ff6600', text:'#111111', sub:'#999999', border:'#e8e8e8',
+    radius:4, font:"'Helvetica Neue',helvetica,sans-serif",
+  },
+  jazz: {
+    name:'🎷 Jazz',
+    bg:'#0a0810', surface:'#12101a', card:'#1a1628',
+    green:'#c9a84c', blue:'#7b5ea7', red:'#c0392b',
+    gold:'#c9a84c', text:'#e8dcc8', sub:'#7a6a58', border:'#2a2038',
+    radius:8, font:"'Georgia','Times New Roman',serif",
+  },
+  graffiti: {
+    name:'🖌 Graffiti',
+    bg:'#0f0f0f', surface:'#1a1a1a', card:'#222',
+    green:'#39ff14', blue:'#00cfff', red:'#ff073a',
+    gold:'#ffe600', text:'#ffffff', sub:'#888', border:'#333',
+    radius:0, font:"'Arial Black',impact,sans-serif",
+  },
+  farmlife: {
+    name:'🐄 Farm Life',
+    bg:'#f5f0e8', surface:'#fdfaf4', card:'#fff8ec',
+    green:'#5a8a3c', blue:'#4a7ab5', red:'#c0392b',
+    gold:'#d4a017', text:'#3d2b1f', sub:'#8b7355', border:'#d4c4a0',
+    radius:12, font:"'Georgia',serif",
+  },
+  sunflower: {
+    name:'🌻 Sunflower',
+    bg:'#1a1200', surface:'#251a00', card:'#302200',
+    green:'#ffcc00', blue:'#ff9900', red:'#ff4400',
+    gold:'#ffdd00', text:'#fff8e0', sub:'#aa8800', border:'#443300',
+    radius:16, font:"'Georgia',serif",
+  },
+  butterfly: {
+    name:'🦋 Butterfly',
+    bg:'#0f001a', surface:'#1a0030', card:'#220040',
+    green:'#cc44ff', blue:'#ff88ee', red:'#ff2288',
+    gold:'#ffcc88', text:'#ffe0ff', sub:'#bb66cc', border:'#440066',
+    radius:24, font:"-apple-system,'SF Pro Display',sans-serif",
+  },
+  rose: {
+    name:'🌹 Rose',
+    bg:'#1a0008', surface:'#250010', card:'#300018',
+    green:'#ff4488', blue:'#ff88aa', red:'#ff0044',
+    gold:'#ffcc88', text:'#ffe8ee', sub:'#cc6688', border:'#550022',
+    radius:18, font:"'Georgia',serif",
+  },
 };
 
 function getTheme() {
@@ -3129,6 +3192,15 @@ function SettingsPage({ currentTheme, onThemeChange, user }) {
                   {key==='operator'?'Dark tactical neon'
                    :key==='life360'?'Clean white with blue accents'
                    :key==='bubble'?'Frosted glass minimal style'
+                   :key==='urban'?'Street brutalist concrete'
+                   :key==='psychedelic'?'Electric neon trip'
+                   :key==='modern'?'Pure minimal Swiss'
+                   :key==='jazz'?'Late night smoky club'
+                   :key==='graffiti'?'Wild style spray paint'
+                   :key==='farmlife'?'Warm rustic countryside'
+                   :key==='sunflower'?'Golden sun-drenched fields'
+                   :key==='butterfly'?'Iridescent purple wings'
+                   :key==='rose'?'Deep romantic crimson'
                    :'Pick your own colors'}
                 </div>
               </div>
