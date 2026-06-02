@@ -332,8 +332,8 @@ const createCheckoutSession = async (req, res, next) => {
     const session = await stripe.checkout.sessions.create(sessionParams);
     res.json({ success: true, checkout_url: session.url, session_id: session.id });
   } catch (err) {
-    logger.error('Stripe checkout error:', err);
-    next(new AppError('Failed to create checkout session', 500));
+    logger.error('Stripe checkout error:', { message: err.message, type: err.type, code: err.code, stack: err.stack });
+    next(new AppError(`Stripe error: ${err.message}`, 500));
   }
 };
 
