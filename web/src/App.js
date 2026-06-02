@@ -2420,7 +2420,7 @@ function SubscriptionPage() {
             <>
               <input
                 style={{...st.input,flex:1,minWidth:140,maxWidth:200,fontSize:13,padding:'6px 10px'}}
-                placeholder="e.g. BETA_TESTER"
+                placeholder="Enter coupon code"
                 value={couponInput}
                 onChange={e=>setCouponInput(e.target.value)}
                 onKeyDown={e=>e.key==='Enter'&&applyCoupon()}
