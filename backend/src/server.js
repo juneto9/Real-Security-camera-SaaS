@@ -339,6 +339,27 @@ const startServer = async () => {
       }
     });
 
+    // Usage sync — frontend reports current usage counts
+    app.patch('/api/users/usage', authMiddleware, async (req, res) => {
+      try {
+        const userId = req.user.id;
+        const { cameras_count, ssids_count, storage_used_gb } = req.body;
+        const updates = [];
+        const values = [];
+        let idx = 1;
+        if (cameras_count !== undefined) { updates.push(`cameras_count = $${idx++}`); values.push(cameras_count); }
+        if (ssids_count !== undefined) { updates.push(`ssids_count = $${idx++}`); values.push(ssids_count); }
+        if (storage_used_gb !== undefined) { updates.push(`storage_used_gb = $${idx++}`); values.push(storage_used_gb); }
+        if (updates.length > 0) {
+          values.push(userId);
+          await db.query(`UPDATE users SET ${updates.join(', ')} WHERE id = $${idx}`, values);
+        }
+        res.json({ success: true });
+      } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+      }
+    });
+
     // Org Members
     app.get('/api/org/members', authMiddleware, async (req, res) => {
       try {

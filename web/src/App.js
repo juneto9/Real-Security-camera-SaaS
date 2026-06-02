@@ -1593,7 +1593,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
               <label style={st.label}>Link to Device</label>
               <select style={st.input} value={linkedDevice} onChange={e=>setLinkedDevice(e.target.value)}>
                 <option value="">— Select device —</option>
-                {devices.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}
+                {devices.filter(d=>!d.rtsp_url||d.rtsp_url==='').map(d=><option key={d.id} value={d.id}>{d.name}</option>)}
               </select>
             </div>
           </div>
@@ -1801,7 +1801,7 @@ function ClipsPage({ devices }) {
   const [totalSize,  setTotalSize]  = React.useState(0);
   const [selected,   setSelected]   = React.useState(new Set());
   const [selectMode, setSelectMode] = React.useState(false);
-  const retDays = parseInt(localStorage.getItem('retentionDays')||'14');
+  const retDays = parseInt(localStorage.getItem('retentionDays')||'60'); // Pro default
 
   const loadClips = async () => {
     setLoading(true);
@@ -1862,7 +1862,7 @@ function ClipsPage({ devices }) {
       <div style={{...st.flexBetween,marginBottom:16,flexWrap:'wrap',gap:10}}>
         <div>
           <h2 style={{margin:0,color:C.green}}>🎬 Recorded Clips</h2>
-          <p style={{color:C.sub,fontSize:12,margin:'4px 0 0'}}>{clips.length} clips · {fmtSize(totalSize)} · {retDays}-day retention</p>
+          <p style={{color:C.sub,fontSize:12,margin:'4px 0 0'}}>{clips.length} clips · {fmtSize(totalSize)} · {retDays}-day retention (Pro)</p>
         </div>
         <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
           <select style={{...st.input,width:'auto',fontSize:12,padding:'6px 10px'}} value={filter} onChange={e=>setFilter(e.target.value)}>
@@ -2864,7 +2864,7 @@ function DiscoverPage({ socket, onDeviceAdded }) {
     if (!seenIDs.has(d.id)) { deduped.push(d); seenIDs.add(d.id); if(d.location) seenIPs.add(d.location); }
   });
   // Second pass: agent/ARP devices not already registered
-  discovered.filter(d => d.source !== 'registered').forEach(d => {
+  discovered.filter(d => d.source !== 'registered' && (d.ip || d.mac)).forEach(d => {
     if (!seenIPs.has(d.ip) && !seenIDs.has(d.id||d.ip)) {
       deduped.push(d); if(d.ip) seenIPs.add(d.ip);
     }
@@ -3362,7 +3362,16 @@ export default function App() {
 
   const loadDevices = useCallback(async()=>{
     if (!token) return;
-    try { const res=await api.get('/api/devices'); setDevices(res.data.data||[]); } catch {}
+    try {
+      const res=await api.get('/api/devices');
+      const devs = res.data.data||[];
+      setDevices(devs);
+      // Sync camera count to billing DB so usage meters are accurate
+      try {
+        const activeCount = devs.filter(d=>d.is_active).length;
+        await api.patch('/api/users/usage', { cameras_count: activeCount });
+      } catch {}
+    } catch {}
   },[token]);
 
   const loadStreams = useCallback(async()=>{
