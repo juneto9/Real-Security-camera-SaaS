@@ -323,10 +323,18 @@ const createCheckoutSession = async (req, res, next) => {
       allow_promotion_codes: true,
     };
 
-    // Apply coupon if provided
+    // Apply promotion code if provided — look up promo code ID from code string
     if (coupon) {
-      sessionParams.discounts = [{ coupon }];
-      delete sessionParams.allow_promotion_codes;
+      try {
+        const promoCodes = await stripe.promotionCodes.list({ code: coupon, limit: 1, active: true });
+        if (promoCodes.data.length > 0) {
+          sessionParams.discounts = [{ promotion_code: promoCodes.data[0].id }];
+          delete sessionParams.allow_promotion_codes;
+        }
+        // If not found, allow_promotion_codes stays true so user can enter at Stripe checkout
+      } catch(promoErr) {
+        logger.warn('Promo code lookup failed, proceeding without discount:', promoErr.message);
+      }
     }
 
     const session = await stripe.checkout.sessions.create(sessionParams);
