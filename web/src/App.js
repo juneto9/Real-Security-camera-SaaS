@@ -3174,17 +3174,18 @@ function SettingsPage({ currentTheme, onThemeChange, user }) {
         </div>
       </div>
 
-      {/* TODO: ENABLE PAYWALL — Subscription */}
+      {/* TODO: Subscription */}
       <div style={{...st.card,borderColor:C.gold,marginBottom:20}}>
         <div style={{color:C.gold,fontWeight:'bold',marginBottom:4,fontSize:15}}>
           ⭐ Subscription
         </div>
-        <div style={{color:C.text,fontSize:13,marginBottom:8}}>Free Plan · 14-day clip retention</div>
-        {/* TODO: ENABLE PAYWALL — uncomment before production deploy */}
-        {/* <button style={{...st.btn,...st.btnGold}} onClick={()=>{}}>Upgrade to Pro</button> */}
-        <div style={{color:C.sub,fontSize:12}}>
-          Pro: 60-day retention · 5 admins · Priority support — Coming soon
+        <div style={{color:C.text,fontSize:13,marginBottom:8}}>
+          Manage your plan, billing, and add-ons.
         </div>
+        <button style={{...st.btn,backgroundColor:C.gold,color:'#000',marginTop:4,width:'100%'}}
+          onClick={()=>setAdminSubTab('subscription')}>
+          View Subscription →
+        </button>
       </div>
     </div>
   );
