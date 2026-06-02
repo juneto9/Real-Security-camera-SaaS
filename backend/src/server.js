@@ -17,6 +17,7 @@ const deviceRoutes    = require('./routes/devices');
 const recordingRoutes = require('./routes/recordings');
 const streamRoutes    = require('./routes/streams');
 const userRoutes      = require('./routes/users');
+const billingRoutes   = require('./routes/billing');
 
 const app = express();
 const httpServer = http.createServer(app);
@@ -24,7 +25,7 @@ const httpServer = http.createServer(app);
 // Make db available to routes via req.app.get('db')
 app.set('db', db);
 
-// ── HLS Streaming Proxy ───────────────────────────────────────────
+// ── HLS Streaming Proxy ───────────────────────────────────────────────────
 // Pulls RTSP stream via FFmpeg and serves HLS to browser
 // GET /api/stream/hls/:deviceId/index.m3u8  → start/get HLS playlist
 // GET /api/stream/hls/:deviceId/:segment    → serve HLS segments
@@ -185,6 +186,11 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 
+// ── Stripe webhook MUST be registered BEFORE express.json() ──────────────
+// Stripe requires the raw request body to verify webhook signatures.
+// billingRoutes mounts /webhook with express.raw() internally.
+app.use('/api/billing', billingRoutes);
+
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
@@ -205,7 +211,7 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString(), uptime: process.uptime() });
 });
 
-// ── Discovery Agent Report ─────────────────────────────────────────────────
+// ── Discovery Agent Report ────────────────────────────────────────────────
 // Called by the LAN agent — no user auth, uses orgId from body
 // Saves to DB so it survives server restarts/redeploys
 app.post('/api/discovery/report', async (req, res) => {
@@ -234,7 +240,7 @@ app.post('/api/discovery/report', async (req, res) => {
   }
 });
 
-// ── Enrollment complete — no auth needed (device scans QR) ────────────────
+// ── Enrollment complete — no auth needed (device scans QR) ───────────────
 app.post('/api/enrollment/complete', async (req, res) => {
   try {
     const { token } = req.body;
@@ -252,7 +258,7 @@ app.post('/api/enrollment/complete', async (req, res) => {
   }
 });
 
-// ── API Routes ─────────────────────────────────────────────────────────────
+// ── API Routes ────────────────────────────────────────────────────────────
 // /api/devices MUST be registered after the static routes above
 app.use('/api/auth',       authRoutes);
 app.use('/api/devices',    authMiddleware, deviceRoutes);
@@ -260,7 +266,7 @@ app.use('/api/recordings', authMiddleware, recordingRoutes);
 app.use('/api/streams',    authMiddleware, streamRoutes);
 app.use('/api/users',      authMiddleware, userRoutes);
 
-// ── Start server ───────────────────────────────────────────────────────────
+// ── Start server ──────────────────────────────────────────────────────────
 const startServer = async () => {
   try {
     const dbConnected = await db.testConnection();
@@ -442,7 +448,7 @@ const startServer = async () => {
       }
     });
 
-    // ── Relay status endpoint ─────────────────────────────────────
+    // ── Relay status endpoint ─────────────────────────────────────────────
     app.get('/api/relay/status', authMiddleware, (req, res) => {
       const orgId = req.user.organization_id;
       const status = getAgentStatus(orgId);
@@ -464,7 +470,7 @@ const startServer = async () => {
       });
     });
 
-    // ── Auto-cleanup expired unactivated QR devices ──────────────────
+    // ── Auto-cleanup expired unactivated QR devices ───────────────────────
     // Runs every hour — removes devices created via QR but never activated
     const cleanupExpiredDevices = async () => {
       try {
