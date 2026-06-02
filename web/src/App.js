@@ -3145,7 +3145,7 @@ function AdminPage({ user }) {
 }
 
 // ─── Settings Page ────────────────────────────────────────────────
-function SettingsPage({ currentTheme, onThemeChange, user }) {
+function SettingsPage({ currentTheme, onThemeChange, user, onViewSubscription }) {
   const [customColor, setCustomColor] = useState(
     localStorage.getItem('rsc_custom_color')||'#00ff88'
   );
@@ -3255,7 +3255,7 @@ function SettingsPage({ currentTheme, onThemeChange, user }) {
           Manage your plan, billing, and add-ons.
         </div>
         <button style={{...st.btn,backgroundColor:C.gold,color:'#000',marginTop:4,width:'100%'}}
-          onClick={()=>setAdminSubTab('subscription')}>
+          onClick={()=>onViewSubscription&&onViewSubscription()}>
           View Subscription →
         </button>
       </div>
@@ -3325,6 +3325,7 @@ export default function App() {
   const [showEnroll,   setShowEnroll]   = useState(false);
   const [showAdmins,   setShowAdmins]   = useState(false);
   const [adminSubTab,  setAdminSubTab]  = useState('members');
+  const [activitySubTab, setActivitySubTab] = useState('clips');
   const [usbStatus,    setUsbStatus]    = useState(''); // 'armed' | 'recording' | ''
   const [usbLinkedDevice, setUsbLinkedDevice] = useState(()=>sessionStorage.getItem('usbLinkedDevice')||'');
   const [theme, setTheme] = useState(()=>localStorage.getItem('rsc_theme')||'operator');
@@ -3420,8 +3421,7 @@ export default function App() {
     {id:'cameras',  label:'📷 Cameras'},
     {id:'usb',      label:'🖥️ USB/Webcam'},
     {id:'discover', label:'🔍 Discover'},
-    {id:'clips',    label:'🎬 Clips'},
-    {id:'events',   label:'🚨 Events'},
+    {id:'activity', label:'🎬 Activity'},
     {id:'admin',    label:'👥 Admin'},
   ];
 
@@ -3531,11 +3531,22 @@ export default function App() {
             }
           }}/>
         </div>
-        <div style={{display: tab==='clips' ? 'block' : 'none'}}>
-          <ClipsPage devices={devices}/>
-        </div>
-        <div style={{display: tab==='events' ? 'block' : 'none'}}>
-          <EventsPanel events={events}/>
+        <div style={{display: tab==='activity' ? 'block' : 'none'}}>
+          <div style={{display:'flex',gap:4,marginBottom:20,borderBottom:`1px solid ${C.border}`,paddingBottom:12}}>
+            {[
+              {id:'clips',  label:'🎬 Clips'},
+              {id:'events', label:'🚨 Events'},
+            ].map(st2=>(
+              <button key={st2.id} onClick={()=>setActivitySubTab(st2.id)} style={{
+                padding:'7px 16px', borderRadius:6, cursor:'pointer', fontSize:13,
+                fontWeight:'bold', border:'none',
+                backgroundColor: activitySubTab===st2.id ? C.green : C.card,
+                color: activitySubTab===st2.id ? '#000' : C.text,
+              }}>{st2.label}</button>
+            ))}
+          </div>
+          {activitySubTab==='clips'  && <ClipsPage devices={devices}/>}
+          {activitySubTab==='events' && <EventsPanel events={events}/>}
         </div>
         <div style={{display: tab==='sub' ? 'block' : 'none'}}>
           <SubscriptionPage/>
@@ -3559,7 +3570,7 @@ export default function App() {
             ))}
           </div>
           {adminSubTab==='members'      && <AdminPage user={user}/>}
-          {adminSubTab==='settings'     && <SettingsPage currentTheme={theme} onThemeChange={applyTheme} user={user}/>}
+          {adminSubTab==='settings'     && <SettingsPage currentTheme={theme} onThemeChange={applyTheme} user={user} onViewSubscription={()=>setAdminSubTab('subscription')}/>}
           {adminSubTab==='subscription' && <SubscriptionPage/>}
         </div>
       </main>
