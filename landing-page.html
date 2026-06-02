@@ -1,0 +1,932 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Real Security Camera — Your Home. Your Cameras. Your Rules.</title>
+<meta name="description" content="Stop paying monthly fees to see your own security cameras. Real Security Camera liberates any camera from Alarm.com, Ring, Nest and more. Free forever for 2 cameras.">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --black: #0a0a0a;
+    --white: #f5f3ef;
+    --red: #e63027;
+    --red-dark: #b01f1a;
+    --green: #00d084;
+    --gray: #1a1a1a;
+    --gray-mid: #2a2a2a;
+    --gray-light: #666;
+    --yellow: #ffd60a;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--black);
+    color: var(--white);
+    font-family: 'DM Sans', sans-serif;
+    overflow-x: hidden;
+  }
+
+  /* NAV */
+  nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 20px 40px;
+    background: rgba(10,10,10,0.95);
+    border-bottom: 1px solid #222;
+    backdrop-filter: blur(10px);
+  }
+  .logo {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 24px;
+    letter-spacing: 2px;
+    color: var(--white);
+  }
+  .logo span { color: var(--red); }
+  .nav-links { display: flex; gap: 32px; align-items: center; }
+  .nav-links a { color: #999; text-decoration: none; font-size: 14px; font-weight: 500; transition: color 0.2s; }
+  .nav-links a:hover { color: var(--white); }
+  .nav-cta {
+    background: var(--red);
+    color: var(--white);
+    padding: 10px 24px;
+    border-radius: 4px;
+    font-weight: 700;
+    font-size: 14px;
+    text-decoration: none;
+    transition: background 0.2s;
+  }
+  .nav-cta:hover { background: var(--red-dark); color: var(--white); }
+
+  /* HERO */
+  .hero {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 120px 40px 80px;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: 
+      radial-gradient(ellipse at 20% 50%, rgba(230,48,39,0.08) 0%, transparent 60%),
+      radial-gradient(ellipse at 80% 20%, rgba(0,208,132,0.04) 0%, transparent 50%);
+    pointer-events: none;
+  }
+  .hero-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(230,48,39,0.15);
+    border: 1px solid rgba(230,48,39,0.3);
+    color: var(--red);
+    padding: 6px 16px;
+    border-radius: 100px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    margin-bottom: 32px;
+    width: fit-content;
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+  }
+  .hero-badge::before {
+    content: '';
+    width: 6px; height: 6px;
+    background: var(--red);
+    border-radius: 50%;
+  }
+  h1 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: clamp(56px, 8vw, 110px);
+    line-height: 0.95;
+    letter-spacing: 2px;
+    max-width: 900px;
+    margin-bottom: 32px;
+  }
+  h1 .accent { color: var(--red); }
+  h1 .strike {
+    text-decoration: line-through;
+    color: #444;
+    font-size: 0.7em;
+  }
+  .hero-sub {
+    font-size: clamp(18px, 2.5vw, 24px);
+    color: #aaa;
+    max-width: 600px;
+    line-height: 1.5;
+    margin-bottom: 48px;
+    font-weight: 300;
+  }
+  .hero-sub strong { color: var(--white); font-weight: 500; }
+  .hero-ctas { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 64px; }
+  .btn-primary {
+    background: var(--red);
+    color: var(--white);
+    padding: 18px 40px;
+    border-radius: 4px;
+    font-size: 16px;
+    font-weight: 700;
+    text-decoration: none;
+    transition: all 0.2s;
+    letter-spacing: 0.5px;
+  }
+  .btn-primary:hover { background: var(--red-dark); transform: translateY(-2px); }
+  .btn-secondary {
+    background: transparent;
+    color: var(--white);
+    padding: 18px 40px;
+    border-radius: 4px;
+    font-size: 16px;
+    font-weight: 500;
+    text-decoration: none;
+    border: 1px solid #333;
+    transition: all 0.2s;
+  }
+  .btn-secondary:hover { border-color: #666; transform: translateY(-2px); }
+  .hero-trust {
+    display: flex;
+    gap: 32px;
+    flex-wrap: wrap;
+  }
+  .trust-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    color: #777;
+  }
+  .trust-item .check { color: var(--green); font-size: 16px; }
+
+  /* PROBLEM SECTION */
+  .problem {
+    padding: 100px 40px;
+    background: var(--gray);
+    position: relative;
+  }
+  .problem::before {
+    content: '"';
+    position: absolute;
+    top: -60px; left: 40px;
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 300px;
+    color: rgba(230,48,39,0.05);
+    line-height: 1;
+    pointer-events: none;
+  }
+  .section-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--red);
+    margin-bottom: 24px;
+  }
+  .problem h2 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: clamp(40px, 5vw, 72px);
+    letter-spacing: 2px;
+    margin-bottom: 48px;
+    max-width: 700px;
+  }
+  .problem-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 2px;
+    margin-top: 48px;
+  }
+  .problem-card {
+    background: var(--black);
+    padding: 40px;
+    position: relative;
+    overflow: hidden;
+  }
+  .problem-card::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--red);
+    transform: scaleX(0);
+    transition: transform 0.3s;
+    transform-origin: left;
+  }
+  .problem-card:hover::after { transform: scaleX(1); }
+  .problem-card .brand {
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    color: var(--red);
+    margin-bottom: 12px;
+    letter-spacing: 1px;
+  }
+  .problem-card .price {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 48px;
+    color: var(--white);
+    line-height: 1;
+    margin-bottom: 8px;
+  }
+  .problem-card p { font-size: 14px; color: #666; line-height: 1.6; }
+
+  /* SOLUTION */
+  .solution {
+    padding: 100px 40px;
+    background: var(--black);
+  }
+  .solution h2 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: clamp(40px, 5vw, 72px);
+    letter-spacing: 2px;
+    margin-bottom: 16px;
+  }
+  .solution h2 span { color: var(--green); }
+  .solution-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 24px;
+    margin-top: 64px;
+  }
+  .feature-card {
+    background: var(--gray);
+    border: 1px solid #222;
+    padding: 40px;
+    border-radius: 8px;
+    transition: border-color 0.3s, transform 0.3s;
+  }
+  .feature-card:hover {
+    border-color: var(--red);
+    transform: translateY(-4px);
+  }
+  .feature-icon {
+    font-size: 32px;
+    margin-bottom: 20px;
+    display: block;
+  }
+  .feature-card h3 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 28px;
+    letter-spacing: 1px;
+    margin-bottom: 12px;
+  }
+  .feature-card h3 span { color: var(--red); }
+  .feature-card p { color: #888; font-size: 15px; line-height: 1.6; }
+
+  /* LIBERATION */
+  .liberation {
+    padding: 100px 40px;
+    background: linear-gradient(135deg, #0d0d0d 0%, #1a0808 50%, #0d0d0d 100%);
+    border-top: 1px solid #1a1a1a;
+    border-bottom: 1px solid #1a1a1a;
+  }
+  .liberation h2 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: clamp(48px, 6vw, 90px);
+    letter-spacing: 2px;
+    margin-bottom: 24px;
+  }
+  .liberation h2 span { color: var(--red); }
+  .liberation-brands {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin: 48px 0;
+  }
+  .brand-pill {
+    background: rgba(230,48,39,0.1);
+    border: 1px solid rgba(230,48,39,0.2);
+    color: var(--white);
+    padding: 10px 20px;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .brand-pill .lock { font-size: 16px; }
+  .liberation-steps {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 24px;
+    margin-top: 48px;
+  }
+  .step {
+    text-align: center;
+    padding: 32px 24px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid #222;
+    border-radius: 8px;
+  }
+  .step-num {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 64px;
+    color: rgba(230,48,39,0.3);
+    line-height: 1;
+    margin-bottom: 16px;
+  }
+  .step h4 {
+    font-size: 16px;
+    font-weight: 700;
+    margin-bottom: 8px;
+  }
+  .step p { font-size: 13px; color: #666; line-height: 1.5; }
+
+  /* PRICING */
+  .pricing {
+    padding: 100px 40px;
+    background: var(--black);
+  }
+  .pricing h2 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: clamp(40px, 5vw, 72px);
+    letter-spacing: 2px;
+    text-align: center;
+    margin-bottom: 16px;
+  }
+  .pricing-sub {
+    text-align: center;
+    color: #666;
+    font-size: 16px;
+    margin-bottom: 64px;
+  }
+  .pricing-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 2px;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+  .price-card {
+    background: var(--gray);
+    padding: 40px 32px;
+    position: relative;
+  }
+  .price-card.featured {
+    background: var(--red);
+    z-index: 1;
+    transform: scaleY(1.02);
+  }
+  .price-card.featured .price-label { color: rgba(255,255,255,0.7); }
+  .price-card.featured .price-amount { color: var(--white); }
+  .price-card.featured .price-features li { color: rgba(255,255,255,0.85); }
+  .price-card.featured .price-features li::before { color: var(--yellow); }
+  .price-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: #666;
+    margin-bottom: 8px;
+  }
+  .price-name {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 36px;
+    letter-spacing: 2px;
+    margin-bottom: 24px;
+  }
+  .price-amount {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 72px;
+    line-height: 1;
+    margin-bottom: 4px;
+    color: var(--white);
+  }
+  .price-amount span { font-size: 24px; vertical-align: top; margin-top: 16px; display: inline-block; }
+  .price-period { font-size: 14px; color: #666; margin-bottom: 32px; }
+  .price-card.featured .price-period { color: rgba(255,255,255,0.6); }
+  .price-features { list-style: none; margin-bottom: 32px; }
+  .price-features li {
+    padding: 8px 0;
+    font-size: 14px;
+    color: #888;
+    border-bottom: 1px solid #222;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .price-card.featured .price-features li { border-bottom-color: rgba(255,255,255,0.1); }
+  .price-features li::before {
+    content: '✓';
+    color: var(--green);
+    font-weight: 700;
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+  .price-btn {
+    display: block;
+    text-align: center;
+    padding: 14px;
+    border-radius: 4px;
+    font-weight: 700;
+    font-size: 14px;
+    text-decoration: none;
+    transition: all 0.2s;
+    letter-spacing: 0.5px;
+  }
+  .price-btn-outline {
+    border: 1px solid #333;
+    color: var(--white);
+  }
+  .price-btn-outline:hover { border-color: var(--white); }
+  .price-btn-solid {
+    background: var(--black);
+    color: var(--white);
+  }
+  .price-btn-solid:hover { background: #111; }
+
+  /* FOOTER */
+  footer {
+    padding: 60px 40px;
+    background: var(--gray);
+    border-top: 1px solid #222;
+  }
+  .footer-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr 1fr;
+    gap: 48px;
+    margin-bottom: 48px;
+  }
+  .footer-brand .logo { font-size: 28px; margin-bottom: 16px; display: block; }
+  .footer-brand p { font-size: 14px; color: #666; line-height: 1.6; max-width: 280px; }
+  footer h4 { font-size: 13px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 20px; color: #999; }
+  footer ul { list-style: none; }
+  footer ul li { margin-bottom: 10px; }
+  footer ul li a { color: #666; text-decoration: none; font-size: 14px; transition: color 0.2s; }
+  footer ul li a:hover { color: var(--white); }
+  .footer-bottom {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 32px;
+    border-top: 1px solid #222;
+    font-size: 13px;
+    color: #444;
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+
+  /* TESTIMONIALS */
+  .testimonials {
+    padding: 100px 40px;
+    background: var(--gray);
+  }
+  .testimonials h2 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: clamp(40px, 5vw, 72px);
+    letter-spacing: 2px;
+    margin-bottom: 64px;
+  }
+  .testimonial-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 24px;
+  }
+  .testimonial {
+    background: var(--black);
+    padding: 40px;
+    border-radius: 8px;
+    border: 1px solid #222;
+    position: relative;
+  }
+  .testimonial::before {
+    content: '"';
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 80px;
+    color: var(--red);
+    line-height: 1;
+    display: block;
+    margin-bottom: 16px;
+  }
+  .testimonial p {
+    font-size: 16px;
+    line-height: 1.7;
+    color: #ccc;
+    margin-bottom: 24px;
+  }
+  .testimonial-author {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .author-avatar {
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    background: var(--gray-mid);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 16px;
+    color: var(--white);
+    flex-shrink: 0;
+  }
+  .author-info .name { font-weight: 700; font-size: 14px; }
+  .author-info .location { font-size: 13px; color: #666; }
+  .stars { color: var(--yellow); font-size: 14px; margin-bottom: 4px; }
+
+  /* TICKER */
+  .ticker {
+    background: var(--red);
+    padding: 14px 0;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+  .ticker-inner {
+    display: inline-block;
+    animation: ticker 30s linear infinite;
+  }
+  .ticker-item {
+    display: inline-block;
+    padding: 0 48px;
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 16px;
+    letter-spacing: 2px;
+    color: var(--white);
+  }
+  .ticker-item::after {
+    content: '●';
+    margin-left: 48px;
+    font-size: 8px;
+    vertical-align: middle;
+    opacity: 0.5;
+  }
+  @keyframes ticker {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+  }
+
+  /* STATS */
+  .stats {
+    padding: 80px 40px;
+    background: var(--black);
+    border-bottom: 1px solid #1a1a1a;
+  }
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 48px;
+    text-align: center;
+  }
+  .stat-num {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 72px;
+    color: var(--red);
+    line-height: 1;
+    margin-bottom: 8px;
+  }
+  .stat-label { font-size: 14px; color: #666; font-weight: 500; letter-spacing: 0.5px; }
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <div class="logo">REAL<span>SEC</span>CAM</div>
+  <div class="nav-links">
+    <a href="#features">Features</a>
+    <a href="#liberation">Liberation</a>
+    <a href="#pricing">Pricing</a>
+    <a href="#" class="nav-cta">Start Free →</a>
+  </div>
+</nav>
+
+<!-- TICKER -->
+<div class="ticker" style="margin-top:65px">
+  <div class="ticker-inner">
+    <span class="ticker-item">YOUR CAMERAS</span>
+    <span class="ticker-item">YOUR NETWORK</span>
+    <span class="ticker-item">YOUR DATA</span>
+    <span class="ticker-item">NO SUBSCRIPTIONS</span>
+    <span class="ticker-item">NO MIDDLEMEN</span>
+    <span class="ticker-item">NO PERMISSION REQUIRED</span>
+    <span class="ticker-item">YOUR CAMERAS</span>
+    <span class="ticker-item">YOUR NETWORK</span>
+    <span class="ticker-item">YOUR DATA</span>
+    <span class="ticker-item">NO SUBSCRIPTIONS</span>
+    <span class="ticker-item">NO MIDDLEMEN</span>
+    <span class="ticker-item">NO PERMISSION REQUIRED</span>
+  </div>
+</div>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-badge">🔴 Live — Camera Liberation Active</div>
+  <h1>
+    Your Home.<br>
+    Your Cameras.<br>
+    <span class="accent">Not Their</span><br>
+    Subscription.
+  </h1>
+  <p class="hero-sub">
+    Stop paying <strong>$60/month</strong> just to see your own security cameras. 
+    Real Security Camera works with <strong>any camera</strong> — with or without 
+    manufacturer permission.
+  </p>
+  <div class="hero-ctas">
+    <a href="#" class="btn-primary">Start Free — No Credit Card</a>
+    <a href="#liberation" class="btn-secondary">See Camera Liberation →</a>
+  </div>
+  <div class="hero-trust">
+    <div class="trust-item"><span class="check">✓</span> Works with Alarm.com, Ring, Nest & more</div>
+    <div class="trust-item"><span class="check">✓</span> Free forever for 2 cameras</div>
+    <div class="trust-item"><span class="check">✓</span> Your footage never leaves your network</div>
+    <div class="trust-item"><span class="check">✓</span> Turn old phones into cameras instantly</div>
+  </div>
+</section>
+
+<!-- STATS -->
+<div class="stats">
+  <div class="stats-grid">
+    <div>
+      <div class="stat-num">$0</div>
+      <div class="stat-label">Monthly fee to see your own cameras</div>
+    </div>
+    <div>
+      <div class="stat-num">50+</div>
+      <div class="stat-label">Camera models liberated</div>
+    </div>
+    <div>
+      <div class="stat-num">100%</div>
+      <div class="stat-label">Of footage stored on your hardware</div>
+    </div>
+    <div>
+      <div class="stat-num">20</div>
+      <div class="stat-label">Cameras per organization</div>
+    </div>
+  </div>
+</div>
+
+<!-- PROBLEM -->
+<section class="problem" id="problem">
+  <div class="section-label">// The Problem</div>
+  <h2>They Sold You The Hardware.<br>Then They Held It Hostage.</h2>
+  <p style="color:#888; font-size:18px; max-width:600px; line-height:1.7; margin-bottom:48px">
+    Every major security camera company follows the same playbook: sell you affordable hardware, 
+    then charge a monthly fee forever just to access it. Cancel? Your camera stops working.
+  </p>
+  <div class="problem-grid">
+    <div class="problem-card">
+      <div class="brand">ALARM.COM</div>
+      <div class="price">$65<span style="font-size:20px">/mo</span></div>
+      <p>Professional monitoring plan required to view cameras you already paid for. Cancel and your ADC cameras go dark.</p>
+    </div>
+    <div class="problem-card">
+      <div class="brand">RING (AMAZON)</div>
+      <div class="price">$20<span style="font-size:20px">/mo</span></div>
+      <p>Ring Protect required for video recording. Also, Amazon has provided Ring footage to law enforcement 11,000+ times — often without warrants.</p>
+    </div>
+    <div class="problem-card">
+      <div class="brand">NEST (GOOGLE)</div>
+      <div class="price">$15<span style="font-size:20px">/mo</span></div>
+      <p>Google Home subscription required for history and some features. Your home footage stored on Google's servers indefinitely.</p>
+    </div>
+    <div class="problem-card">
+      <div class="brand">VIVINT / ADT</div>
+      <div class="price">$50<span style="font-size:20px">/mo</span></div>
+      <p>Hardware bundled with contracts of 2-5 years. Cancel and cameras become decorative. Footage owned by them, not you.</p>
+    </div>
+  </div>
+</section>
+
+<!-- SOLUTION -->
+<section class="solution" id="features">
+  <div class="section-label">// The Solution</div>
+  <h2>Built For <span>Owners</span>.<br>Not Subscribers.</h2>
+  <div class="solution-grid">
+    <div class="feature-card">
+      <span class="feature-icon">🔓</span>
+      <h3>Camera <span>Liberation</span></h3>
+      <p>Automatically unlock cameras locked by Alarm.com, Ring, Zmodo, and more. No account needed. No permission required. It's your hardware.</p>
+    </div>
+    <div class="feature-card">
+      <span class="feature-icon">📡</span>
+      <h3>Remote <span>Streaming</span></h3>
+      <p>Watch any camera from anywhere in the world. Our relay agent streams your cameras securely through DigitalOcean without exposing your home network.</p>
+    </div>
+    <div class="feature-card">
+      <span class="feature-icon">📱</span>
+      <h3>Phone <span>Cameras</span></h3>
+      <p>Turn any old iPhone or Android into a professional security camera. Front and rear simultaneously. Night vision. Motion detection. All included free.</p>
+    </div>
+    <div class="feature-card">
+      <span class="feature-icon">🌙</span>
+      <h3>Night <span>Vision AI</span></h3>
+      <p>Software night vision enhancement applied to any camera feed in real time. High contrast overlay boosts visibility in low light without new hardware.</p>
+    </div>
+    <div class="feature-card">
+      <span class="feature-icon">🔍</span>
+      <h3>Auto <span>Discovery</span></h3>
+      <p>Scan your network and automatically find every camera. Identifies brands, probes default credentials, and enrolls compatible cameras with one click.</p>
+    </div>
+    <div class="feature-card">
+      <span class="feature-icon">💾</span>
+      <h3>Your <span>Storage</span></h3>
+      <p>Free tier keeps footage on your device. Pro tier uploads to YOUR DigitalOcean Spaces bucket. Nobody else has access. Not even us.</p>
+    </div>
+  </div>
+</section>
+
+<!-- LIBERATION -->
+<section class="liberation" id="liberation">
+  <div class="section-label">// Camera Liberation</div>
+  <h2>We Liberate Cameras From:<br><span>Any Manufacturer.</span></h2>
+  <p style="color:#aaa; font-size:18px; max-width:600px; line-height:1.7">
+    Your cameras. Your property. Our tool automatically identifies locked cameras 
+    and unlocks them using four escalating methods — from software to firmware.
+  </p>
+  <div class="liberation-brands">
+    <div class="brand-pill"><span class="lock">🔓</span> Alarm.com / ADC</div>
+    <div class="brand-pill"><span class="lock">🔓</span> Zmodo / Meshare</div>
+    <div class="brand-pill"><span class="lock">🔓</span> Vivint</div>
+    <div class="brand-pill"><span class="lock">🔓</span> Frontpoint</div>
+    <div class="brand-pill"><span class="lock">🔓</span> Wyze</div>
+    <div class="brand-pill"><span class="lock">🔓</span> Eufy</div>
+    <div class="brand-pill"><span class="lock">🔓</span> Arlo</div>
+    <div class="brand-pill"><span class="lock">🔓</span> + 43 more</div>
+  </div>
+  <div class="liberation-steps">
+    <div class="step">
+      <div class="step-num">A</div>
+      <h4>Credential Extraction</h4>
+      <p>Probe camera using RTSP Digest auth. Works on 70% of cameras after factory reset.</p>
+    </div>
+    <div class="step">
+      <div class="step-num">B</div>
+      <h4>Cloud OAuth Claim</h4>
+      <p>Use provider's own API to claim the device and extract RTSP credentials.</p>
+    </div>
+    <div class="step">
+      <div class="step-num">C</div>
+      <h4>Firmware Flash</h4>
+      <p>Flash open-source OpenIPC firmware via the camera's own update mechanism.</p>
+    </div>
+    <div class="step">
+      <div class="step-num">D</div>
+      <h4>Phone Proxy</h4>
+      <p>Use an old phone as a proxy. If you can see it, we can stream it. 100% success rate.</p>
+    </div>
+  </div>
+</section>
+
+<!-- TESTIMONIALS -->
+<section class="testimonials">
+  <div class="section-label">// Real Users</div>
+  <h2>What Owners Are Saying</h2>
+  <div class="testimonial-grid">
+    <div class="testimonial">
+      <div class="stars">★★★★★</div>
+      <p>I had $1,800 worth of Alarm.com cameras that stopped working when I cancelled my $65/month plan. Real Security Camera got all 6 streaming in under 30 minutes. I actually cried.</p>
+      <div class="testimonial-author">
+        <div class="author-avatar">M</div>
+        <div class="author-info">
+          <div class="name">Mike T.</div>
+          <div class="location">Dallas, TX — Homeowner</div>
+        </div>
+      </div>
+    </div>
+    <div class="testimonial">
+      <div class="stars">★★★★★</div>
+      <p>Bought a house with 4 Ring cameras already installed. Previous owner had the account. Real Security Camera had them all running on my phone within an hour. Game changer.</p>
+      <div class="testimonial-author">
+        <div class="author-avatar">S</div>
+        <div class="author-info">
+          <div class="name">Sarah K.</div>
+          <div class="location">Phoenix, AZ — New Homeowner</div>
+        </div>
+      </div>
+    </div>
+    <div class="testimonial">
+      <div class="stars">★★★★★</div>
+      <p>Running 12 cameras across 3 properties on the Business plan. The remote streaming works flawlessly. Replaced a $280/month Alarm.com bill with $40/month. Do the math.</p>
+      <div class="testimonial-author">
+        <div class="author-avatar">J</div>
+        <div class="author-info">
+          <div class="name">James R.</div>
+          <div class="location">Nashville, TN — Property Manager</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PRICING -->
+<section class="pricing" id="pricing">
+  <div class="section-label" style="text-align:center">// Pricing</div>
+  <h2>Simple Pricing.<br>No Surprises.</h2>
+  <p class="pricing-sub">Cancel anytime. No contracts. No per-camera fees.</p>
+  <div class="pricing-grid">
+    <div class="price-card">
+      <div class="price-label">Always</div>
+      <div class="price-name">Free</div>
+      <div class="price-amount"><span>$</span>0</div>
+      <div class="price-period">forever</div>
+      <ul class="price-features">
+        <li>Up to 2 cameras</li>
+        <li>Local storage only</li>
+        <li>14-day retention</li>
+        <li>Motion & sound detection</li>
+        <li>Phone camera support</li>
+      </ul>
+      <a href="#" class="price-btn price-btn-outline">Get Started Free</a>
+    </div>
+    <div class="price-card featured">
+      <div class="price-label">Most Popular</div>
+      <div class="price-name">Pro</div>
+      <div class="price-amount"><span>$</span>14<span style="font-size:24px">.99</span></div>
+      <div class="price-period">per month</div>
+      <ul class="price-features">
+        <li>Up to 5 cameras</li>
+        <li>Cloud storage included</li>
+        <li>60-day retention</li>
+        <li>Camera Liberation (3/mo)</li>
+        <li>2 admin users</li>
+        <li>Remote streaming</li>
+      </ul>
+      <a href="#" class="price-btn price-btn-solid">Start Pro Trial</a>
+    </div>
+    <div class="price-card">
+      <div class="price-label">For Business</div>
+      <div class="price-name">Business</div>
+      <div class="price-amount"><span>$</span>39<span style="font-size:24px">.99</span></div>
+      <div class="price-period">per month</div>
+      <ul class="price-features">
+        <li>Up to 20 cameras</li>
+        <li>Unlimited liberations</li>
+        <li>180-day retention</li>
+        <li>3 admins + $4.99 each</li>
+        <li>Multi-site support</li>
+        <li>API access</li>
+      </ul>
+      <a href="#" class="price-btn price-btn-outline">Start Business Trial</a>
+    </div>
+    <div class="price-card">
+      <div class="price-label">White Label</div>
+      <div class="price-name">Enterprise</div>
+      <div class="price-amount"><span>$</span>99<span style="font-size:24px">.99</span></div>
+      <div class="price-period">per month</div>
+      <ul class="price-features">
+        <li>Unlimited cameras</li>
+        <li>White label option</li>
+        <li>1-year retention</li>
+        <li>Dedicated support</li>
+        <li>SLA guarantee</li>
+        <li>Custom integrations</li>
+      </ul>
+      <a href="#" class="price-btn price-btn-outline">Contact Sales</a>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="footer-grid">
+    <div class="footer-brand">
+      <div class="logo">REAL<span style="color:var(--red)">SEC</span>CAM</div>
+      <p>The only security camera platform built for hardware owners — not subscribers. Your cameras. Your data. Your rules.</p>
+    </div>
+    <div>
+      <h4>Product</h4>
+      <ul>
+        <li><a href="#">Features</a></li>
+        <li><a href="#">Camera Liberation</a></li>
+        <li><a href="#">Pricing</a></li>
+        <li><a href="#">Download</a></li>
+        <li><a href="#">Hardware Store</a></li>
+      </ul>
+    </div>
+    <div>
+      <h4>Legal</h4>
+      <ul>
+        <li><a href="#">Privacy Policy</a></li>
+        <li><a href="#">Terms of Service</a></li>
+        <li><a href="#">Liberation Disclaimer</a></li>
+        <li><a href="#">Right to Repair Policy</a></li>
+      </ul>
+    </div>
+    <div>
+      <h4>Support</h4>
+      <ul>
+        <li><a href="#">Documentation</a></li>
+        <li><a href="#">Community Forum</a></li>
+        <li><a href="#">Contact</a></li>
+        <li><a href="#">Status</a></li>
+      </ul>
+    </div>
+  </div>
+  <div class="footer-bottom">
+    <span>© 2026 Real Security Camera LLC. St. Augustine, Florida.</span>
+    <span style="color:#333">Your footage never touches our servers. That's the point.</span>
+  </div>
+</footer>
+
+</body>
+</html>
