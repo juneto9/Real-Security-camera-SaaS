@@ -3,24 +3,25 @@ const router = express.Router();
 const { authenticate } = require('../middleware/auth');
 const {
   getPlans,
+  getAddons,
   createCheckoutSession,
   createPortalSession,
+  purchaseAddon,
   getBillingStatus,
   handleWebhook,
 } = require('../controllers/billingController');
 
-// Stripe webhook MUST receive raw body — mount BEFORE express.json()
-// This route is registered in server.js before body parsers
-router.post(
-  '/webhook',
-  express.raw({ type: 'application/json' }),
-  handleWebhook
-);
+// Stripe webhook MUST receive raw body — before express.json()
+router.post('/webhook', express.raw({ type: 'application/json' }), handleWebhook);
 
-// All other billing routes require auth
+// Public
 router.get('/plans', getPlans);
-router.get('/status', authenticate, getBillingStatus);
-router.post('/subscribe', authenticate, createCheckoutSession);
-router.post('/portal', authenticate, createPortalSession);
+
+// Authenticated
+router.get('/status',       authenticate, getBillingStatus);
+router.get('/addons',       authenticate, getAddons);
+router.post('/subscribe',   authenticate, createCheckoutSession);
+router.post('/portal',      authenticate, createPortalSession);
+router.post('/addon',       authenticate, purchaseAddon);
 
 module.exports = router;
