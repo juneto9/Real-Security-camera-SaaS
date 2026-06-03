@@ -1871,7 +1871,7 @@ function ClipsPage({ devices }) {
     .filter(c=> filter==='all' || c.device_id===filter)
     .sort((a,b)=> sortBy==='newest' ? new Date(b.created_at)-new Date(a.created_at) : new Date(a.created_at)-new Date(b.created_at));
 
-  const grouped = filtered.reduce((acc,c)=>{ const k=c.device_id||'unknown'; if(!acc[k]) acc[k]=[]; acc[k].push(c); return acc; },{});
+  const grouped = filtered.reduce((acc,c)=>{ const k=c.device_id||'unknown'; if(!acc[k]) acc[k]=[]; acc[k].push(c); return acc; },{}); const deviceNameMap = devices.reduce((acc,d)=>{ acc[d.id]=d.name||d.device_name||d.id.slice(0,8); return acc; },{});
 
   const RETENTION_OPTIONS = [{label:'14 days (Free)',value:14},{label:'60 days (Pro)',value:60},{label:'180 days (Pro)',value:180},{label:'1 year (Enterprise)',value:365}];
 

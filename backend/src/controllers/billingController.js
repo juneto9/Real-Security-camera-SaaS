@@ -255,8 +255,7 @@ const getBillingStatus = async (req, res, next) => {
     const storageResult = await pool.query(
       `SELECT COALESCE(SUM(COALESCE(r.size, r.file_size_bytes, 0)), 0) AS total_bytes
        FROM recordings r
-       JOIN devices d ON r.device_id = d.id
-       WHERE d.user_id = $1`,
+       WHERE r.organization_id = (SELECT organization_id FROM users WHERE id = $1)`,
       [userId]
     );
     const storageGb = parseFloat(
