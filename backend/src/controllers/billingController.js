@@ -218,6 +218,7 @@ const getAddons = (req, res) => {
 const getBillingStatus = async (req, res, next) => {
   try {
     const userId = req.user.id || req.user.userId;
+    if (!userId) return next(new AppError('User not authenticated', 401));
 
     // Get user plan info
     const result = await pool.query(
@@ -233,7 +234,7 @@ const getBillingStatus = async (req, res, next) => {
     // 1. Cameras — confirmed devices only
     const camResult = await pool.query(
       `SELECT COUNT(*) FROM devices
-       WHERE user_id = $1
+       WHERE user_id = $1::uuid
          AND (status IS NULL OR status != 'pending_scan')
          AND deleted_at IS NULL`,
       [userId]
@@ -243,7 +244,7 @@ const getBillingStatus = async (req, res, next) => {
     // 2. SSIDs — distinct non-null locations (represents distinct networks/sites)
     const ssidResult = await pool.query(
       `SELECT COUNT(DISTINCT location) FROM devices
-       WHERE user_id = $1
+       WHERE user_id = $1::uuid
          AND location IS NOT NULL AND location != ''
          AND (status IS NULL OR status != 'pending_scan')
          AND deleted_at IS NULL`,
@@ -255,7 +256,7 @@ const getBillingStatus = async (req, res, next) => {
     const storageResult = await pool.query(
       `SELECT COALESCE(SUM(COALESCE(r.size, r.file_size_bytes, 0)), 0) AS total_bytes
        FROM recordings r
-       WHERE r.organization_id = (SELECT organization_id FROM users WHERE id = $1)`,
+       WHERE r.organization_id = (SELECT organization_id FROM users WHERE id = $1::uuid)`,
       [userId]
     );
     const storageGb = parseFloat(
@@ -266,7 +267,7 @@ const getBillingStatus = async (req, res, next) => {
     const libResult = await pool.query(
       `SELECT COUNT(*) FROM motion_events me
        JOIN devices d ON me.device_id = d.id
-       WHERE d.user_id = $1
+       WHERE d.user_id = $1::uuid
          AND me.created_at >= date_trunc('month', NOW())`,
       [userId]
     );
@@ -280,7 +281,7 @@ const getBillingStatus = async (req, res, next) => {
            storage_used_gb             = $3,
            liberations_used_this_month = $4,
            updated_at                  = NOW()
-       WHERE id = $5`,
+       WHERE id = $5::uuid`,
       [cameraCount, ssidCount, storageGb, liberationsThisMonth, userId]
     );
 
