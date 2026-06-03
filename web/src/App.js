@@ -1004,7 +1004,7 @@ const CLIP_SIZES = [
   { label:'5 min', value:300 },
 ];
 
-function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsbStatus, onLinkedDevice, onSettings }) {
+function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsbStatus, onLinkedDevice, onSettings, autoStart, onAutoStartDone }) {
   const camSocketRef = useRef(null);
   const [camSocket, setCamSocket] = useState(null);
 
@@ -1119,30 +1119,49 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
   // Camera devices are enumerated inside startStream() AFTER getUserMedia
   // succeeds so that browser returns full labels (requires permission first).
   useEffect(()=>{
+    // Clear any stale auto-start flags from previous sessions
+    // Never auto-call startStream() — requires explicit user click for camera permission
     sessionStorage.removeItem('autoStartBroadcast');
     sessionStorage.removeItem('usbBroadcasting');
+    // Restore linked device selection if set
     const autoLink = sessionStorage.getItem('autoLinkDevice');
     if (autoLink) { setLinkedDevice(autoLink); sessionStorage.removeItem('autoLinkDevice'); }
     const savedDevice = sessionStorage.getItem('usbLinkedDevice');
-    if (savedDevice) { setLinkedDevice(savedDevice); }
-
-    // Auto-start stream if triggered from Cameras tab Start & Arm button
-    if (sessionStorage.getItem('autoArmAfterStream') === '1') {
-      if (navigator.permissions) {
-        navigator.permissions.query({name:'camera'}).then(perm => {
-          if (perm.state === 'granted') {
-            // Permission already granted — start immediately
-            setTimeout(() => startStream(), 300);
-          }
-          // If not granted, user sees Start Broadcasting button — one click starts + arms
-        }).catch(() => {});
-      }
+    if (savedDevice) {
+      // Verify saved device is non-IP before restoring
+      // Will be validated against devices list when devices load
+      setLinkedDevice(savedDevice);
     }
   },[]);
 
   useEffect(()=>{
     isArmedRef.current = isArmed;
   },[isArmed]);
+
+  // Auto-start stream when triggered from Cameras tab Start & Arm button
+  useEffect(()=>{
+    if (!autoStart) return;
+    if (streaming) {
+      // Already streaming — just arm
+      setIsArmed(true); isArmedRef.current = true;
+      startMotionDetection();
+      if (soundEnabled) startSoundDetection();
+      setStatusMsg('🟢 Armed — monitoring...');
+      if (onAutoStartDone) onAutoStartDone();
+      return;
+    }
+    // Start the stream — startStream handles auto-arm via autoArmAfterStream flag
+    sessionStorage.setItem('autoArmAfterStream', '1');
+    sessionStorage.setItem('returnToCameras', '1');
+    // Small delay to ensure component is fully visible before getUserMedia
+    setTimeout(() => {
+      startStream().then(() => {
+        if (onAutoStartDone) onAutoStartDone();
+      }).catch(() => {
+        if (onAutoStartDone) onAutoStartDone();
+      });
+    }, 200);
+  },[autoStart]);
 
   // Re-auth camera socket when linkedDevice or devices changes
   useEffect(()=>{
@@ -1666,9 +1685,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
 
           <div style={{display:'flex',gap:6,marginTop:8}}>
             {(!streaming && !streamRef.current && !videoRef.current?.srcObject)
-              ? <button style={{...st.btn,...st.btnGreen,flex:1}} onClick={startStream}>
-                    {sessionStorage.getItem('autoArmAfterStream')==='1' ? '📡 Start Broadcasting & Arm' : '📡 Start Broadcasting'}
-                  </button>
+              ? <button style={{...st.btn,...st.btnGreen,flex:1}} onClick={startStream}>📡 Start Broadcasting</button>
               : <>
                   {!isArmed
                     ? <button style={{...st.btn,flex:2,backgroundColor:'rgba(0,255,136,0.15)',color:C.green,border:`2px solid ${C.green}`,fontWeight:'bold'}}
@@ -2897,11 +2914,6 @@ function DiscoverPage({ socket, onDeviceAdded, onEnroll }) {
   };
 
   const unenroll = async (device) => {
-    if (!device.id) {
-      // Device was already unenrolled — just remove from local list
-      setDiscovered(d => d.filter(x => (x.ip||x.mac) !== (device.ip||device.mac)));
-      return;
-    }
     if (!window.confirm(`Remove "${device.name || device.device_name || device.ip}"?`)) return;
     setRemoving(device.id);
     try {
@@ -3418,6 +3430,7 @@ export default function App() {
   const [activitySubTab, setActivitySubTab] = useState('clips');
   const [usbStatus,    setUsbStatus]    = useState(''); // 'armed' | 'recording' | ''
   const [usbLinkedDevice, setUsbLinkedDevice] = useState(()=>sessionStorage.getItem('usbLinkedDevice')||'');
+  const [usbAutoStart,   setUsbAutoStart]   = useState(false); // triggers auto-start from Cameras tab
   const [theme, setTheme] = useState(()=>localStorage.getItem('rsc_theme')||'operator');
   const [, forceRender] = useState(0);
 
@@ -3603,7 +3616,7 @@ export default function App() {
                     settings={deviceSettings[d.id]}
                     onSettings={()=>setSettingsFor(d)}
                     onWatchRemote={(dev)=>setRtspViewing(dev)}
-                    onSwitchToUsb={d.device_type==='usb'?()=>setTab('usb'):null}
+                    onSwitchToUsb={d.device_type==='usb'?()=>{ setUsbAutoStart(true); setTab('usb'); }:null}
                   />
                 ))}
               </div>
@@ -3611,7 +3624,7 @@ export default function App() {
         </div>
 
         <div style={{display: tab==='usb' ? 'block' : 'none'}}>
-          <USBCameraPage socket={socket} devices={devices} userId={user?.userId} organizationId={user?.organizationId} onUsbStatus={setUsbStatus} onLinkedDevice={setUsbLinkedDevice} onSettings={(dev)=>setSettingsFor(dev)} onEvent={e=>{
+          <USBCameraPage socket={socket} devices={devices} userId={user?.userId} organizationId={user?.organizationId} onUsbStatus={setUsbStatus} onLinkedDevice={setUsbLinkedDevice} onSettings={(dev)=>setSettingsFor(dev)} autoStart={usbAutoStart} onAutoStartDone={()=>setUsbAutoStart(false)} onEvent={e=>{
             if (e.type==='clip_ready') {
               setEvents(ev=>{
                 const updated = ev.map(existing=>
