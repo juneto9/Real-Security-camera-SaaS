@@ -1865,7 +1865,7 @@ function ClipsPage({ devices }) {
     return d.toLocaleDateString('en-US',{month:'short',day:'2-digit',year:'numeric'})+' '+d.toLocaleTimeString();
   };
 
-  const getDeviceName = id => devices.find(x=>x.id===id)?.name || (id||'').slice(0,8) || 'Unknown';
+  const getDeviceName = id => { const d = devices.find(x=>x.id===id); return d?.name || d?.device_name || (id||'').slice(0,8) || 'Unknown'; };
 
   const filtered = clips
     .filter(c=> filter==='all' || c.device_id===filter)
@@ -3470,7 +3470,7 @@ export default function App() {
         <div style={st.statRow}>
           <div style={st.stat}>
             <p style={st.statN}>
-              {devices.filter(d=>d.is_active && d.device_type !== 'usb' && d.device_type !== 'webcam' && d.name?.trim() !== 'PC Camera').length}
+              {devices.length}
             </p>
             <p style={st.statL}>Total Cameras</p>
           </div>

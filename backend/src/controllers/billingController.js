@@ -247,6 +247,7 @@ const getBillingStatus = async (req, res, next) => {
       `SELECT COUNT(DISTINCT location) FROM devices
        WHERE user_id = $1
          AND location IS NOT NULL AND location != ''
+         AND location !~ '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'
          AND deleted_at IS NULL`,
       [userId]
     );
