@@ -2881,14 +2881,10 @@ function DiscoverPage({ socket, onDeviceAdded, onEnroll }) {
           <h2 style={{color:C.text,margin:0,fontSize:20}}>🔍 Discover Cameras</h2>
           <p style={{color:C.sub,fontSize:13,margin:'4px 0 0'}}>Find phones and IP cameras on your network</p>
         </div>
-        <div style={{display:'flex',gap:8}}>
-          <button style={{...st.btn,backgroundColor:'#4488ff20',color:C.blue,border:`1px solid ${C.blue}`}}
-            onClick={()=>onEnroll&&onEnroll()}>📳 Enroll Camera</button>
-          <button style={{...st.btn,...st.btnGreen,display:'flex',alignItems:'center',gap:8}}
-            onClick={scanNetwork} disabled={scanning}>
-            {scanning ? '⏳ Scanning...' : '🔍 Scan Network'}
-          </button>
-        </div>
+        <button style={{...st.btn,...st.btnGreen,display:'flex',alignItems:'center',gap:8}}
+          onClick={scanNetwork} disabled={scanning}>
+          {scanning ? '⏳ Scanning...' : '🔍 Scan Network'}
+        </button>
       </div>
 
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:20}}>
@@ -3494,10 +3490,9 @@ export default function App() {
             </button>
           ))}
           {(tab==='cameras'||tab==='discover') && <div style={{display:'flex',gap:6,marginLeft:'auto'}}>
-            {tab==='cameras' && <button style={{...st.btn,...st.btnGray}} onClick={()=>setShowAdmins(true)}>👥 Admins</button>}
-            <button style={{...st.btn,backgroundColor:'#4488ff20',color:C.blue,border:`1px solid ${C.blue}`}} onClick={()=>setShowEnroll(true)}>🔳 Enroll Camera</button>
-            {tab==='cameras' && <button style={{...st.btn,...st.btnGreen}} onClick={()=>setShowAdd(true)}>+ Add Camera</button>}
-          </div>}
+            <button style={{...st.btn,backgroundColor:'#4488ff20',color:C.blue,border:`1px solid ${C.blue}`}} onClick={()=>setShowEnroll(true)}>📳 Enroll Camera</button>
+            <button style={{...st.btn,...st.btnGreen}} onClick={()=>setShowAdd(true)}>+ Add Camera</button>
+          </div>
         </div>
 
         <div style={{display: tab==='cameras' ? 'block' : 'none'}}>
