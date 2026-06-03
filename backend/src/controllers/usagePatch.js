@@ -34,7 +34,7 @@ const updateUsage = async (req, res, next) => {
 
     // 3. Storage — sum file_size bytes from recordings, convert to GB
     const storageResult = await pool.query(
-      `SELECT COALESCE(SUM(r.file_size), 0) AS total_bytes
+      `SELECT COALESCE(SUM(COALESCE(r.size, r.file_size_bytes, 0)), 0) AS total_bytes
        FROM recordings r
        JOIN devices d ON r.device_id = d.id
        WHERE d.user_id = $1`,
