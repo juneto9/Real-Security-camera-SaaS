@@ -10,94 +10,94 @@ api.interceptors.request.use(cfg => {
   return cfg;
 });
 
-// ─── Theme Definitions ───────────────────────────────────────────
+// â”€â”€â”€ Theme Definitions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const THEMES = {
   operator: {
-    name:'🟢 Operator',
+    name:'ðŸŸ¢ Operator',
     bg:'#050505', surface:'#0f0f0f', card:'#141414',
     green:'#00ff88', blue:'#00aaff', red:'#ff3333',
     gold:'#ffd700', text:'#ffffff', sub:'#555555', border:'#1a1a1a',
     radius:6, font:'monospace',
   },
   life360: {
-    name:'🔵 Guardian',
+    name:'ðŸ”µ Guardian',
     bg:'#f0f2f5', surface:'#ffffff', card:'#ffffff',
     green:'#1a73e8', blue:'#1a73e8', red:'#ea4335',
     gold:'#fbbc04', text:'#1a1a1a', sub:'#888888', border:'#e0e0e0',
     radius:16, font:'system-ui,sans-serif',
   },
   bubble: {
-    name:'🍎 Frost',
+    name:'ðŸŽ Frost',
     bg:'#f2f2f7', surface:'rgba(255,255,255,0.85)', card:'rgba(255,255,255,0.85)',
     green:'#34c759', blue:'#007aff', red:'#ff3b30',
     gold:'#ff9500', text:'#000000', sub:'#8e8e93', border:'rgba(0,0,0,0.08)',
     radius:22, font:'-apple-system,BlinkMacSystemFont,sans-serif',
   },
   custom: {
-    name:'🎨 Custom',
+    name:'ðŸŽ¨ Custom',
     bg:'#0a0a0a', surface:'#111', card:'#1a1a1a',
     green:'#00ff88', blue:'#4488ff', red:'#ff4444',
     gold:'#ffd700', text:'#ffffff', sub:'#666666', border:'#222222',
     radius:10, font:'system-ui,sans-serif',
   },
   urban: {
-    name:'🏙 Urban',
+    name:'ðŸ™ Urban',
     bg:'#1a1a18', surface:'#242420', card:'#2e2e28',
     green:'#ff6b00', blue:'#c8c8b4', red:'#ff2244',
     gold:'#f0e040', text:'#e8e8d8', sub:'#7a7a68', border:'#3a3a32',
     radius:2, font:"'Arial Black',impact,sans-serif",
   },
   psychedelic: {
-    name:'🌀 Psychedelic',
+    name:'ðŸŒ€ Psychedelic',
     bg:'#0d0015', surface:'#150025', card:'#1e0035',
     green:'#00ffaa', blue:'#ff00ff', red:'#ff2200',
     gold:'#ffee00', text:'#f0e0ff', sub:'#9966cc', border:'#4400aa',
     radius:20, font:"'Georgia',serif",
   },
   modern: {
-    name:'⚪ Modern',
+    name:'âšª Modern',
     bg:'#f5f5f3', surface:'#ffffff', card:'#ffffff',
     green:'#0066ff', blue:'#0066ff', red:'#ff3300',
     gold:'#ff6600', text:'#111111', sub:'#999999', border:'#e8e8e8',
     radius:4, font:"'Helvetica Neue',helvetica,sans-serif",
   },
   jazz: {
-    name:'🎷 Jazz',
+    name:'ðŸŽ· Jazz',
     bg:'#0a0810', surface:'#12101a', card:'#1a1628',
     green:'#c9a84c', blue:'#7b5ea7', red:'#c0392b',
     gold:'#c9a84c', text:'#e8dcc8', sub:'#7a6a58', border:'#2a2038',
     radius:8, font:"'Georgia','Times New Roman',serif",
   },
   graffiti: {
-    name:'🖌 Graffiti',
+    name:'ðŸ–Œ Graffiti',
     bg:'#0f0f0f', surface:'#1a1a1a', card:'#222',
     green:'#39ff14', blue:'#00cfff', red:'#ff073a',
     gold:'#ffe600', text:'#ffffff', sub:'#888', border:'#333',
     radius:0, font:"'Arial Black',impact,sans-serif",
   },
   farmlife: {
-    name:'🐄 Farm Life',
+    name:'ðŸ„ Farm Life',
     bg:'#f5f0e8', surface:'#fdfaf4', card:'#fff8ec',
     green:'#5a8a3c', blue:'#4a7ab5', red:'#c0392b',
     gold:'#d4a017', text:'#3d2b1f', sub:'#8b7355', border:'#d4c4a0',
     radius:12, font:"'Georgia',serif",
   },
   sunflower: {
-    name:'🌻 Sunflower',
+    name:'ðŸŒ» Sunflower',
     bg:'#1a1200', surface:'#251a00', card:'#302200',
     green:'#ffcc00', blue:'#ff9900', red:'#ff4400',
     gold:'#ffdd00', text:'#fff8e0', sub:'#aa8800', border:'#443300',
     radius:16, font:"'Georgia',serif",
   },
   butterfly: {
-    name:'🦋 Butterfly',
+    name:'ðŸ¦‹ Butterfly',
     bg:'#0f001a', surface:'#1a0030', card:'#220040',
     green:'#cc44ff', blue:'#ff88ee', red:'#ff2288',
     gold:'#ffcc88', text:'#ffe0ff', sub:'#bb66cc', border:'#440066',
     radius:24, font:"-apple-system,'SF Pro Display',sans-serif",
   },
   rose: {
-    name:'🌹 Rose',
+    name:'ðŸŒ¹ Rose',
     bg:'#1a0008', surface:'#250010', card:'#300018',
     green:'#ff4488', blue:'#ff88aa', red:'#ff0044',
     gold:'#ffcc88', text:'#ffe8ee', sub:'#cc6688', border:'#550022',
@@ -114,7 +114,7 @@ function getTheme() {
   } catch { return THEMES.operator; }
 }
 
-// Active theme — components import this
+// Active theme â€” components import this
 let C = getTheme();
 
 // Refresh C when theme changes
@@ -160,7 +160,7 @@ const st = {
   settingSection: { fontSize:11, fontWeight:'bold', textTransform:'uppercase', letterSpacing:1, color:C.sub, marginTop:16, marginBottom:8 },
 };
 
-// ─── Toggle Switch ────────────────────────────────────────────────
+// â”€â”€â”€ Toggle Switch â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function Toggle({ value, onChange, color='#00ff88' }) {
   return (
     <div onClick={()=>onChange(!value)} style={{
@@ -175,7 +175,7 @@ function Toggle({ value, onChange, color='#00ff88' }) {
   );
 }
 
-// ─── Camera Settings Panel ────────────────────────────────────────
+// â”€â”€â”€ Camera Settings Panel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function CameraSettingsPanel({ device, settings, onChange, onClose, onDeviceUpdated }) {
   const [s, setS] = useState(settings || {
     camMode: 'security',
@@ -207,12 +207,12 @@ function CameraSettingsPanel({ device, settings, onChange, onClose, onDeviceUpda
         rtsp_url: devRtsp,
         is_motion_detection_enabled: s.motionEnabled,
       });
-      setSaveMsg('✅ Saved!');
+      setSaveMsg('âœ… Saved!');
       if (onDeviceUpdated) onDeviceUpdated({ ...device, name: devName, location: devLocation, rtsp_url: devRtsp });
       onChange(s);
       setTimeout(() => { setSaveMsg(''); onClose(); }, 800);
     } catch(e) {
-      setSaveMsg('❌ ' + (e.response?.data?.message || e.message));
+      setSaveMsg('âŒ ' + (e.response?.data?.message || e.message));
     }
     setSaving(false);
   };
@@ -247,12 +247,12 @@ function CameraSettingsPanel({ device, settings, onChange, onClose, onDeviceUpda
     <div style={st.modal}>
       <div style={st.modalBox}>
         <div style={{...st.flexBetween, marginBottom:16}}>
-          <h2 style={{margin:0, color:C.green}}>⚙️ Camera Settings</h2>
-          <button style={{...st.btn,...st.btnGray}} onClick={onClose}>✕</button>
+          <h2 style={{margin:0, color:C.green}}>âš™ï¸ Camera Settings</h2>
+          <button style={{...st.btn,...st.btnGray}} onClick={onClose}>âœ•</button>
         </div>
 
         {/* Device Info */}
-        <p style={st.settingSection}>📷 Device Info</p>
+        <p style={st.settingSection}>ðŸ“· Device Info</p>
         <div style={{marginBottom:8}}>
           <label style={{color:C.sub,fontSize:12,display:'block',marginBottom:4}}>Camera Name</label>
           <input value={devName} onChange={e=>setDevName(e.target.value)}
@@ -278,7 +278,7 @@ function CameraSettingsPanel({ device, settings, onChange, onClose, onDeviceUpda
         </div>
 
         {/* Mode */}
-        <p style={st.settingSection}>📷 Camera Mode</p>
+        <p style={st.settingSection}>ðŸ“· Camera Mode</p>
         <div style={{display:'flex', gap:8, marginBottom:8}}>
           {['dashcam','security'].map(m=>(
             <button key={m} onClick={()=>update('camMode',m)} style={{
@@ -287,30 +287,30 @@ function CameraSettingsPanel({ device, settings, onChange, onClose, onDeviceUpda
               color: s.camMode===m ? '#000' : C.text,
               border:`1px solid ${s.camMode===m?(m==='dashcam'?C.green:C.blue):C.border}`,
             }}>
-              {m==='dashcam'?'🚗 Dash Cam':'🔒 Security Cam'}
+              {m==='dashcam'?'ðŸš— Dash Cam':'ðŸ”’ Security Cam'}
             </button>
           ))}
         </div>
 
         {/* Loop options */}
-        <p style={st.settingSection}>🔁 Recording Mode</p>
+        <p style={st.settingSection}>ðŸ” Recording Mode</p>
         <div style={{display:'flex', gap:6, flexWrap:'wrap', marginBottom:8}}>
           <button onClick={()=>update('loopForever',true)} style={{
             ...st.btn, backgroundColor:s.loopForever?C.gold:C.card,
             color:s.loopForever?'#000':C.text, border:`1px solid ${s.loopForever?C.gold:C.border}`,
-          }}>♾️ Loop Forever ⭐</button>
+          }}>â™¾ï¸ Loop Forever â­</button>
           {LOOP_OPTIONS.map(o=>(
             <button key={o.value} onClick={()=>{ update('loopForever',false); update('loopDuration',o.value); }} style={{
               ...st.btn,
               backgroundColor:!s.loopForever&&s.loopDuration===o.value?C.green:C.card,
               color:!s.loopForever&&s.loopDuration===o.value?'#000':C.text,
               border:`1px solid ${!s.loopForever&&s.loopDuration===o.value?C.green:C.border}`,
-            }}>⏱ {o.label}</button>
+            }}>â± {o.label}</button>
           ))}
         </div>
 
         {s.loopForever && <>
-          <p style={st.settingSection}>🎬 Clip Length (Loop Forever)</p>
+          <p style={st.settingSection}>ðŸŽ¬ Clip Length (Loop Forever)</p>
           <div style={{display:'flex', gap:6, marginBottom:8}}>
             {CLIP_SIZES.map(o=>(
               <button key={o.value} onClick={()=>update('clipSize',o.value)} style={{
@@ -324,7 +324,7 @@ function CameraSettingsPanel({ device, settings, onChange, onClose, onDeviceUpda
         </>}
 
         {/* Security detection */}
-        <p style={st.settingSection}>🔒 Security Detection</p>
+        <p style={st.settingSection}>ðŸ”’ Security Detection</p>
         <div style={st.toggle}>
           <div>
             <div style={st.toggleLabel}>Motion Detection</div>
@@ -341,7 +341,7 @@ function CameraSettingsPanel({ device, settings, onChange, onClose, onDeviceUpda
         </div>
 
         {/* Night Vision */}
-        <p style={st.settingSection}>🌙 Night Vision</p>
+        <p style={st.settingSection}>ðŸŒ™ Night Vision</p>
         <div style={st.toggle}>
           <div>
             <div style={st.toggleLabel}>Night Mode</div>
@@ -351,17 +351,17 @@ function CameraSettingsPanel({ device, settings, onChange, onClose, onDeviceUpda
         </div>
         <div style={st.toggle}>
           <div>
-            <div style={st.toggleLabel}>Night Vision Pro ⭐</div>
+            <div style={st.toggleLabel}>Night Vision Pro â­</div>
             <div style={st.toggleNote}>Phosphor green contrast enhancement</div>
           </div>
           <Toggle value={s.nightVisionPro} onChange={v=>{ update('nightVisionPro',v); if(v) update('nightVision',true); }} color={C.gold}/>
         </div>
 
         {/* Storage */}
-        <p style={st.settingSection}>☁️ Storage</p>
+        <p style={st.settingSection}>â˜ï¸ Storage</p>
         <div style={st.toggle}>
           <div>
-            <div style={st.toggleLabel}>Cloud Upload ⭐</div>
+            <div style={st.toggleLabel}>Cloud Upload â­</div>
             <div style={st.toggleNote}>Auto-upload clips to DigitalOcean Spaces</div>
           </div>
           <Toggle value={s.cloudUpload} onChange={v=>update('cloudUpload',v)}/>
@@ -370,7 +370,7 @@ function CameraSettingsPanel({ device, settings, onChange, onClose, onDeviceUpda
         <div style={{display:'flex', gap:8, marginTop:20}}>
           <button style={{...st.btn,backgroundColor:'#3d1a1a',color:C.red,border:`1px solid ${C.red}40`}}
             onClick={deleteDevice} disabled={deleting}>
-            {deleting?'Deleting...':'🗑 Delete'}
+            {deleting?'Deleting...':'ðŸ—‘ Delete'}
           </button>
           <button style={{...st.btn,...st.btnGray, flex:1}} onClick={onClose}>Cancel</button>
           <button style={{...st.btn,...st.btnGreen, flex:2, opacity:saving?0.6:1}}
@@ -378,15 +378,15 @@ function CameraSettingsPanel({ device, settings, onChange, onClose, onDeviceUpda
             {saving?'Saving...':'Save Settings'}
           </button>
           {saveMsg && <div style={{width:'100%',textAlign:'center',fontSize:12,marginTop:4,
-            color:saveMsg.startsWith('✅')?C.green:C.red}}>{saveMsg}</div>}
+            color:saveMsg.startsWith('âœ…')?C.green:C.red}}>{saveMsg}</div>}
         </div>
       </div>
     </div>
   );
 }
 
-// ─── Camera Viewer Card ───────────────────────────────────────────
-// ─── RTSP Relay Viewer ────────────────────────────────────────────
+// â”€â”€â”€ Camera Viewer Card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â”€â”€â”€ RTSP Relay Viewer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Connects to /relay namespace, requests stream from agent,
 // plays fMP4 chunks via MSE. Works from ANYWHERE remotely.
 function RTSPViewer({ device, onClose, orgId: propOrgId }) {
@@ -424,11 +424,11 @@ function RTSPViewer({ device, onClose, orgId: propOrgId }) {
     });
 
     relaySocket.on('relay:waiting-for-agent', ({ message }) => {
-      setStatus('⏳ ' + message);
+      setStatus('â³ ' + message);
     });
 
     relaySocket.on('relay:stream-ready', ({ mimeType, deviceName }) => {
-      setStatus(`🎥 Stream starting for ${deviceName || device.name}...`);
+      setStatus(`ðŸŽ¥ Stream starting for ${deviceName || device.name}...`);
       setAgentOk(true);
       setupMSE(mimeType || 'video/mp4; codecs="avc1.42E01E, mp4a.40.2"');
     });
@@ -501,23 +501,23 @@ function RTSPViewer({ device, onClose, orgId: propOrgId }) {
       <div style={{width:'100%',maxWidth:900,padding:16}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
           <div>
-            <h2 style={{color:'#fff',margin:0,fontSize:18}}>📡 {device.name}</h2>
+            <h2 style={{color:'#fff',margin:0,fontSize:18}}>ðŸ“¡ {device.name}</h2>
             <div style={{color:'#888',fontSize:12,marginTop:4}}>
-              Remote RTSP Stream · {device.location}
-              {agentOk && <span style={{color:'#4ade80',marginLeft:8}}>● Live</span>}
+              Remote RTSP Stream Â· {device.location}
+              {agentOk && <span style={{color:'#4ade80',marginLeft:8}}>â— Live</span>}
             </div>
           </div>
           <button onClick={onClose}
             style={{background:'#333',border:'none',color:'#fff',
               padding:'8px 16px',borderRadius:8,cursor:'pointer',fontSize:14}}>
-            ✕ Close
+            âœ• Close
           </button>
         </div>
 
         {error && (
           <div style={{backgroundColor:'#3d1a1a',border:'1px solid #ff4444',
             borderRadius:8,padding:16,marginBottom:12,color:'#ff8888'}}>
-            <div style={{fontWeight:'bold',marginBottom:4}}>⚠️ Stream Error</div>
+            <div style={{fontWeight:'bold',marginBottom:4}}>âš ï¸ Stream Error</div>
             <div style={{fontSize:13}}>{error}</div>
             <div style={{fontSize:12,marginTop:8,color:'#aaa'}}>
               Make sure stream-agent.js is running on your local network:
@@ -547,7 +547,7 @@ function RTSPViewer({ device, onClose, orgId: propOrgId }) {
         </div>
 
         <div style={{color:'#555',fontSize:11,textAlign:'center',marginTop:8}}>
-          Stream relayed via local agent · {device.rtsp_url?.replace(/:([^:@]+)@/, ':***@') || 'RTSP'}
+          Stream relayed via local agent Â· {device.rtsp_url?.replace(/:([^:@]+)@/, ':***@') || 'RTSP'}
         </div>
       </div>
     </div>
@@ -582,7 +582,7 @@ function CameraCard({ device, socket, onEvent, onSettings, settings, onWatchRemo
           hls.attachMedia(video);
           hls.on(window.Hls.Events.MANIFEST_PARSED, () => { video.play(); setHlsPlaying(true); });
           hls.on(window.Hls.Events.ERROR, (e, d) => {
-            if (d.fatal) { setHlsError('Stream error — check camera connection'); hls.destroy(); setHlsPlaying(false); }
+            if (d.fatal) { setHlsError('Stream error â€” check camera connection'); hls.destroy(); setHlsPlaying(false); }
           });
           hlsRef.current = hls;
         } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
@@ -628,7 +628,7 @@ function CameraCard({ device, socket, onEvent, onSettings, settings, onWatchRemo
       // Auto-connect if Watch Live was clicked while camera was offline
       if (pendingWatchRef.current) {
         pendingWatchRef.current = false;
-        console.log('📺 Camera came online after command — auto-connecting');
+        console.log('ðŸ“º Camera came online after command â€” auto-connecting');
         setTimeout(()=>doWebRTCConnect(), 800);
       }
     }};
@@ -637,7 +637,7 @@ function CameraCard({ device, socket, onEvent, onSettings, settings, onWatchRemo
     socket.on('camera:offline', onOffline);
     socket.on('webrtc:offer', async({offer,fromSocketId})=>{
       if (!pcRef.current) return;
-      console.log('📺 Received WebRTC offer from:', fromSocketId);
+      console.log('ðŸ“º Received WebRTC offer from:', fromSocketId);
       cameraSocketIdRef.current = fromSocketId;
       await pcRef.current.setRemoteDescription(new RTCSessionDescription(offer));
       const answer = await pcRef.current.createAnswer();
@@ -666,7 +666,7 @@ function CameraCard({ device, socket, onEvent, onSettings, settings, onWatchRemo
     });
     pcRef.current = pc;
     pc.ontrack = e=>{
-      console.log('📺 Got track:', e.track.kind, e.streams.length);
+      console.log('ðŸ“º Got track:', e.track.kind, e.streams.length);
       if(videoRef.current && e.streams[0]) {
         videoRef.current.srcObject = e.streams[0];
         videoRef.current.play().catch(()=>{});
@@ -678,20 +678,20 @@ function CameraCard({ device, socket, onEvent, onSettings, settings, onWatchRemo
       }
     };
     pc.onconnectionstatechange = ()=>{
-      console.log('📺 WebRTC state:', pc.connectionState);
-      setStatus(pc.connectionState==='connected'?'● Live':pc.connectionState);
+      console.log('ðŸ“º WebRTC state:', pc.connectionState);
+      setStatus(pc.connectionState==='connected'?'â— Live':pc.connectionState);
       if (pc.connectionState==='failed'||pc.connectionState==='disconnected') {
-        setStatus('Connection lost — click Reconnect');
+        setStatus('Connection lost â€” click Reconnect');
       }
     };
     pc.addTransceiver('video',{direction:'recvonly'});
     pc.addTransceiver('audio',{direction:'recvonly'});
-    console.log('📺 viewer:watch for device:', device.id);
+    console.log('ðŸ“º viewer:watch for device:', device.id);
     socket.emit('viewer:watch',{deviceId:device.id});
     setWatching(true); setStatus('Connecting...');
   };
 
-  // Unified Watch Live — works whether camera is online or offline
+  // Unified Watch Live â€” works whether camera is online or offline
   const startWatching = () => {
     if (!socket) return;
     if (online) {
@@ -703,12 +703,12 @@ function CameraCard({ device, socket, onEvent, onSettings, settings, onWatchRemo
       socket.emit('camera:command', {deviceId: device.id, command: 'start'});
       sessionStorage.setItem('autoStartBroadcast', '1');
       sessionStorage.setItem('autoLinkDevice', device.id);
-      console.log('📺 Sent camera:command start to:', device.id);
+      console.log('ðŸ“º Sent camera:command start to:', device.id);
       setTimeout(()=>{
         if (pendingWatchRef.current) {
           pendingWatchRef.current = false;
           setWatching(false);
-          setStatus('Offline — camera did not respond');
+          setStatus('Offline â€” camera did not respond');
         }
       }, 15000);
     }
@@ -735,10 +735,10 @@ function CameraCard({ device, socket, onEvent, onSettings, settings, onWatchRemo
       if (!videoRef.current) return;
       const ct = videoRef.current.currentTime;
       if (ct === lastTime && videoRef.current.srcObject) {
-        setStatus('⚠️ Feed frozen — click Reconnect');
+        setStatus('âš ï¸ Feed frozen â€” click Reconnect');
       } else {
         lastTime = ct;
-        if (status === '⚠️ Feed frozen — click Reconnect') setStatus('● Live');
+        if (status === 'âš ï¸ Feed frozen â€” click Reconnect') setStatus('â— Live');
       }
     };
     frozenTimer = setInterval(checkFrozen, 10000);
@@ -747,7 +747,7 @@ function CameraCard({ device, socket, onEvent, onSettings, settings, onWatchRemo
 
   const camMode   = settings?.camMode || 'security';
   const modeColor = camMode==='dashcam' ? C.green : C.blue;
-  const modeLabel = camMode==='dashcam' ? '🚗 Dash Cam' : '🔒 Security Cam';
+  const modeLabel = camMode==='dashcam' ? 'ðŸš— Dash Cam' : 'ðŸ”’ Security Cam';
 
   const nvFilter = {
     off:     'none',
@@ -797,7 +797,7 @@ function CameraCard({ device, socket, onEvent, onSettings, settings, onWatchRemo
           <div style={{width:8,height:8,borderRadius:'50%',backgroundColor:online?C.green:C.sub}}/>
         </div>
       </div>
-      <div style={{color:C.sub,fontSize:12,marginBottom:8}}>📍 {device.location||'—'}</div>
+      <div style={{color:C.sub,fontSize:12,marginBottom:8}}>ðŸ“ {device.location||'â€”'}</div>
 
       <div style={st.videoBox}>
         {watching
@@ -811,15 +811,15 @@ function CameraCard({ device, socket, onEvent, onSettings, settings, onWatchRemo
               muted={muted}
               onLoadedMetadata={e=>{ if(e.target.paused) e.target.play(); }}/>
           : <div style={{...st.videoEl,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',color:C.sub,position:'absolute',inset:0}}>
-              <span style={{fontSize:40}}>📷</span>
+              <span style={{fontSize:40}}>ðŸ“·</span>
               <span style={{marginTop:8,fontSize:13}}>{status}</span>
             </div>
         }
-        {watching && <div style={{position:'absolute',top:8,left:8,backgroundColor:'rgba(204,0,0,0.9)',color:'#fff',padding:'2px 8px',borderRadius:4,fontSize:11,fontWeight:'bold'}}>● LIVE</div>}
-        {talkback  && <div style={{position:'absolute',top:8,right:8,backgroundColor:'rgba(0,150,255,0.9)',color:'#fff',padding:'2px 8px',borderRadius:4,fontSize:11,fontWeight:'bold'}}>🎤 TALK</div>}
+        {watching && <div style={{position:'absolute',top:8,left:8,backgroundColor:'rgba(204,0,0,0.9)',color:'#fff',padding:'2px 8px',borderRadius:4,fontSize:11,fontWeight:'bold'}}>â— LIVE</div>}
+        {talkback  && <div style={{position:'absolute',top:8,right:8,backgroundColor:'rgba(0,150,255,0.9)',color:'#fff',padding:'2px 8px',borderRadius:4,fontSize:11,fontWeight:'bold'}}>ðŸŽ¤ TALK</div>}
         {nvMode!=='off' && watching && (
           <div style={{position:'absolute',bottom:8,left:8,fontSize:10,color:nvMode==='green'?C.green:nvMode==='thermal'?'#ff6600':'#fff',backgroundColor:'rgba(0,0,0,0.6)',padding:'2px 6px',borderRadius:3}}>
-            {nvMode==='green'?'🟢 NV':'nvMode'==='thermal'?'🔴 THERMAL':'☀️ BRIGHT'}
+            {nvMode==='green'?'ðŸŸ¢ NV':'nvMode'==='thermal'?'ðŸ”´ THERMAL':'â˜€ï¸ BRIGHT'}
           </div>
         )}
       </div>
@@ -833,7 +833,7 @@ function CameraCard({ device, socket, onEvent, onSettings, settings, onWatchRemo
                     fontWeight:'bold'}}
                   onClick={() => onWatchRemote && onWatchRemote(device)}
                 >
-                  📡 Watch Remote
+                  ðŸ“¡ Watch Remote
                 </button>
               ) : (
                 <button
@@ -845,35 +845,35 @@ function CameraCard({ device, socket, onEvent, onSettings, settings, onWatchRemo
                   onClick={startWatching}
                   disabled={!socket}
                 >
-                  {online ? '▶ Watch Live' : '▶ Watch Live (wake camera)'}
+                  {online ? 'â–¶ Watch Live' : 'â–¶ Watch Live (wake camera)'}
                 </button>
               )}
             </>
           : <>
               <button style={{...st.btn,...st.btnRed,flex:1}}
-                onClick={isRtspCamera ? stopHLSStream : stopWatching}>⏹ Stop</button>
-              <button style={{...st.btn,...st.btnGray,flex:1,fontSize:11}} onClick={reconnect} title="Reconnect this feed without affecting others">🔄 Reconnect</button>
+                onClick={isRtspCamera ? stopHLSStream : stopWatching}>â¹ Stop</button>
+              <button style={{...st.btn,...st.btnGray,flex:1,fontSize:11}} onClick={reconnect} title="Reconnect this feed without affecting others">ðŸ”„ Reconnect</button>
             </>
         }
         {watching && <>
           <button title={muted?'Unmute':'Mute'} style={{...st.btn,...st.btnGray,padding:'6px 10px'}} onClick={()=>{ if(videoRef.current) videoRef.current.muted=!muted; setMuted(m=>!m); }}>
-            {muted?'🔇':'🔊'}
+            {muted?'ðŸ”‡':'ðŸ”Š'}
           </button>
           <button title="Talkback" style={{...st.btn,padding:'6px 10px',backgroundColor:talkback?'#4488ff':C.card,border:`1px solid ${talkback?C.blue:C.border}`}} onClick={toggleTalkback}>
-            🎤
+            ðŸŽ¤
           </button>
-          <button title="Snapshot" style={{...st.btn,...st.btnGray,padding:'6px 10px'}} onClick={takeSnapshot}>📸</button>
+          <button title="Snapshot" style={{...st.btn,...st.btnGray,padding:'6px 10px'}} onClick={takeSnapshot}>ðŸ“¸</button>
           <button title="Camera Controls" style={{...st.btn,...st.btnGray,padding:'6px 10px',backgroundColor:showControls?C.blue:C.card,border:`1px solid ${showControls?C.blue:C.border}`}}
-            onClick={()=>setShowControls(s=>!s)}>🎛</button>
+            onClick={()=>setShowControls(s=>!s)}>ðŸŽ›</button>
         </>}
-        <button style={{...st.btn,...st.btnGray,padding:'6px 10px'}} onClick={onSettings} title="Settings">⚙️</button>
+        <button style={{...st.btn,...st.btnGray,padding:'6px 10px'}} onClick={onSettings} title="Settings">âš™ï¸</button>
       </div>
 
       {watching && showControls && (
         <div style={{marginTop:8,backgroundColor:'#0d0d0d',borderRadius:8,padding:10,border:`1px solid ${C.border}`}}>
           <div style={{marginBottom:10}}>
             <div style={{...st.flexBetween,marginBottom:4}}>
-              <span style={{fontSize:12,color:C.sub}}>🔍 Zoom {zoom.toFixed(1)}x</span>
+              <span style={{fontSize:12,color:C.sub}}>ðŸ” Zoom {zoom.toFixed(1)}x</span>
               <button style={{...st.btn,...st.btnGray,padding:'2px 8px',fontSize:11}} onClick={()=>setZoom(1)}>Reset</button>
             </div>
             <input type="range" min={1} max={4} step={0.1} value={zoom}
@@ -889,13 +889,13 @@ function CameraCard({ device, socket, onEvent, onSettings, settings, onWatchRemo
           </div>
 
           <div style={{marginBottom:10}}>
-            <div style={{fontSize:12,color:C.sub,marginBottom:6}}>🌙 Night Vision / Image Enhancement</div>
+            <div style={{fontSize:12,color:C.sub,marginBottom:6}}>ðŸŒ™ Night Vision / Image Enhancement</div>
             <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
               {[
                 {id:'off',     label:'Off',      color:C.sub},
-                {id:'bright',  label:'☀️ Bright', color:'#ffcc44'},
-                {id:'green',   label:'🟢 NV',     color:C.green},
-                {id:'thermal', label:'🔴 Thermal',color:'#ff6600'},
+                {id:'bright',  label:'â˜€ï¸ Bright', color:'#ffcc44'},
+                {id:'green',   label:'ðŸŸ¢ NV',     color:C.green},
+                {id:'thermal', label:'ðŸ”´ Thermal',color:'#ff6600'},
               ].map(m=>(
                 <button key={m.id} onClick={()=>setNvMode(m.id)} style={{
                   ...st.btn, flex:1, fontSize:11, padding:'5px 4px',
@@ -910,8 +910,8 @@ function CameraCard({ device, socket, onEvent, onSettings, settings, onWatchRemo
           {nvMode==='off' && (
             <div style={{marginBottom:8}}>
               <div style={{...st.flexBetween,marginBottom:4}}>
-                <span style={{fontSize:12,color:C.sub}}>☀️ Brightness {brightness}%</span>
-                <span style={{fontSize:12,color:C.sub}}>◑ Contrast {contrast}%</span>
+                <span style={{fontSize:12,color:C.sub}}>â˜€ï¸ Brightness {brightness}%</span>
+                <span style={{fontSize:12,color:C.sub}}>â—‘ Contrast {contrast}%</span>
               </div>
               <div style={{display:'flex',gap:8}}>
                 <input type="range" min={50} max={200} value={brightness} onChange={e=>setBrightness(parseInt(e.target.value))} style={{flex:1,accentColor:'#ffcc44'}}/>
@@ -925,17 +925,17 @@ function CameraCard({ device, socket, onEvent, onSettings, settings, onWatchRemo
 
       {settings && (
         <div style={{marginTop:6,display:'flex',gap:5,flexWrap:'wrap'}}>
-          {settings.motionEnabled && <span style={{fontSize:10,color:C.green,border:`1px solid ${C.green}40`,padding:'1px 6px',borderRadius:4}}>👁 Motion</span>}
-          {settings.soundEnabled  && <span style={{fontSize:10,color:C.blue, border:`1px solid ${C.blue}40`, padding:'1px 6px',borderRadius:4}}>🔊 Sound</span>}
-          {settings.nightVision   && <span style={{fontSize:10,color:'#aaa', border:`1px solid #aaa40`,    padding:'1px 6px',borderRadius:4}}>🌙 NV</span>}
-          {settings.cloudUpload   && <span style={{fontSize:10,color:C.gold, border:`1px solid ${C.gold}40`,padding:'1px 6px',borderRadius:4}}>☁️ Cloud</span>}
+          {settings.motionEnabled && <span style={{fontSize:10,color:C.green,border:`1px solid ${C.green}40`,padding:'1px 6px',borderRadius:4}}>ðŸ‘ Motion</span>}
+          {settings.soundEnabled  && <span style={{fontSize:10,color:C.blue, border:`1px solid ${C.blue}40`, padding:'1px 6px',borderRadius:4}}>ðŸ”Š Sound</span>}
+          {settings.nightVision   && <span style={{fontSize:10,color:'#aaa', border:`1px solid #aaa40`,    padding:'1px 6px',borderRadius:4}}>ðŸŒ™ NV</span>}
+          {settings.cloudUpload   && <span style={{fontSize:10,color:C.gold, border:`1px solid ${C.gold}40`,padding:'1px 6px',borderRadius:4}}>â˜ï¸ Cloud</span>}
         </div>
       )}
     </div>
   );
 }
 
-// ─── Live Clock overlay for video ────────────────────────────────
+// â”€â”€â”€ Live Clock overlay for video â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function VideoTimestamp() {
   const [now, setNow] = useState(new Date());
   useEffect(()=>{ const t=setInterval(()=>setNow(new Date()),1000); return()=>clearInterval(t); },[]);
@@ -950,7 +950,7 @@ function VideoTimestamp() {
   );
 }
 
-// ─── Canvas timestamp burn-in for recordings ──────────────────────
+// â”€â”€â”€ Canvas timestamp burn-in for recordings â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function createTimestampedStream(sourceStream) {
   const video = document.createElement('video');
   video.srcObject = sourceStream;
@@ -1007,19 +1007,19 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
       auth:{ token }, transports:['websocket','polling']
     });
     s.on('connect', ()=>{
-      console.log('📡 Camera socket connected:', s.id);
+      console.log('ðŸ“¡ Camera socket connected:', s.id);
       camSocketRef.current = s;
       setCamSocket(null);
       setTimeout(()=>setCamSocket(s), 10);
     });
     s.on('disconnect', ()=>{
-      console.log('📡 Camera socket disconnected — will auto-reconnect');
+      console.log('ðŸ“¡ Camera socket disconnected â€” will auto-reconnect');
       setCamSocket(null);
     });
 
     // Register camera:command directly on 's'
     s.on('camera:command', ({command, params}) => {
-      console.log('📡 [DIRECT] camera:command on s:', command, params);
+      console.log('ðŸ“¡ [DIRECT] camera:command on s:', command, params);
       if (command === 'arm' || command === 'disarm') {
         if (executeCommandRef.current) {
           executeCommandRef.current(command, params || {});
@@ -1027,7 +1027,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
           window.__executeCommand(command, params || {});
         } else {
           window.__pendingSocketCommand = {command, params: params || {}};
-          console.log('📡 Stored pending command:', command);
+          console.log('ðŸ“¡ Stored pending command:', command);
         }
       }
     });
@@ -1096,7 +1096,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
   const canvasCleanupRef  = useRef(null);
   const tsStreamRef       = useRef(null);
   const triggerEventIdRef = useRef(null);
-  // Function refs — allow socket closure to call functions defined later in component
+  // Function refs â€” allow socket closure to call functions defined later in component
   const startMotionDetRef = useRef(null);
   const startSoundDetRef  = useRef(null);
   const stopMotionDetRef  = useRef(null);
@@ -1106,12 +1106,12 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
   const [remoteStartPending, setRemoteStartPending] = useState(false);
   const [pendingCommand, setPendingCommand] = useState(null);
 
-  // ── PATCH 1: Removed premature enumerateDevices() on mount ──────
+  // â”€â”€ PATCH 1: Removed premature enumerateDevices() on mount â”€â”€â”€â”€â”€â”€
   // Camera devices are enumerated inside startStream() AFTER getUserMedia
   // succeeds so that browser returns full labels (requires permission first).
   useEffect(()=>{
     // Clear any stale auto-start flags from previous sessions
-    // Never auto-call startStream() — requires explicit user click for camera permission
+    // Never auto-call startStream() â€” requires explicit user click for camera permission
     sessionStorage.removeItem('autoStartBroadcast');
     sessionStorage.removeItem('usbBroadcasting');
     // Restore linked device selection if set
@@ -1137,15 +1137,15 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
     const orgId = payload.organizationId || payload.org_id || organizationId;
     const devName = devices.find(d=>d.id===linkedDevice)?.name || linkedDevice;
     camSocketRef.current.emit('auth',{deviceId:linkedDevice,deviceName:devName,role:'camera',organizationId:orgId,userId:payload.userId||userId});
-    console.log('📡 Re-auth — deviceId:', linkedDevice, 'name:', devName);
+    console.log('ðŸ“¡ Re-auth â€” deviceId:', linkedDevice, 'name:', devName);
   },[linkedDevice, devices, camSocket]);
 
   useEffect(()=>{
     const cs = camSocket;
     if (!cs || !cs.id) { return; }
-    console.log('📺 Registering handlers on camera socket:', cs.id);
+    console.log('ðŸ“º Registering handlers on camera socket:', cs.id);
 
-    // Auth as camera in standby immediately — even before broadcasting
+    // Auth as camera in standby immediately â€” even before broadcasting
     // This allows the signaling server to route camera:command to us
     const token = localStorage.getItem('accessToken');
     const payload = token ? JSON.parse(atob(token.split('.')[1])) : {};
@@ -1161,22 +1161,22 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
         organizationId: orgId,
         userId: payload.userId || userId,
       });
-      console.log('📡 Camera socket auth on connect — deviceId:', currentLinkedDevice, devName);
+      console.log('ðŸ“¡ Camera socket auth on connect â€” deviceId:', currentLinkedDevice, devName);
     } else {
-      console.log('📡 Camera socket connected but no deviceId yet — will auth when device selected');
+      console.log('ðŸ“¡ Camera socket connected but no deviceId yet â€” will auth when device selected');
     }
 
-    // Remote start — viewer clicked Watch Live on Cameras tab
+    // Remote start â€” viewer clicked Watch Live on Cameras tab
     cs.on('camera:command', ({command, params}) => {
-      console.log('📡 Received camera:command:', command, params);
+      console.log('ðŸ“¡ Received camera:command:', command, params);
       if (command === 'start' && !streamRef.current) {
         if (navigator.permissions) {
           navigator.permissions.query({name:'camera'}).then(perm => {
             if (perm.state === 'granted') {
-              console.log('📡 Permission granted — auto-starting stream');
+              console.log('ðŸ“¡ Permission granted â€” auto-starting stream');
               startStream();
             } else {
-              console.log('📡 Permission needed — switching to USB tab');
+              console.log('ðŸ“¡ Permission needed â€” switching to USB tab');
               document.querySelectorAll('[data-tab]').forEach(t=>{
                 if(t.dataset.tab==='usb') t.click();
               });
@@ -1186,26 +1186,26 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
           startStream();
         }
       }
-      // Don't call functions directly — set state so useEffect can execute
+      // Don't call functions directly â€” set state so useEffect can execute
       // with all current function references available
       if (command === 'arm' || command === 'disarm') {
-        console.log('📡 [DIRECT] camera:command received:', command, params);
-        // Use ref callback — bypasses closure staleness entirely
+        console.log('ðŸ“¡ [DIRECT] camera:command received:', command, params);
+        // Use ref callback â€” bypasses closure staleness entirely
         // Try ref first, then window bridge as fallback
       if (executeCommandRef.current) {
           executeCommandRef.current(command, params || {});
       } else if (window.__executeCommand) {
-          console.log('📡 Using window bridge for command:', command);
+          console.log('ðŸ“¡ Using window bridge for command:', command);
           window.__executeCommand(command, params || {});
       } else {
-          console.log('📡 No command executor available yet — storing for later');
+          console.log('ðŸ“¡ No command executor available yet â€” storing for later');
           window.__pendingSocketCommand = {command, params: params || {}};
       }
       }
     });
 
     const sendOfferToViewer = async (viewerSocketId) => {
-      // Always read stream from videoRef as fallback — works even if streamRef closure is stale
+      // Always read stream from videoRef as fallback â€” works even if streamRef closure is stale
       const stream = streamRef.current || videoRef.current?.srcObject || window.__activeCameraStream;
       if (!stream) return false;
       if (!streamRef.current) streamRef.current = stream; // heal the ref
@@ -1219,21 +1219,21 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
       };
       const offer=await pc.createOffer();
       await pc.setLocalDescription(offer);
-      console.log('📺 Camera sending offer to viewer:', viewerSocketId);
+      console.log('ðŸ“º Camera sending offer to viewer:', viewerSocketId);
       cs.emit('webrtc:offer',{targetSocketId:viewerSocketId,offer});
       return true;
     };
 
     cs.on('viewer:request',async({viewerSocketId})=>{
-      // Try all stream sources — streamRef may be stale if socket registered before startStream ran
+      // Try all stream sources â€” streamRef may be stale if socket registered before startStream ran
       const stream = streamRef.current || videoRef.current?.srcObject || window.__activeCameraStream;
       if (stream && !streamRef.current) streamRef.current = stream;
-      console.log('📺 viewer:request from:', viewerSocketId, '| stream ready:', !!stream);
+      console.log('ðŸ“º viewer:request from:', viewerSocketId, '| stream ready:', !!stream);
       if (stream) {
         sendOfferToViewer(viewerSocketId);
       } else {
-        // Stream not started yet — poll every 500ms up to 15s
-        console.log('📺 Waiting for stream...');
+        // Stream not started yet â€” poll every 500ms up to 15s
+        console.log('ðŸ“º Waiting for stream...');
         let tries = 0;
         const poll = setInterval(()=>{
           tries++;
@@ -1241,11 +1241,11 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
           if (s) {
             clearInterval(poll);
             if (!streamRef.current) streamRef.current = s;
-            console.log('📺 Stream appeared — connecting viewer:', viewerSocketId);
+            console.log('ðŸ“º Stream appeared â€” connecting viewer:', viewerSocketId);
             sendOfferToViewer(viewerSocketId);
           } else if (tries >= 30) {
             clearInterval(poll);
-            console.log('📺 Stream never started for viewer:', viewerSocketId);
+            console.log('ðŸ“º Stream never started for viewer:', viewerSocketId);
           }
         }, 500);
       }
@@ -1326,13 +1326,13 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
       device: (() => {
         const hwName = camDevices.find(d=>d.deviceId===selectedDev)?.label || '';
         const regName = linkedDevice ? devices.find(d=>d.id===linkedDevice)?.name : '';
-        if (hwName && regName && hwName !== regName) return `${hwName} — ${regName}`;
+        if (hwName && regName && hwName !== regName) return `${hwName} â€” ${regName}`;
         return regName || hwName || 'Webcam';
       })(),
       deviceName: (() => {
         const hwName = camDevices.find(d=>d.deviceId===selectedDev)?.label || '';
         const regName = linkedDevice ? devices.find(d=>d.id===linkedDevice)?.name : '';
-        if (hwName && regName && hwName !== regName) return `${hwName} — ${regName}`;
+        if (hwName && regName && hwName !== regName) return `${hwName} â€” ${regName}`;
         return regName || hwName || 'Webcam';
       })(),
       camMode: 'security',
@@ -1340,11 +1340,11 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
     const eventWithClip = {...event, clip_url: null, clip_pending: true};
     setEvents(ev=>[eventWithClip,...ev].slice(0,50));
     if (onEvent) onEvent(eventWithClip);
-    setStatusMsg(`⚠️ ${type==='motion'?'Motion':'Sound'} detected! — Recording...`);
+    setStatusMsg(`âš ï¸ ${type==='motion'?'Motion':'Sound'} detected! â€” Recording...`);
     if (!isRecordingRef.current) startRecording(true, event.id);
   };
 
-  // ── PATCH 2 & 3: Support check + enumerate AFTER getUserMedia ───
+  // â”€â”€ PATCH 2 & 3: Support check + enumerate AFTER getUserMedia â”€â”€â”€
   const startStream = async () => {
     // PATCH 3: Check browser support before attempting
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -1370,14 +1370,14 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
       window.__activeCameraStream = stream; // global fallback for stale closures
       if (videoRef.current) videoRef.current.srcObject = stream;
 
-      // PATCH 1: Enumerate devices HERE — after permission granted, labels are available
+      // PATCH 1: Enumerate devices HERE â€” after permission granted, labels are available
       const devs = await navigator.mediaDevices.enumerateDevices();
       const vids = devs.filter(d=>d.kind==='videoinput');
       setCamDevices(vids);
       if (vids.length>0) setSelectedDev(vids[0].deviceId);
 
       setStreaming(true);
-      setStatusMsg('🟢 Broadcasting — select mode below');
+      setStatusMsg('ðŸŸ¢ Broadcasting â€” select mode below');
       try {
         const vt = stream.getVideoTracks()[0];
         const caps = vt.getCapabilities?.();
@@ -1391,7 +1391,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
         const payload = token ? JSON.parse(atob(token.split('.')[1])) : {};
         const orgId = payload.organizationId || payload.org_id || organizationId;
         camSocketRef.current.emit('auth',{ deviceId:linkedDevice, deviceName:devices.find(d=>d.id===linkedDevice)?.name||linkedDevice, role:'camera', organizationId:orgId, userId:payload.userId||userId });
-        console.log('📡 Camera socket authed as:', devices.find(d=>d.id===linkedDevice)?.name, 'org:', orgId);
+        console.log('ðŸ“¡ Camera socket authed as:', devices.find(d=>d.id===linkedDevice)?.name, 'org:', orgId);
       }
     } catch(e) {
       if (e.name==='NotAllowedError') {
@@ -1405,9 +1405,9 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
       else if (e.name==='NotFoundError') {
         alert(
           'No camera found on this device.\n\n' +
-          '• Make sure your webcam is plugged in and not in use by another app.\n' +
-          '• Try refreshing the page and clicking Start Broadcasting again.\n\n' +
-          'ℹ️  The USB/Webcam tab streams from THIS computer\'s webcam.\n' +
+          'â€¢ Make sure your webcam is plugged in and not in use by another app.\n' +
+          'â€¢ Try refreshing the page and clicking Start Broadcasting again.\n\n' +
+          'â„¹ï¸  The USB/Webcam tab streams from THIS computer\'s webcam.\n' +
           'To use a phone as a camera, use the mobile app or\n' +
           'scan a QR code from the "Enroll Camera" button.'
         );
@@ -1437,7 +1437,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
 
   const armCamera = () => {
     setIsArmed(true); isArmedRef.current=true;
-    setStatusMsg('🟢 Armed — monitoring...');
+    setStatusMsg('ðŸŸ¢ Armed â€” monitoring...');
     startMotionDetection();
     if (soundEnabled) startSoundDetection();
   };
@@ -1446,7 +1446,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
     setClipManagement(choice);
     setShowClipPrompt(false);
     setIsArmed(true); isArmedRef.current=true;
-    setStatusMsg('🟢 Armed — monitoring...');
+    setStatusMsg('ðŸŸ¢ Armed â€” monitoring...');
     startMotionDetection();
     if (soundEnabled) startSoundDetection();
   };
@@ -1455,7 +1455,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
     setIsArmed(false); isArmedRef.current=false;
     stopMotionDetection();
     if (isRecordingRef.current) stopRecording();
-    setStatusMsg('🟢 Broadcasting — select mode below');
+    setStatusMsg('ðŸŸ¢ Broadcasting â€” select mode below');
   };
 
   const startRecording = (triggered=false, triggerEventId=null) => {
@@ -1463,7 +1463,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
     const recStream = tsStreamRef.current || streamRef.current;
     if (!recStream || isRecordingRef.current) return;
     isRecordingRef.current=true; setIsRecording(true);
-    setStatusMsg(triggered?'🔴 Recording (triggered)':'🔴 Recording...');
+    setStatusMsg(triggered?'ðŸ”´ Recording (triggered)':'ðŸ”´ Recording...');
     setRecordingTime(0);
     recTimerRef.current = setInterval(()=>setRecordingTime(t=>t+1),1000);
     const chunks=[];
@@ -1488,14 +1488,14 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
         formData.append('device_id', linkedDevice||'');
         formData.append('filename', filename);
         const token = localStorage.getItem('accessToken');
-        setStatusMsg('☁️ Uploading...');
+        setStatusMsg('â˜ï¸ Uploading...');
         fetch(`${API}/api/recordings/upload`, {
           method:'POST',
           headers:{ Authorization:'Bearer '+token },
           body: formData,
         }).then(async r=>{
           if (r.ok) {
-            setStatusMsg('☁️ Clip uploaded');
+            setStatusMsg('â˜ï¸ Clip uploaded');
             const data = await r.json().catch(()=>({}));
             const clipUrl = data?.data?.url;
             const evId = triggerEventIdRef.current;
@@ -1506,14 +1506,14 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
             }
           } else {
             console.warn('Upload failed:', r.status);
-            setStatusMsg('⬇️ Saved locally (upload failed — downloading)');
+            setStatusMsg('â¬‡ï¸ Saved locally (upload failed â€” downloading)');
             const url2=URL.createObjectURL(blob);
             const a2=document.createElement('a');
             a2.href=url2; a2.download=filename; a2.click();
             setTimeout(()=>URL.revokeObjectURL(url2),5000);
           }
         }).catch(()=>{
-            setStatusMsg('⬇️ Cloud unavailable — downloading locally');
+            setStatusMsg('â¬‡ï¸ Cloud unavailable â€” downloading locally');
             const url2=URL.createObjectURL(blob);
             const a2=document.createElement('a');
             a2.href=url2; a2.download=filename; a2.click();
@@ -1523,7 +1523,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
 
       isRecordingRef.current=false; setIsRecording(false);
       alertActiveRef.current=false;
-      setStatusMsg(isArmedRef.current?'🟢 Armed — monitoring...':'🟢 Broadcasting');
+      setStatusMsg(isArmedRef.current?'ðŸŸ¢ Armed â€” monitoring...':'ðŸŸ¢ Broadcasting');
       if (recordMode==='loop' && isArmedRef.current) startRecording();
     };
     mr.start();
@@ -1541,19 +1541,19 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
     }
   };
 
-  // ── Execute remote arm/disarm commands ──────────────────────────
+  // â”€â”€ Execute remote arm/disarm commands â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // Use a ref callback so the socket closure can call it directly
   // without going through React state (avoids batching/closure issues)
   useEffect(()=>{
     const executor = (command, params) => {
-      console.log('📡 executeCommand:', command, '| stream:', !!streamRef.current, '| videoRef:', !!videoRef.current?.srcObject);
+      console.log('ðŸ“¡ executeCommand:', command, '| stream:', !!streamRef.current, '| videoRef:', !!videoRef.current?.srcObject);
 
       if (command === 'arm') {
         if (!streamRef.current && videoRef.current?.srcObject) {
           streamRef.current = videoRef.current.srcObject;
         }
         if (!streamRef.current) {
-          console.log('📡 Arm ignored: no stream');
+          console.log('ðŸ“¡ Arm ignored: no stream');
           return;
         }
         if (params.loopDuration) setLoopDuration(params.loopDuration);
@@ -1562,7 +1562,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
         if (params.soundEnabled !== undefined) setSoundEnabled(params.soundEnabled);
         setIsArmed(true); isArmedRef.current=true;
         setStreaming(true); // ensure streaming state is true so buttons show
-        setStatusMsg('🟢 Armed — monitoring...');
+        setStatusMsg('ðŸŸ¢ Armed â€” monitoring...');
         if (onUsbStatus) onUsbStatus('armed');
         startMotionDetection();
         if (soundEnabled) startSoundDetection();
@@ -1575,11 +1575,11 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
         setIsArmed(false); isArmedRef.current=false;
         stopMotionDetection();
         if (isRecordingRef.current) stopRecording();
-        setStatusMsg('🟢 Broadcasting');
+        setStatusMsg('ðŸŸ¢ Broadcasting');
         if (onUsbStatus) onUsbStatus('');
       }
     };
-  }); // intentionally no deps array — re-registers after every render with fresh closures
+  }); // intentionally no deps array â€” re-registers after every render with fresh closures
 
   const handleZoom = async (val) => {
     const z = parseFloat(val); setZoomLevel(z);
@@ -1593,7 +1593,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
 
   return (
     <div>
-      <h2 style={st.sectionHdr}>🔒 USB / Webcam — Security Camera</h2>
+      <h2 style={st.sectionHdr}>ðŸ”’ USB / Webcam â€” Security Camera</h2>
       <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:20}}>
 
         <div style={st.card}>
@@ -1624,13 +1624,13 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
               transition:'transform 0.15s',
             }} autoPlay playsInline muted/>
             {!streaming && <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',color:C.sub}}>
-              <span style={{fontSize:48}}>🔒</span><span style={{marginTop:8}}>No stream</span>
+              <span style={{fontSize:48}}>ðŸ”’</span><span style={{marginTop:8}}>No stream</span>
             </div>}
             {streaming && <>
               <div style={{position:'absolute',top:8,left:8,backgroundColor:isRecording?'rgba(204,0,0,0.9)':'rgba(0,100,0,0.85)',color:'#fff',padding:'2px 8px',borderRadius:4,fontSize:11,fontWeight:'bold'}}>
-                {isRecording?`● REC ${fmtTime(recordingTime)}`:`● LIVE • ${viewers}v`}
+                {isRecording?`â— REC ${fmtTime(recordingTime)}`:`â— LIVE â€¢ ${viewers}v`}
               </div>
-              {isArmed && !isRecording && <div style={{position:'absolute',top:8,right:8,backgroundColor:'rgba(0,80,0,0.85)',color:C.green,padding:'2px 8px',borderRadius:4,fontSize:11,fontWeight:'bold'}}>🟢 ARMED</div>}
+              {isArmed && !isRecording && <div style={{position:'absolute',top:8,right:8,backgroundColor:'rgba(0,80,0,0.85)',color:C.green,padding:'2px 8px',borderRadius:4,fontSize:11,fontWeight:'bold'}}>ðŸŸ¢ ARMED</div>}
               {nightVision && <div style={{position:'absolute',inset:0,backgroundColor:'rgba(0,255,70,0.15)',pointerEvents:'none'}}/>}
               <VideoTimestamp/>
               <div style={{position:'absolute',bottom:8,left:8,backgroundColor:'rgba(0,0,0,0.65)',color:'#fff',padding:'3px 8px',borderRadius:6,fontSize:12}}>{statusMsg}</div>
@@ -1640,7 +1640,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
           {streaming && (
             <div style={{marginTop:8,backgroundColor:'#0d0d0d',borderRadius:8,padding:8}}>
               <div style={{...st.flexBetween,marginBottom:6}}>
-                <span style={{fontSize:12,color:C.sub}}>🔍 {zoomLevel.toFixed(1)}x {hwZoomSupported&&<span style={{color:C.green,fontSize:10}}>HW</span>}</span>
+                <span style={{fontSize:12,color:C.sub}}>ðŸ” {zoomLevel.toFixed(1)}x {hwZoomSupported&&<span style={{color:C.green,fontSize:10}}>HW</span>}</span>
                 <button style={{...st.btn,...st.btnGray,padding:'3px 8px',fontSize:11}} onClick={()=>handleZoom(1)}>Reset</button>
               </div>
               <input type="range" min={1} max={hwZoomSupported?hwZoomRange.max:3} step={hwZoomSupported?hwZoomRange.step:0.1}
@@ -1651,25 +1651,25 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
 
           <div style={{display:'flex',gap:6,marginTop:8}}>
             {(!streaming && !streamRef.current && !videoRef.current?.srcObject)
-              ? <button style={{...st.btn,...st.btnGreen,flex:1}} onClick={startStream}>📡 Start Broadcasting</button>
+              ? <button style={{...st.btn,...st.btnGreen,flex:1}} onClick={startStream}>ðŸ“¡ Start Broadcasting</button>
               : <>
                   {!isArmed
                     ? <button style={{...st.btn,flex:2,backgroundColor:'rgba(0,255,136,0.15)',color:C.green,border:`2px solid ${C.green}`,fontWeight:'bold'}}
                         onClick={()=>armCamera()}>
-                        🟢 Start Monitoring
+                        ðŸŸ¢ Start Monitoring
                       </button>
                     : <button style={{...st.btn,flex:2,backgroundColor:'rgba(255,68,68,0.15)',color:C.red,border:`2px solid ${C.red}`,fontWeight:'bold'}}
                         onClick={disarmCamera}>
-                        🔴 Stop Monitoring
+                        ðŸ”´ Stop Monitoring
                       </button>
                   }
                   {isArmed && <>
                     {!isRecording
-                      ? <button style={{...st.btn,...st.btnBlue}} onClick={()=>startRecording()}>⏺ Record</button>
-                      : <button style={{...st.btn,...st.btnRed}} onClick={stopRecording}>⏹ Stop</button>
+                      ? <button style={{...st.btn,...st.btnBlue}} onClick={()=>startRecording()}>âº Record</button>
+                      : <button style={{...st.btn,...st.btnRed}} onClick={stopRecording}>â¹ Stop</button>
                     }
                   </>}
-                  <button style={{...st.btn,...st.btnRed,padding:'8px 10px'}} onClick={stopStream} title="Stop Broadcasting">■</button>
+                  <button style={{...st.btn,...st.btnRed,padding:'8px 10px'}} onClick={stopStream} title="Stop Broadcasting">â– </button>
                 </>
             }
           </div>
@@ -1677,10 +1677,10 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
           {isArmed && (
             <div style={{marginTop:8,backgroundColor:'#0d0d0d',borderRadius:8,padding:'8px 10px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
               <span style={{fontSize:12,color:C.sub}}>
-                📼 Clips: <span style={{color:C.green}}>
-                  {clipManagement==='download'?'⬇️ Download'
-                   :clipManagement==='cloud'?'☁️ Cloud'
-                   :clipManagement==='both'?'⬇️+☁️ Both'
+                ðŸ“¼ Clips: <span style={{color:C.green}}>
+                  {clipManagement==='download'?'â¬‡ï¸ Download'
+                   :clipManagement==='cloud'?'â˜ï¸ Cloud'
+                   :clipManagement==='both'?'â¬‡ï¸+â˜ï¸ Both'
                    :'Not set'}
                 </span>
               </span>
@@ -1692,20 +1692,20 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
 
         <div style={st.card}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
-            <p style={{fontWeight:'bold',margin:0,color:C.text,fontSize:15}}>⚙️ Security Settings</p>
+            <p style={{fontWeight:'bold',margin:0,color:C.text,fontSize:15}}>âš™ï¸ Security Settings</p>
             {linkedDevice && onSettings && (
               <button style={{...st.btn,...st.btnGray,fontSize:12,padding:'4px 10px'}}
                 onClick={()=>{ const dev=devices.find(d=>d.id===linkedDevice); if(dev) onSettings({...dev}); else if(linkedDevice) onSettings({id:linkedDevice, name:'', location:'', device_type:'usb'}); }}
-                title='Rename / Edit Camera'>✏️ Edit Camera</button>
+                title='Rename / Edit Camera'>âœï¸ Edit Camera</button>
             )}
           </div>
 
-          <p style={st.settingSection}>🎬 Recording Mode</p>
+          <p style={st.settingSection}>ðŸŽ¬ Recording Mode</p>
           <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:8}}>
             {[
-              {id:'manual',  label:'⏺ Manual'},
-              {id:'timed',   label:'⏱ Timed'},
-              {id:'loop',    label:'♾️ Loop'},
+              {id:'manual',  label:'âº Manual'},
+              {id:'timed',   label:'â± Timed'},
+              {id:'loop',    label:'â™¾ï¸ Loop'},
             ].map(m=>(
               <button key={m.id} onClick={()=>setRecordMode(m.id)} style={{
                 ...st.btn,
@@ -1718,7 +1718,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
           </div>
 
           {(recordMode==='timed'||recordMode==='loop') && <>
-            <p style={st.settingSection}>⏱ Clip Duration</p>
+            <p style={st.settingSection}>â± Clip Duration</p>
             <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:8}}>
               {LOOP_OPTS.map(o=>(
                 <button key={o.value} onClick={()=>setLoopDuration(o.value)} style={{
@@ -1731,7 +1731,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
             </div>
           </>}
 
-          <p style={st.settingSection}>🔒 Detection</p>
+          <p style={st.settingSection}>ðŸ”’ Detection</p>
           <div style={st.toggle}>
             <div>
               <div style={st.toggleLabel}>Motion Detection</div>
@@ -1761,18 +1761,18 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
             <Toggle value={soundEnabled} onChange={setSoundEnabled}/>
           </div>
 
-          <p style={st.settingSection}>🌙 Night Vision</p>
+          <p style={st.settingSection}>ðŸŒ™ Night Vision</p>
           <div style={st.toggle}>
             <div><div style={st.toggleLabel}>Night Mode</div><div style={st.toggleNote}>Green tint overlay</div></div>
             <Toggle value={nightVision} onChange={setNightVision}/>
           </div>
 
           {events.length>0 && <>
-            <p style={st.settingSection}>🚨 Recent Events ({events.length})</p>
+            <p style={st.settingSection}>ðŸš¨ Recent Events ({events.length})</p>
             <div style={{maxHeight:150,overflowY:'auto'}}>
               {events.slice(0,8).map((e)=>(
                 <div key={e.id} style={{display:'flex',gap:8,fontSize:12,padding:'4px 0',borderBottom:`1px solid ${C.border}`,alignItems:'center'}}>
-                  <span>{e.type==='motion'?'👁':'🔊'}</span>
+                  <span>{e.type==='motion'?'ðŸ‘':'ðŸ”Š'}</span>
                   <div style={{flex:1}}>
                     <span style={{color:C.text}}>{e.device}</span>
                     <span style={{color:C.sub,marginLeft:6}}>{e.time}</span>
@@ -1787,12 +1787,12 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
       {showClipPrompt && (
         <div style={st.modal} onClick={()=>setShowClipPrompt(false)}>
           <div style={{...st.modalBox,maxWidth:420}} onClick={e=>e.stopPropagation()}>
-            <h2 style={{margin:'0 0 8px',color:C.green}}>📼 How should clips be saved?</h2>
+            <h2 style={{margin:'0 0 8px',color:C.green}}>ðŸ“¼ How should clips be saved?</h2>
             <p style={{color:C.sub,fontSize:13,marginBottom:20}}>Choose where recorded clips are stored when motion or sound is detected.</p>
             {[
-              { id:'download', icon:'⬇️', title:'Download to this computer', desc:'Clips automatically download to your browser downloads folder.' },
-              { id:'cloud',    icon:'☁️', title:'Upload to cloud storage',    desc:'Clips upload to DigitalOcean Spaces. Requires Pro subscription.' },
-              { id:'both',     icon:'⬇️☁️', title:'Both — download + cloud', desc:'Save locally AND upload to cloud for redundancy.' },
+              { id:'download', icon:'â¬‡ï¸', title:'Download to this computer', desc:'Clips automatically download to your browser downloads folder.' },
+              { id:'cloud',    icon:'â˜ï¸', title:'Upload to cloud storage',    desc:'Clips upload to DigitalOcean Spaces. Requires Pro subscription.' },
+              { id:'both',     icon:'â¬‡ï¸â˜ï¸', title:'Both â€” download + cloud', desc:'Save locally AND upload to cloud for redundancy.' },
             ].map(opt=>(
               <button key={opt.id} onClick={()=>armWithClipChoice(opt.id)} style={{
                 display:'flex', alignItems:'center', gap:14, width:'100%',
@@ -1815,7 +1815,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
   );
 }
 
-// ─── Clips / Recordings Page ──────────────────────────────────────
+// â”€â”€â”€ Clips / Recordings Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function ClipsPage({ devices, onlineMap = {} }) {
   const [clips,      setClips]      = React.useState([]);
   const [loading,    setLoading]    = React.useState(true);
@@ -1886,8 +1886,8 @@ function ClipsPage({ devices, onlineMap = {} }) {
     <div>
       <div style={{...st.flexBetween,marginBottom:16,flexWrap:'wrap',gap:10}}>
         <div>
-          <h2 style={{margin:0,color:C.green}}>🎬 Recorded Clips</h2>
-          <p style={{color:C.sub,fontSize:12,margin:'4px 0 0'}}>{clips.length} clips · {fmtSize(totalSize)} · {retDays}-day retention (Pro)</p>
+          <h2 style={{margin:0,color:C.green}}>ðŸŽ¬ Recorded Clips</h2>
+          <p style={{color:C.sub,fontSize:12,margin:'4px 0 0'}}>{clips.length} clips Â· {fmtSize(totalSize)} Â· {retDays}-day retention (Pro)</p>
         </div>
         <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
           <select style={{...st.input,width:'auto',fontSize:12,padding:'6px 10px'}} value={filter} onChange={e=>setFilter(e.target.value)}>
@@ -1898,17 +1898,17 @@ function ClipsPage({ devices, onlineMap = {} }) {
             <option value="newest">Newest First</option>
             <option value="oldest">Oldest First</option>
           </select>
-          <button style={{...st.btn,...st.btnGray,fontSize:12}} onClick={loadClips}>↻ Refresh</button>
+          <button style={{...st.btn,...st.btnGray,fontSize:12}} onClick={loadClips}>â†» Refresh</button>
           <button style={{...st.btn,fontSize:12,
             backgroundColor:selectMode?C.blue:C.card,
             color:selectMode?'#fff':C.text,
             border:`1px solid ${selectMode?C.blue:C.border}`
           }} onClick={()=>{ setSelectMode(s=>!s); setSelected(new Set()); }}>
-            {selectMode?'✕ Cancel':'☑ Select'}
+            {selectMode?'âœ• Cancel':'â˜‘ Select'}
           </button>
           {selectMode && selected.size>0 && (
             <button style={{...st.btn,...st.btnRed,fontSize:12}} onClick={deleteSelected}>
-              🗑 Delete {selected.size}
+              ðŸ—‘ Delete {selected.size}
             </button>
           )}
           {selectMode && (
@@ -1920,7 +1920,7 @@ function ClipsPage({ devices, onlineMap = {} }) {
       </div>
 
       <div style={{backgroundColor:'#1a1a0a',border:'1px solid #ffd70040',borderRadius:8,padding:'10px 14px',marginBottom:16,display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:8}}>
-        <span style={{fontSize:13,color:C.gold}}>🗓️ Retention: clips older than {retDays} days auto-deleted</span>
+        <span style={{fontSize:13,color:C.gold}}>ðŸ—“ï¸ Retention: clips older than {retDays} days auto-deleted</span>
         <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
           {RETENTION_OPTIONS.map(o=>(
             <button key={o.value} onClick={()=>{ localStorage.setItem('retentionDays',String(o.value)); window.location.reload(); }}
@@ -1931,12 +1931,12 @@ function ClipsPage({ devices, onlineMap = {} }) {
         </div>
       </div>
 
-      {loading && <div style={{textAlign:'center',padding:40,color:C.sub}}>⏳ Loading clips...</div>}
+      {loading && <div style={{textAlign:'center',padding:40,color:C.sub}}>â³ Loading clips...</div>}
 
       {!loading && clips.length===0 && (
         <div style={{...st.card,textAlign:'center',padding:40}}>
-          <div style={{fontSize:48}}>🎬</div>
-          <div style={{color:C.sub,marginTop:12}}>No clips yet — start monitoring and clips will appear here</div>
+          <div style={{fontSize:48}}>ðŸŽ¬</div>
+          <div style={{color:C.sub,marginTop:12}}>No clips yet â€” start monitoring and clips will appear here</div>
         </div>
       )}
 
@@ -1944,7 +1944,7 @@ function ClipsPage({ devices, onlineMap = {} }) {
         <div key={deviceId} style={{marginBottom:24}}>
           <div style={{...st.flexBetween,marginBottom:10}}>
             <div style={{display:'flex',alignItems:'center',gap:8}}>
-              <span style={{fontSize:16}}>📷</span>
+              <span style={{fontSize:16}}>ðŸ“·</span>
               <span style={{fontWeight:'bold',color:C.text}}>{getDeviceName(deviceId)}</span>
               <span style={{...st.badge,backgroundColor:'#00ff8820',color:C.green,border:'1px solid #00ff8840'}}>{dclips.length} clips</span>
             </div>
@@ -1964,7 +1964,7 @@ function ClipsPage({ devices, onlineMap = {} }) {
                 )}
                 <div style={{backgroundColor:'#000',borderRadius:6,aspectRatio:'16/9',marginBottom:8,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',color:C.sub,position:'relative'}}
                   onClick={()=>{ if(selectMode){toggleSelect(clip.id);}else{setPlayingUrl(clip.url); setPlayingName(clip.filename);} }}>
-                  <span style={{fontSize:32}}>▶</span>
+                  <span style={{fontSize:32}}>â–¶</span>
                   <span style={{fontSize:11,marginTop:4}}>Click to play</span>
                   <span style={{position:'absolute',bottom:4,right:6,fontSize:11,color:'rgba(255,255,255,0.7)',backgroundColor:'rgba(0,0,0,0.5)',padding:'1px 5px',borderRadius:3}}>{fmtSize(clip.size)}</span>
                 </div>
@@ -1972,10 +1972,10 @@ function ClipsPage({ devices, onlineMap = {} }) {
                   <div style={{color:C.text,fontWeight:'bold',marginBottom:2,fontSize:11,wordBreak:'break-all',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
                     {(clip.filename||'clip.webm').replace(/^clip_(security|dashcam)_[^_]+_/,'').replace(/_\d+\.webm$/,'.webm')}
                   </div>
-                  <div>🕐 {fmtDate(clip.created_at)}</div>
+                  <div>ðŸ• {fmtDate(clip.created_at)}</div>
                 </div>
                 <div style={{display:'flex',gap:6}}>
-                  <button style={{...st.btn,...st.btnGreen,flex:1,fontSize:11,padding:'6px 8px'}} onClick={()=>{ setPlayingUrl(clip.url); setPlayingName(clip.filename); }}>▶ Play</button>
+                  <button style={{...st.btn,...st.btnGreen,flex:1,fontSize:11,padding:'6px 8px'}} onClick={()=>{ setPlayingUrl(clip.url); setPlayingName(clip.filename); }}>â–¶ Play</button>
                   <button style={{...st.btn,...st.btnGray,flex:1,fontSize:11,padding:'6px 8px'}} onClick={async()=>{
                     try {
                       const res = await fetch(clip.url);
@@ -1994,8 +1994,8 @@ function ClipsPage({ devices, onlineMap = {} }) {
                         setTimeout(()=>URL.revokeObjectURL(url),5000);
                       }
                     } catch(e) { if(e.name!=='AbortError') alert('Save failed: '+e.message); }
-                  }}>⬇ Save</button>
-                  <button style={{...st.btn,...st.btnRed,padding:'6px 10px',fontSize:12}} onClick={()=>deleteClip(clip.id)}>🗑</button>
+                  }}>â¬‡ Save</button>
+                  <button style={{...st.btn,...st.btnRed,padding:'6px 10px',fontSize:12}} onClick={()=>deleteClip(clip.id)}>ðŸ—‘</button>
                 </div>
               </div>
             ))}
@@ -2008,7 +2008,7 @@ function ClipsPage({ devices, onlineMap = {} }) {
           <div style={{...st.modalBox,maxWidth:860,backgroundColor:'#000',border:'1px solid #333'}} onClick={e=>e.stopPropagation()}>
             <div style={{...st.flexBetween,marginBottom:8,padding:'0 4px'}}>
               <span style={{color:C.text,fontSize:12}}>{playingName}</span>
-              <button style={{...st.btn,...st.btnGray,padding:'3px 10px'}} onClick={()=>setPlayingUrl(null)}>✕</button>
+              <button style={{...st.btn,...st.btnGray,padding:'3px 10px'}} onClick={()=>setPlayingUrl(null)}>âœ•</button>
             </div>
             <video src={playingUrl} controls autoPlay style={{width:'100%',borderRadius:6,backgroundColor:'#000',maxHeight:'70vh'}}/>
           </div>
@@ -2024,10 +2024,10 @@ function EventsPanel({ events }) {
   return (
     <div style={st.card}>
       <div style={{...st.flexBetween,marginBottom:12}}>
-        <span style={{fontWeight:'bold',fontSize:14}}>🚨 All Events</span>
+        <span style={{fontWeight:'bold',fontSize:14}}>ðŸš¨ All Events</span>
         <span style={{...st.badge,backgroundColor:'#ff444420',color:C.red,border:`1px solid ${C.red}`}}>{nonSystem.length}</span>
       </div>
-      {nonSystem.length===0 && <div style={{color:C.sub,fontSize:13,textAlign:'center',padding:'40px 0'}}>No events yet — arm a camera to start monitoring</div>}
+      {nonSystem.length===0 && <div style={{color:C.sub,fontSize:13,textAlign:'center',padding:'40px 0'}}>No events yet â€” arm a camera to start monitoring</div>}
       <div style={{maxHeight:500,overflowY:'auto'}}>
         {nonSystem.map(e=>(
           <div key={e.id}
@@ -2037,17 +2037,17 @@ function EventsPanel({ events }) {
             }}
             onClick={()=>{ if(e.clip_url) setPlayingUrl(e.clip_url); }}
           >
-            <span style={{fontSize:22}}>{e.type==='motion'?'👁':'🔊'}</span>
+            <span style={{fontSize:22}}>{e.type==='motion'?'ðŸ‘':'ðŸ”Š'}</span>
             <div style={{flex:1}}>
               <div style={{fontWeight:'bold',fontSize:13}}>{e.type==='motion'?'Motion Detected':'Sound Detected'}</div>
               <div style={{color:C.green,fontSize:12}}>{e.deviceName}</div>
-              <div style={{color:C.sub,fontSize:11}}>{e.time} • {e.date||''}</div>
+              <div style={{color:C.sub,fontSize:11}}>{e.time} â€¢ {e.date||''}</div>
             </div>
             {e.clip_url
               ? <button style={{...st.btn,...st.btnGreen,padding:'5px 10px',fontSize:11}}
-                  onClick={ev=>{ev.stopPropagation(); setPlayingUrl(e.clip_url);}}>▶ Play</button>
+                  onClick={ev=>{ev.stopPropagation(); setPlayingUrl(e.clip_url);}}>â–¶ Play</button>
               : e.clip_pending
-                ? <span style={{fontSize:11,color:C.sub}}>⏳ Recording...</span>
+                ? <span style={{fontSize:11,color:C.sub}}>â³ Recording...</span>
                 : <span style={{fontSize:11,color:'#444'}}>No clip</span>
             }
             <span style={{
@@ -2065,7 +2065,7 @@ function EventsPanel({ events }) {
           <div style={{...st.modalBox,maxWidth:800,backgroundColor:'#000'}} onClick={e=>e.stopPropagation()}>
             <div style={{...st.flexBetween,marginBottom:8}}>
               <span style={{color:C.text,fontSize:12}}>Event Recording</span>
-              <button style={{...st.btn,...st.btnGray,padding:'3px 10px'}} onClick={()=>setPlayingUrl(null)}>✕</button>
+              <button style={{...st.btn,...st.btnGray,padding:'3px 10px'}} onClick={()=>setPlayingUrl(null)}>âœ•</button>
             </div>
             <video src={playingUrl} controls autoPlay style={{width:'100%',borderRadius:6,backgroundColor:'#000'}}/>
           </div>
@@ -2075,7 +2075,7 @@ function EventsPanel({ events }) {
   );
 }
 
-// ─── QR Enrollment Modal ──────────────────────────────────────────
+// â”€â”€â”€ QR Enrollment Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function EnrollmentModal({ onClose, onEnrolled }) {
   const [step,        setStep]        = useState('form');
   const [cameraName,  setCameraName]  = useState('');
@@ -2116,8 +2116,8 @@ function EnrollmentModal({ onClose, onEnrolled }) {
     <div style={st.modal} onClick={onClose}>
       <div style={{...st.modalBox, maxWidth:480}} onClick={e=>e.stopPropagation()}>
         <div style={{...st.flexBetween, marginBottom:16}}>
-          <h2 style={{margin:0, color:C.green}}>📷 Enroll New Camera</h2>
-          <button style={{...st.btn,...st.btnGray}} onClick={onClose}>✕</button>
+          <h2 style={{margin:0, color:C.green}}>ðŸ“· Enroll New Camera</h2>
+          <button style={{...st.btn,...st.btnGray}} onClick={onClose}>âœ•</button>
         </div>
 
         {step==='form' && (
@@ -2145,17 +2145,17 @@ function EnrollmentModal({ onClose, onEnrolled }) {
               ))}
             </div>
             <div style={{backgroundColor:'#0a1a0a',border:`1px solid ${C.green}30`,borderRadius:8,padding:12,marginBottom:16,fontSize:12,color:C.sub}}>
-              <div style={{color:C.green,fontWeight:'bold',marginBottom:4}}>📋 How it works</div>
+              <div style={{color:C.green,fontWeight:'bold',marginBottom:4}}>ðŸ“‹ How it works</div>
               <div>1. Generate the QR code below</div>
               <div>2. Show it to the device you want to enroll (old phone, tablet, IP cam)</div>
-              <div>3. Device scans QR → opens enrollment URL → auto-registers</div>
+              <div>3. Device scans QR â†’ opens enrollment URL â†’ auto-registers</div>
               <div>4. Camera appears in your dashboard instantly</div>
               <div style={{marginTop:6,color:'#666'}}>Only your 2 admin devices can view or trigger cameras</div>
             </div>
             <div style={{display:'flex',gap:8}}>
               <button style={{...st.btn,...st.btnGray,flex:1}} onClick={onClose}>Cancel</button>
               <button style={{...st.btn,...st.btnGreen,flex:2}} onClick={generate} disabled={loading||!cameraName.trim()||!location.trim()}>
-                {loading ? 'Generating...' : '🔳 Generate QR Code'}
+                {loading ? 'Generating...' : 'ðŸ”³ Generate QR Code'}
               </button>
             </div>
           </>
@@ -2168,7 +2168,7 @@ function EnrollmentModal({ onClose, onEnrolled }) {
                 <img ref={qrRef} alt="Enrollment QR Code" style={{width:220,height:220,display:'block'}}/>
               </div>
               <div style={{color:C.green,fontWeight:'bold',marginTop:10,fontSize:15}}>{cameraName}</div>
-              {location && <div style={{color:C.sub,fontSize:12}}>📍 {location}</div>}
+              {location && <div style={{color:C.sub,fontSize:12}}>ðŸ“ {location}</div>}
               <div style={{color:'#666',fontSize:11,marginTop:4}}>
                 Expires: {new Date(enrollData.expiresAt).toLocaleString()} ({expiresIn}h)
               </div>
@@ -2182,22 +2182,22 @@ function EnrollmentModal({ onClose, onEnrolled }) {
             </div>
             <div style={{display:'flex',gap:6,marginBottom:12}}>
               <button style={{...st.btn,...st.btnGray,flex:1,fontSize:12}} onClick={copyUrl}>
-                {copied ? '✅ Copied!' : '📋 Copy URL'}
+                {copied ? 'âœ… Copied!' : 'ðŸ“‹ Copy URL'}
               </button>
               <button style={{...st.btn,...st.btnGray,flex:1,fontSize:12}} onClick={()=>{
                 const a = document.createElement('a');
                 a.href = qrRef.current?.src;
                 a.download = `enroll_${cameraName.replace(/\s+/g,'_')}.png`;
                 a.click();
-              }}>⬇️ Save QR</button>
+              }}>â¬‡ï¸ Save QR</button>
             </div>
             <div style={{backgroundColor:'#0a1a0a',border:`1px solid ${C.green}30`,borderRadius:8,padding:10,fontSize:12,color:C.sub,marginBottom:12}}>
-              <strong style={{color:C.text}}>📱 On the camera device:</strong>
-              <div style={{marginTop:4}}>Open camera app → Scan QR code → Tap the link → Device auto-enrolls and appears in your dashboard</div>
+              <strong style={{color:C.text}}>ðŸ“± On the camera device:</strong>
+              <div style={{marginTop:4}}>Open camera app â†’ Scan QR code â†’ Tap the link â†’ Device auto-enrolls and appears in your dashboard</div>
             </div>
             <div style={{display:'flex',gap:8}}>
-              <button style={{...st.btn,...st.btnGray,flex:1}} onClick={()=>setStep('form')}>← Back</button>
-              <button style={{...st.btn,...st.btnGreen,flex:1}} onClick={()=>{ onClose(); }}>✓ Done</button>
+              <button style={{...st.btn,...st.btnGray,flex:1}} onClick={()=>setStep('form')}>â† Back</button>
+              <button style={{...st.btn,...st.btnGreen,flex:1}} onClick={()=>{ onClose(); }}>âœ“ Done</button>
             </div>
           </>
         )}
@@ -2206,7 +2206,7 @@ function EnrollmentModal({ onClose, onEnrolled }) {
   );
 }
 
-// ─── Admin Management Modal ───────────────────────────────────────
+// â”€â”€â”€ Admin Management Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function AdminManageModal({ onClose }) {
   const [admins,  setAdmins]  = useState([]);
   const [users,   setUsers]   = useState([]);
@@ -2244,11 +2244,11 @@ function AdminManageModal({ onClose }) {
     <div style={st.modal} onClick={onClose}>
       <div style={{...st.modalBox,maxWidth:440}} onClick={e=>e.stopPropagation()}>
         <div style={{...st.flexBetween,marginBottom:16}}>
-          <h2 style={{margin:0,color:C.green}}>👥 Admin Devices</h2>
-          <button style={{...st.btn,...st.btnGray}} onClick={onClose}>✕</button>
+          <h2 style={{margin:0,color:C.green}}>ðŸ‘¥ Admin Devices</h2>
+          <button style={{...st.btn,...st.btnGray}} onClick={onClose}>âœ•</button>
         </div>
         <div style={{backgroundColor:'#0a1a2a',border:`1px solid ${C.blue}30`,borderRadius:8,padding:12,marginBottom:16,fontSize:12,color:C.sub}}>
-          <div style={{color:C.blue,fontWeight:'bold',marginBottom:4}}>🔐 Access Control</div>
+          <div style={{color:C.blue,fontWeight:'bold',marginBottom:4}}>ðŸ” Access Control</div>
           <div>Select up to <strong style={{color:C.text}}>2 admin accounts</strong> (e.g. you and your spouse). Only admins can view live feeds and trigger cameras.</div>
         </div>
         {loading ? <div style={{textAlign:'center',padding:20,color:C.sub}}>Loading...</div> : (
@@ -2268,7 +2268,7 @@ function AdminManageModal({ onClose }) {
                   <div style={{color:C.sub,fontSize:11}}>{u.email}</div>
                 </div>
                 <div style={{color:selected.includes(u.id)?C.green:C.sub,fontSize:12}}>
-                  {selected.includes(u.id) ? '✓ Admin' : '○'}
+                  {selected.includes(u.id) ? 'âœ“ Admin' : 'â—‹'}
                 </div>
               </div>
             ))}
@@ -2289,7 +2289,7 @@ function AdminManageModal({ onClose }) {
   );
 }
 
-// ─── Add Device Modal ─────────────────────────────────────────────
+// â”€â”€â”€ Add Device Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function AddDeviceModal({ onClose, onAdded }) {
   const [name,setName]=useState(''); const [loc,setLoc]=useState(''); const [loading,setLoading]=useState(false);
   const submit = async e => {
@@ -2319,8 +2319,8 @@ function AddDeviceModal({ onClose, onAdded }) {
   );
 }
 
-// ─── Subscription Page ────────────────────────────────────────────
-// ─── Subscription Page ────────────────────────────────────────────────────────
+// â”€â”€â”€ Subscription Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â”€â”€â”€ Subscription Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Drop-in replacement for the SubscriptionPage function in App.js
 // Connects to real /api/billing endpoints and Stripe checkout
 
@@ -2343,7 +2343,7 @@ function SubscriptionPage() {
     const params = new URLSearchParams(window.location.search);
     if (params.get('billing') === 'success') {
       const plan = params.get('plan');
-      showToastMsg(`✅ ${plan ? plan.charAt(0).toUpperCase()+plan.slice(1) : 'Plan'} activated! Welcome aboard.`);
+      showToastMsg(`âœ… ${plan ? plan.charAt(0).toUpperCase()+plan.slice(1) : 'Plan'} activated! Welcome aboard.`);
       window.history.replaceState({}, '', window.location.pathname);
       loadBillingData();
     }
@@ -2414,10 +2414,10 @@ function SubscriptionPage() {
 
   // Plan display config
   const PLAN_CONFIG = {
-    free:       { color: C.sub,   icon: '🔓', popular: false },
-    pro:        { color: C.green, icon: '⚡', popular: true  },
-    business:   { color: C.blue,  icon: '🏢', popular: false },
-    enterprise: { color: C.gold,  icon: '👑', popular: false },
+    free:       { color: C.sub,   icon: 'ðŸ”“', popular: false },
+    pro:        { color: C.green, icon: 'âš¡', popular: true  },
+    business:   { color: C.blue,  icon: 'ðŸ¢', popular: false },
+    enterprise: { color: C.gold,  icon: 'ðŸ‘‘', popular: false },
   };
 
   const currentPlan = billing?.plan || 'free';
@@ -2425,7 +2425,7 @@ function SubscriptionPage() {
 
   if (loading) return (
     <div style={{textAlign:'center',padding:60,color:C.sub}}>
-      <div style={{fontSize:32,marginBottom:12}}>⏳</div>
+      <div style={{fontSize:32,marginBottom:12}}>â³</div>
       Loading billing info...
     </div>
   );
@@ -2434,11 +2434,11 @@ function SubscriptionPage() {
     <div style={{maxWidth:1000,margin:'0 auto'}}>
       <div style={{...st.flexBetween,marginBottom:8,flexWrap:'wrap',gap:8}}>
         <div>
-          <h2 style={{color:C.green,margin:0}}>⭐ Subscription</h2>
+          <h2 style={{color:C.green,margin:0}}>â­ Subscription</h2>
           <p style={{color:C.sub,margin:'4px 0 0',fontSize:13}}>
             Current plan: <span style={{color:C.text,fontWeight:'bold'}}>{billing?.plan_name || 'Free'}</span>
             {billing?.plan_expires_at && (
-              <span style={{color:C.sub}}> · Renews {new Date(billing.plan_expires_at).toLocaleDateString()}</span>
+              <span style={{color:C.sub}}> Â· Renews {new Date(billing.plan_expires_at).toLocaleDateString()}</span>
             )}
           </p>
         </div>
@@ -2448,7 +2448,7 @@ function SubscriptionPage() {
             onClick={openPortal}
             disabled={portalLoading}
           >
-            {portalLoading ? 'Opening...' : '💳 Manage Billing'}
+            {portalLoading ? 'Opening...' : 'ðŸ’³ Manage Billing'}
           </button>
         )}
       </div>
@@ -2479,7 +2479,7 @@ function SubscriptionPage() {
                 <div style={{fontSize:16,fontWeight:'bold',color}}>
                   {item.used}{item.unit}
                   <span style={{fontSize:11,color:C.sub,fontWeight:'normal'}}>
-                    /{isUnlimited ? '∞' : item.limit+item.unit}
+                    /{isUnlimited ? 'âˆž' : item.limit+item.unit}
                   </span>
                 </div>
                 {!isUnlimited && (
@@ -2496,11 +2496,11 @@ function SubscriptionPage() {
       {/* Coupon input */}
       {!isPaid && (
         <div style={{...st.card,marginBottom:20,display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
-          <span style={{fontSize:13,color:C.sub}}>🎟 Coupon code:</span>
+          <span style={{fontSize:13,color:C.sub}}>ðŸŽŸ Coupon code:</span>
           {coupon ? (
             <>
               <span style={{backgroundColor:C.green+'20',color:C.green,padding:'4px 10px',borderRadius:6,fontSize:13,fontWeight:'bold',border:`1px solid ${C.green}40`}}>
-                {coupon} ✓
+                {coupon} âœ“
               </span>
               <button style={{...st.btn,...st.btnGray,fontSize:12,padding:'4px 10px'}} onClick={removeCoupon}>Remove</button>
             </>
@@ -2524,7 +2524,7 @@ function SubscriptionPage() {
       {/* Plans grid */}
       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:16,marginBottom:24}}>
         {plans.map(plan => {
-          const cfg = PLAN_CONFIG[plan.id] || { color: C.sub, icon: '📦', popular: false };
+          const cfg = PLAN_CONFIG[plan.id] || { color: C.sub, icon: 'ðŸ“¦', popular: false };
           const isCurrent = currentPlan === plan.id;
           const isDowngrade = plan.id === 'free' && isPaid;
           const price = plan.price === 0 ? '$0' : `$${(plan.price/100).toFixed(2)}`;
@@ -2565,13 +2565,13 @@ function SubscriptionPage() {
                   `${plan.ssids} SSIDs`,
                   `${plan.retention_days}-day retention`,
                   `${plan.storage_gb === 1024 ? '1TB' : plan.storage_gb+'GB'} storage`,
-                  plan.ai_intelligence ? '🤖 AI Intelligence' : null,
+                  plan.ai_intelligence ? 'ðŸ¤– AI Intelligence' : null,
                   plan.liberations_per_month === -1 ? 'Unlimited liberations' :
                     plan.liberations_per_month > 0 ? `${plan.liberations_per_month} liberations/mo` : null,
                   `${plan.admins === -1 ? 'Unlimited' : plan.admins} admin${plan.admins === 1 ? '' : 's'}`,
                 ].filter(Boolean).map((f,i)=>(
                   <div key={i} style={{display:'flex',alignItems:'center',gap:6,marginBottom:5}}>
-                    <span style={{color:cfg.color}}>✓</span> {f}
+                    <span style={{color:cfg.color}}>âœ“</span> {f}
                   </div>
                 ))}
               </div>
@@ -2579,7 +2579,7 @@ function SubscriptionPage() {
               {isCurrent ? (
                 <div style={{textAlign:'center',padding:'10px',color:cfg.color,fontWeight:'bold',fontSize:13,
                   border:`1px solid ${cfg.color}40`,borderRadius:6}}>
-                  ✓ Active Plan
+                  âœ“ Active Plan
                 </div>
               ) : isDowngrade ? (
                 <button
@@ -2604,7 +2604,7 @@ function SubscriptionPage() {
                   onClick={()=>subscribe(plan.id)}
                   disabled={!!upgrading}
                 >
-                  {upgrading===plan.id ? '⏳ Redirecting...' :
+                  {upgrading===plan.id ? 'â³ Redirecting...' :
                     coupon ? `Upgrade with ${coupon}` : `Upgrade to ${plan.name}`}
                 </button>
               )}
@@ -2615,7 +2615,7 @@ function SubscriptionPage() {
 
       {/* Overage rates */}
       <div style={{...st.card,marginBottom:16}}>
-        <div style={{fontWeight:'bold',color:C.text,marginBottom:12,fontSize:14}}>💰 Overage & Add-On Rates</div>
+        <div style={{fontWeight:'bold',color:C.text,marginBottom:12,fontSize:14}}>ðŸ’° Overage & Add-On Rates</div>
         <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))',gap:12,fontSize:12,color:C.sub}}>
           <div>
             <div style={{color:C.text,fontWeight:'bold',marginBottom:6}}>Storage Overages (per 5GB chunk)</div>
@@ -2636,22 +2636,22 @@ function SubscriptionPage() {
             <div>Low usage: 72 hours</div>
             <div>Medium usage: 48 hours</div>
             <div>High usage: 24 hours</div>
-            <div style={{marginTop:4,color:C.green,fontSize:11}}>✓ 60-day add-on optimization</div>
+            <div style={{marginTop:4,color:C.green,fontSize:11}}>âœ“ 60-day add-on optimization</div>
           </div>
         </div>
       </div>
 
       <p style={{color:'#444',fontSize:12,textAlign:'center'}}>
-        Payments via Stripe · Cancel anytime · Unused liberations expire monthly
+        Payments via Stripe Â· Cancel anytime Â· Unused liberations expire monthly
       </p>
     </div>
   );
 }
 
 
-// ─── Login ────────────────────────────────────────────────────────
+// â”€â”€â”€ Login â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-// ─── Network Scanner (WebRTC-based — works on HTTPS) ─────────────
+// â”€â”€â”€ Network Scanner (WebRTC-based â€” works on HTTPS) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 async function getLocalIPs() {
   return new Promise((resolve) => {
     const ips = new Set();
@@ -2694,7 +2694,7 @@ async function scanLocalNetwork() {
     }
   }
 
-  // Use WebSocket probing — works cross-origin on HTTPS
+  // Use WebSocket probing â€” works cross-origin on HTTPS
   const alive = [];
   const probe = (ip) => new Promise((resolve) => {
     const ws = new WebSocket(`ws://${ip}:80`);
@@ -2702,7 +2702,7 @@ async function scanLocalNetwork() {
     ws.onopen = () => { clearTimeout(timer); ws.close(); resolve(ip); };
     ws.onerror = (e) => {
       clearTimeout(timer);
-      // onerror fires on connection refused — means host exists!
+      // onerror fires on connection refused â€” means host exists!
       // If error is not timeout, the IP is reachable
       resolve(e.type === 'error' ? ip : null);
     };
@@ -2741,7 +2741,7 @@ async function probeDevice(ip) {
   return null;
 }
 
-// ─── MAC OUI Database ─────────────────────────────────────────────
+// â”€â”€â”€ MAC OUI Database â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const OUI_MAP = {
   '00:03:93':'iOS','00:0A:95':'iOS','00:1C:B3':'iOS','00:21:E9':'iOS',
   '04:0C:CE':'iOS','04:26:65':'iOS','04:52:F3':'iOS','04:54:53':'iOS',
@@ -2757,8 +2757,10 @@ function identifyDevice(mac) {
   return OUI_MAP[mac.substring(0,8).toUpperCase()] || 'Unknown';
 }
 
-// ─── MAC → Brand/RTSP detection ──────────────────────────────────
+// â”€â”€â”€ MAC â†’ Brand/RTSP detection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const MAC_BRANDS = {
+  // Sercomm/ADC
+  '00:0E:8F':'Sercomm','2C:26:17':'Sercomm','B0:B2:DC':'Sercomm',
   // Zmodo/Monitorix
   'B8:3A:9D':'Zmodo','54:C4:15':'Zmodo',
   // Hikvision
@@ -2785,7 +2787,8 @@ const RTSP_TEMPLATES = {
   'Hikvision': (ip) => `rtsp://admin:password@${ip}:554/Streaming/Channels/101`,
   'Dahua':     (ip) => `rtsp://admin:password@${ip}:554/cam/realmonitor?channel=1&subtype=0`,
   'Reolink':   (ip) => `rtsp://admin:password@${ip}:554/h264Preview_01_main`,
-  'Zmodo':     (ip) => `rtsp://admin:password@${ip}:554/live/main`,
+  'Sercomm':   (ip) => `rtsp://root:adcvideo@${ip}:554/stream1`,
+    'Zmodo':     (ip) => `rtsp://admin:password@${ip}:554/live/main`,
   'Axis':      (ip) => `rtsp://admin:password@${ip}:554/axis-media/media.amp`,
   'Amcrest':   (ip) => `rtsp://admin:password@${ip}:554/cam/realmonitor?channel=1`,
   'TP-Link':   (ip) => `rtsp://admin:password@${ip}:554/stream1`,
@@ -2806,7 +2809,7 @@ function getRtspSuggestion(ip, mac) {
   return { brand, rtsp: template ? template(ip) : RTSP_TEMPLATES['default'](ip) };
 }
 
-// ─── Discover Page ────────────────────────────────────────────────
+// â”€â”€â”€ Discover Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function DiscoverPage({ socket, onDeviceAdded, onEnroll }) {
   const [scanning,     setScanning]     = useState(false);
   const [scanProgress, setScanProgress] = useState('');
@@ -2838,21 +2841,29 @@ function DiscoverPage({ socket, onDeviceAdded, onEnroll }) {
       setDiscovered(found);
       setScanProgress(found.length > 0
         ? `Found ${found.length} device(s)`
-        : 'No devices found — run the discovery agent on your local network');
+        : 'No devices found â€” run the discovery agent on your local network');
     } catch(e) {
       setScanProgress('Error: ' + (e.response?.data?.message || e.message));
     }
     setScanning(false);
   };
 
-  const enroll = async (device) => {
+  const enroll = (device) => {
+    const { brand, rtsp } = getRtspSuggestion(device.ip, device.mac);
+    const cameraName = brand ? `${brand} Camera (${device.ip})` : (device.name || device.device_name || `Camera Device (${device.ip})`);
+    const loc = (device.location && !/^\d+\.\d+\.\d+\.\d+$/.test(device.location)) ? device.location : '';
+    setEnrollPending({ name: cameraName, location: loc, rtsp: rtsp||'', device });
+  };
+
+  const confirmEnroll = async () => {
+    if (!enrollPending) return;
+    const { name, location, rtsp, device } = enrollPending;
     setEnrolling(device.id || device.ip);
+    setEnrollPending(null);
     try {
-      const { brand, rtsp } = getRtspSuggestion(device.ip, device.mac);
-      const cameraName = brand ? `${brand} Camera (${device.ip})` : (device.name || device.device_name || `Camera ${device.ip}`);
       await api.post('/api/devices', {
-        name: cameraName,
-        location: device.location || device.ip || 'Local Network',
+        name,
+        location,
         rtsp_url: rtsp || '',
       });
       setDiscovered(d => d.map(x =>
@@ -2861,7 +2872,7 @@ function DiscoverPage({ socket, onDeviceAdded, onEnroll }) {
           : x
       ));
       if (onDeviceAdded) onDeviceAdded();
-      setScanProgress(`✅ ${cameraName} enrolled${brand ? ` as ${brand}` : ''} — set RTSP password in Camera Settings`);
+      setScanProgress(`✅ ${name} enrolled — set RTSP password in Camera Settings if needed`);
     } catch(e) {
       alert('Enrollment failed: ' + (e.response?.data?.message || e.message));
     }
@@ -2897,42 +2908,42 @@ function DiscoverPage({ socket, onDeviceAdded, onEnroll }) {
   });
   mdnsDevices.filter(m => !seenIPs.has(m.ip)).forEach(m => deduped.push(m));
   const allDevices = deduped;
-  const typeIcon = (t) => t==='iOS'?'📱':t==='Android'?'🤖':t==='IPCamera'?'📹':t==='RSCCamera'?'📱':'📡';
+  const typeIcon = (t) => t==='iOS'?'ðŸ“±':t==='Android'?'ðŸ¤–':t==='IPCamera'?'ðŸ“¹':t==='RSCCamera'?'ðŸ“±':'ðŸ“¡';
   const isRegistered = (d) => d.source === 'registered';
 
   return (
     <div style={{padding:24,maxWidth:900,margin:'0 auto'}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
         <div>
-          <h2 style={{color:C.text,margin:0,fontSize:20}}>🔍 Discover Cameras</h2>
+          <h2 style={{color:C.text,margin:0,fontSize:20}}>ðŸ” Discover Cameras</h2>
           <p style={{color:C.sub,fontSize:13,margin:'4px 0 0'}}>Find phones and IP cameras on your network</p>
         </div>
         <button style={{...st.btn,...st.btnGreen,display:'flex',alignItems:'center',gap:8}}
           onClick={scanNetwork} disabled={scanning}>
-          {scanning ? '⏳ Scanning...' : '🔍 Scan Network'}
+          {scanning ? 'â³ Scanning...' : 'ðŸ” Scan Network'}
         </button>
       </div>
 
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:20}}>
         <div style={{...st.card,borderColor:C.green+'40',backgroundColor:C.green+'08'}}>
-          <div style={{fontWeight:'bold',color:C.green,marginBottom:4}}>🖥️ Discovery Agent</div>
-          <div style={{color:C.sub,fontSize:12}}>Run on any PC on your network — scans via ARP + port probing + credential detection.</div>
+          <div style={{fontWeight:'bold',color:C.green,marginBottom:4}}>ðŸ–¥ï¸ Discovery Agent</div>
+          <div style={{color:C.sub,fontSize:12}}>Run on any PC on your network â€” scans via ARP + port probing + credential detection.</div>
           <div style={{marginTop:8,fontFamily:'monospace',fontSize:11,color:C.green,
             backgroundColor:'rgba(0,0,0,0.3)',padding:'6px 8px',borderRadius:4}}>
             node discovery-agent.js
           </div>
         </div>
         <div style={{...st.card,borderColor:C.blue+'40',backgroundColor:C.blue+'08'}}>
-          <div style={{fontWeight:'bold',color:C.blue,marginBottom:4}}>📱 Mobile App</div>
-          <div style={{color:C.sub,fontSize:12}}>Phones running the RSC app register automatically via Socket.io — no scanning needed.</div>
+          <div style={{fontWeight:'bold',color:C.blue,marginBottom:4}}>ðŸ“± Mobile App</div>
+          <div style={{color:C.sub,fontSize:12}}>Phones running the RSC app register automatically via Socket.io â€” no scanning needed.</div>
         </div>
       </div>
 
       <div style={{...st.card,marginBottom:20,display:'flex',alignItems:'center',gap:12}}>
-        <span style={{fontSize:24}}>🔳</span>
+        <span style={{fontSize:24}}>ðŸ”³</span>
         <div style={{flex:1}}>
           <div style={{fontWeight:'bold',color:C.text}}>QR Code Enrollment</div>
-          <div style={{color:C.sub,fontSize:12}}>Use the Enroll Camera button to generate a QR code — works anywhere</div>
+          <div style={{color:C.sub,fontSize:12}}>Use the Enroll Camera button to generate a QR code â€” works anywhere</div>
         </div>
       </div>
 
@@ -2940,7 +2951,7 @@ function DiscoverPage({ socket, onDeviceAdded, onEnroll }) {
 
       {scanning && (
         <div style={{textAlign:'center',padding:40}}>
-          <div style={{color:C.green,fontSize:16,marginBottom:8}}>⏳ Scanning network...</div>
+          <div style={{color:C.green,fontSize:16,marginBottom:8}}>â³ Scanning network...</div>
           <div style={{backgroundColor:C.border,borderRadius:4,height:4,width:'100%',maxWidth:300,margin:'0 auto'}}>
             <div style={{backgroundColor:C.green,height:4,borderRadius:4,width:'60%'}}/>
           </div>
@@ -2949,7 +2960,7 @@ function DiscoverPage({ socket, onDeviceAdded, onEnroll }) {
 
       {!scanning && allDevices.length===0 && (
         <div style={{textAlign:'center',padding:60}}>
-          <div style={{fontSize:48,marginBottom:16}}>📡</div>
+          <div style={{fontSize:48,marginBottom:16}}>ðŸ“¡</div>
           <div style={{color:C.text,fontSize:18,marginBottom:8}}>No devices found yet</div>
           <div style={{color:C.sub,fontSize:13}}>Make sure devices are on the same WiFi, then click Scan Network</div>
         </div>
@@ -2970,12 +2981,12 @@ function DiscoverPage({ socket, onDeviceAdded, onEnroll }) {
                     {d.name || d.device_name || `${d.type||'Camera'} Device`}
                   </div>
                   <div style={{color:C.sub,fontSize:11,marginTop:2}}>
-                    {d.ip&&`IP: ${d.ip}`}{d.mac&&` · MAC: ${d.mac}`}
-                    {d.location&&!d.ip&&`📍 ${d.location}`}
+                    {d.ip&&`IP: ${d.ip}`}{d.mac&&` Â· MAC: ${d.mac}`}
+                    {d.location&&!d.ip&&`ðŸ“ ${d.location}`}
                   </div>
                   {brand && !enrolled && (
                     <div style={{color:C.green,fontSize:10,marginTop:2,fontWeight:'bold'}}>
-                      🏷 {brand} · RTSP ready
+                      ðŸ· {brand} Â· RTSP ready
                     </div>
                   )}
                 </div>
@@ -2993,7 +3004,7 @@ function DiscoverPage({ socket, onDeviceAdded, onEnroll }) {
                     opacity:removing===d.id?0.6:1}}
                   onClick={()=>unenroll(d)}
                   disabled={removing===d.id}>
-                  {removing===d.id?'Removing...':'🗑 Remove / Un-enroll'}
+                  {removing===d.id?'Removing...':'ðŸ—‘ Remove / Un-enroll'}
                 </button>
               ) : (
                 <button
@@ -3006,20 +3017,49 @@ function DiscoverPage({ socket, onDeviceAdded, onEnroll }) {
               )}
             </div>
           );
+      {enrollPending && (
+        <div style={st.modal} onClick={()=>setEnrollPending(null)}>
+          <div style={{...st.modalBox,maxWidth:420}} onClick={e=>e.stopPropagation()}>
+            <h3 style={{margin:'0 0 16px',color:C.green}}>Confirm Camera Enrollment</h3>
+            <p style={{color:C.sub,fontSize:13,marginBottom:16}}>Review the detected info below. Edit if needed, then click Add Camera.</p>
+            <label style={st.label}>Camera Name *</label>
+            <input style={{...st.input,marginBottom:12}}
+              value={enrollPending.name}
+              onChange={e=>setEnrollPending(p=>({...p,name:e.target.value}))}
+              placeholder="e.g. Front Door Camera"/>
+            <label style={st.label}>Location *</label>
+            <input style={{...st.input,marginBottom:16}}
+              value={enrollPending.location}
+              onChange={e=>setEnrollPending(p=>({...p,location:e.target.value}))}
+              placeholder="e.g. Front Yard, Living Room"/>
+            {enrollPending.rtsp && (
+              <div style={{fontSize:11,color:C.sub,marginBottom:12,fontFamily:'monospace',wordBreak:'break-all'}}>
+                RTSP: {enrollPending.rtsp}
+              </div>
+            )}
+            <div style={{display:'flex',gap:8}}>
+              <button style={{...st.btn,...st.btnGray,flex:1}} onClick={()=>setEnrollPending(null)}>Cancel</button>
+              <button style={{...st.btn,...st.btnGreen,flex:2}}
+                disabled={!enrollPending.name.trim()||!enrollPending.location.trim()}
+                onClick={confirmEnroll}>Add Camera</button>
+            </div>
+          </div>
+        </div>
+      )}
         })}
       </div>
     </div>
   );
 }
 
-// ─── Admin Page ───────────────────────────────────────────────────
+// â”€â”€â”€ Admin Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function AdminPage({ user }) {
   const [members,  setMembers]  = useState([]);
   const [loading,  setLoading]  = useState(true);
   const [invEmail, setInvEmail] = useState('');
   const [inviting, setInviting] = useState(false);
 
-  // TODO: ENABLE PAYWALL — max 2 admins on free plan
+  // TODO: ENABLE PAYWALL â€” max 2 admins on free plan
   const MAX_ADMINS = 2;
 
   useEffect(()=>{ loadMembers(); },[]);
@@ -3036,7 +3076,7 @@ function AdminPage({ user }) {
   const grantAdmin = async (userId) => {
     const adminCount = members.filter(m=>m.role==='admin').length;
     if (adminCount >= MAX_ADMINS) {
-      // TODO: ENABLE PAYWALL — show upgrade modal here
+      // TODO: ENABLE PAYWALL â€” show upgrade modal here
       alert(`Admin limit reached. Your plan allows ${MAX_ADMINS} admins. Upgrade to add more.`);
       return;
     }
@@ -3070,7 +3110,7 @@ function AdminPage({ user }) {
 
   return (
     <div style={{padding:24,maxWidth:800,margin:'0 auto'}}>
-      <h2 style={{color:C.text,marginBottom:20}}>👥 Admin Management</h2>
+      <h2 style={{color:C.text,marginBottom:20}}>ðŸ‘¥ Admin Management</h2>
 
       {/* Org Stats */}
       <div style={{...st.card,marginBottom:20}}>
@@ -3098,12 +3138,12 @@ function AdminPage({ user }) {
         <div style={{...st.card,marginBottom:20,borderColor:C.gold,
           backgroundColor:C.gold+'10'}}>
           <div style={{color:C.gold,fontWeight:'bold',marginBottom:4}}>
-            ⭐ Upgrade for More Admins
+            â­ Upgrade for More Admins
           </div>
           <div style={{color:C.sub,fontSize:13}}>
             Your plan includes {MAX_ADMINS} admins. Upgrade to Pro for up to 5 admins.
           </div>
-          {/* TODO: ENABLE PAYWALL — uncomment before production deploy */}
+          {/* TODO: ENABLE PAYWALL â€” uncomment before production deploy */}
           {/* <button style={{...st.btn,...st.btnGold,marginTop:10}} onClick={()=>{}}>
             Upgrade Plan
           </button> */}
@@ -3112,7 +3152,7 @@ function AdminPage({ user }) {
 
       {/* Invite */}
       <div style={{...st.card,marginBottom:20}}>
-        <div style={{fontWeight:'bold',color:C.text,marginBottom:12}}>✉️ Invite User</div>
+        <div style={{fontWeight:'bold',color:C.text,marginBottom:12}}>âœ‰ï¸ Invite User</div>
         <div style={{display:'flex',gap:8}}>
           <input style={{...st.input,flex:1}} type="email"
             placeholder="Email address"
@@ -3168,10 +3208,9 @@ function AdminPage({ user }) {
       }
     </div>
   );
-      {enrollPending && (<div style={st.modal} onClick={()=>setEnrollPending(null)}><div style={{...st.modalBox,maxWidth:420}} onClick={e=>e.stopPropagation()}><h3 style={{margin:'0 0 16px',color:C.green}}>Confirm Camera Enrollment</h3><label style={st.label}>Camera Name *</label><input style={{...st.input,marginBottom:12}} value={enrollPending.name} onChange={e=>setEnrollPending(p=>({...p,name:e.target.value}))} placeholder='e.g. Front Door Camera'/><label style={st.label}>Location *</label><input style={{...st.input,marginBottom:16}} value={enrollPending.location} onChange={e=>setEnrollPending(p=>({...p,location:e.target.value}))} placeholder='e.g. Front Yard, Living Room'/><div style={{display:'flex',gap:8}}><button style={{...st.btn,...st.btnGray,flex:1}} onClick={()=>setEnrollPending(null)}>Cancel</button><button style={{...st.btn,...st.btnGreen,flex:2}} disabled={!enrollPending.name.trim()||!enrollPending.location.trim()} onClick={confirmEnroll}>Add Camera</button></div></div></div>)}
 }
 
-// ─── Settings Page ────────────────────────────────────────────────
+// â”€â”€â”€ Settings Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function SettingsPage({ currentTheme, onThemeChange, user, onViewSubscription }) {
   const [customColor, setCustomColor] = useState(
     localStorage.getItem('rsc_custom_color')||'#00ff88'
@@ -3194,12 +3233,12 @@ function SettingsPage({ currentTheme, onThemeChange, user, onViewSubscription })
 
   return (
     <div style={{padding:24,maxWidth:800,margin:'0 auto'}}>
-      <h2 style={{color:C.text,marginBottom:20}}>⚙️ Settings</h2>
+      <h2 style={{color:C.text,marginBottom:20}}>âš™ï¸ Settings</h2>
 
       {/* Theme Selector */}
       <div style={{...st.card,marginBottom:20}}>
         <div style={{fontWeight:'bold',color:C.text,marginBottom:16,fontSize:15}}>
-          🎨 App Theme
+          ðŸŽ¨ App Theme
         </div>
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
           {Object.entries(THEMES).map(([key, t])=>(
@@ -3232,7 +3271,7 @@ function SettingsPage({ currentTheme, onThemeChange, user, onViewSubscription })
                 </div>
               </div>
               {currentTheme===key&&(
-                <span style={{marginLeft:'auto',color:t.green,fontSize:16,fontWeight:'bold'}}>✓</span>
+                <span style={{marginLeft:'auto',color:t.green,fontSize:16,fontWeight:'bold'}}>âœ“</span>
               )}
             </button>
           ))}
@@ -3264,7 +3303,7 @@ function SettingsPage({ currentTheme, onThemeChange, user, onViewSubscription })
       {/* Account */}
       <div style={{...st.card,marginBottom:20}}>
         <div style={{fontWeight:'bold',color:C.text,marginBottom:12,fontSize:15}}>
-          👤 Account
+          ðŸ‘¤ Account
         </div>
         <div style={{color:C.sub,fontSize:12,marginBottom:4}}>Logged in as</div>
         <div style={{color:C.text,fontWeight:'bold',fontSize:15}}>{user?.email}</div>
@@ -3276,14 +3315,14 @@ function SettingsPage({ currentTheme, onThemeChange, user, onViewSubscription })
       {/* TODO: Subscription */}
       <div style={{...st.card,borderColor:C.gold,marginBottom:20}}>
         <div style={{color:C.gold,fontWeight:'bold',marginBottom:4,fontSize:15}}>
-          ⭐ Subscription
+          â­ Subscription
         </div>
         <div style={{color:C.text,fontSize:13,marginBottom:8}}>
           Manage your plan, billing, and add-ons.
         </div>
         <button style={{...st.btn,backgroundColor:C.gold,color:'#000',marginTop:4,width:'100%'}}
           onClick={()=>onViewSubscription&&onViewSubscription()}>
-          View Subscription →
+          View Subscription â†’
         </button>
       </div>
     </div>
@@ -3307,7 +3346,7 @@ function LoginPage({ onLogin }) {
   return (
     <div style={{...st.app,display:'flex',alignItems:'center',justifyContent:'center'}}>
       <div style={{...st.card,width:360,maxWidth:'90%'}}>
-        <h1 style={{color:C.green,textAlign:'center',marginTop:0}}>🔒 Real Security Camera</h1>
+        <h1 style={{color:C.green,textAlign:'center',marginTop:0}}>ðŸ”’ Real Security Camera</h1>
         <p style={{color:C.sub,textAlign:'center',marginBottom:24}}>Web Dashboard</p>
         {err && <div style={{backgroundColor:'#ff444420',border:`1px solid ${C.red}`,borderRadius:6,padding:'8px 12px',marginBottom:12,color:C.red,fontSize:13}}>{err}</div>}
         <form onSubmit={login}>
@@ -3324,7 +3363,7 @@ function LoginPage({ onLogin }) {
   );
 }
 
-// ─── Main App ─────────────────────────────────────────────────────
+// â”€â”€â”€ Main App â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export default function App() {
   const [token,      setToken]      = useState(localStorage.getItem('accessToken'));
   const [socket,     setSocket]     = useState(null);
@@ -3378,7 +3417,7 @@ export default function App() {
     });
     // Show 14-second toast for motion/sound events
     if (e.type==='motion'||e.type==='sound') {
-      showToast(`🚨 ${e.type==='motion'?'Motion':'Sound'} detected — ${e.deviceName||'Camera'}`, 14000);
+      showToast(`ðŸš¨ ${e.type==='motion'?'Motion':'Sound'} detected â€” ${e.deviceName||'Camera'}`, 14000);
     }
   };
 
@@ -3436,14 +3475,14 @@ export default function App() {
       }, 2000);
     });
     s.on('camera:online', ({deviceId,deviceName})=>{
-      console.log('📷 Web received camera:online:', deviceName, deviceId);
+      console.log('ðŸ“· Web received camera:online:', deviceName, deviceId);
       setOnlineMap(m=>({...m,[deviceId]:{online:true,name:deviceName}}));
       setEvents(ev=>[{type:'system',id:Date.now(),deviceName,time:new Date().toLocaleTimeString(),message:`${deviceName} came online`},...ev]);
     });
     s.on('camera:offline',({deviceId})=>{
       setOnlineMap(m=>({...m,[deviceId]:{...(m[deviceId]||{}),online:false}}));
     });
-    s.on('disconnect',()=>showToast('Disconnected — reconnecting...'));
+    s.on('disconnect',()=>showToast('Disconnected â€” reconnecting...'));
     s.on('connect',()=>doAuth());
     setSocket(s);
     return ()=>s.disconnect();
@@ -3454,11 +3493,11 @@ export default function App() {
   if (!token) return <LoginPage onLogin={setToken}/>;
 
   const TABS = [
-    {id:'cameras',  label:'📷 Cameras'},
-    {id:'usb',      label:'🖥️ USB/Webcam'},
-    {id:'discover', label:'🔍 Discover'},
-    {id:'activity', label:'🎬 Activity'},
-    {id:'admin',    label:'👥 Admin'},
+    {id:'cameras',  label:'ðŸ“· Cameras'},
+    {id:'usb',      label:'ðŸ–¥ï¸ USB/Webcam'},
+    {id:'discover', label:'ðŸ” Discover'},
+    {id:'activity', label:'ðŸŽ¬ Activity'},
+    {id:'admin',    label:'ðŸ‘¥ Admin'},
   ];
 
   const switchTab = (newTab) => {
@@ -3468,7 +3507,7 @@ export default function App() {
   return (
     <div style={st.app}>
       <nav style={st.nav}>
-        <h1 style={st.navTitle}>🔒 Real Security Camera</h1>
+        <h1 style={st.navTitle}>ðŸ”’ Real Security Camera</h1>
         <div style={st.navRight}>
           <span style={{color:C.sub,fontSize:13}}>{user?.email}</span>
           <button style={{...st.btn,...st.btnRed}} onClick={logout}>Logout</button>
@@ -3497,7 +3536,7 @@ export default function App() {
             <p style={st.statL}>Events Today</p>
           </div>
           <div style={st.stat}>
-            <p style={{...st.statN,color:socket?.connected?C.green:C.red}}>{socket?.connected?'●':'○'}</p>
+            <p style={{...st.statN,color:socket?.connected?C.green:C.red}}>{socket?.connected?'â—':'â—‹'}</p>
             <p style={st.statL}>{socket?.connected?'Connected':'Offline'}</p>
           </div>
         </div>
@@ -3512,12 +3551,12 @@ export default function App() {
               position:'relative',
             }}>
               {t.label}
-              {t.id==='usb' && usbStatus==='armed' && <span style={{marginLeft:5,fontSize:10,color:C.green,fontWeight:'normal'}}>🟢</span>}
-              {t.id==='usb' && usbStatus==='recording' && <span style={{marginLeft:5,fontSize:10,color:C.red,fontWeight:'normal'}}>⏺</span>}
+              {t.id==='usb' && usbStatus==='armed' && <span style={{marginLeft:5,fontSize:10,color:C.green,fontWeight:'normal'}}>ðŸŸ¢</span>}
+              {t.id==='usb' && usbStatus==='recording' && <span style={{marginLeft:5,fontSize:10,color:C.red,fontWeight:'normal'}}>âº</span>}
             </button>
           ))}
           <div style={{display:'flex',gap:6,marginLeft:'auto'}}>
-            <button style={{...st.btn,backgroundColor:'#4488ff20',color:C.blue,border:`1px solid ${C.blue}`}} onClick={()=>setShowEnroll(true)}>📳 Enroll Camera</button>
+            <button style={{...st.btn,backgroundColor:'#4488ff20',color:C.blue,border:`1px solid ${C.blue}`}} onClick={()=>setShowEnroll(true)}>ðŸ“³ Enroll Camera</button>
             <button style={{...st.btn,...st.btnGreen}} onClick={()=>setShowAdd(true)}>+ Add Camera</button>
           </div>
         </div>
@@ -3525,12 +3564,12 @@ export default function App() {
         <div style={{display: tab==='cameras' ? 'block' : 'none'}}>
           {devices.length===0
             ? <div style={{...st.card,textAlign:'center',padding:40,color:C.sub}}>
-                <div style={{fontSize:48}}>📷</div>
+                <div style={{fontSize:48}}>ðŸ“·</div>
                 <div style={{marginTop:12}}>No cameras yet. Click "+ Add Camera" above.</div>
               </div>
             : <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(320px,1fr))',gap:16}}>
                 {devices.filter(d=>{
-                  // Exclude USB/Webcam devices — managed from USB/Webcam tab only
+                  // Exclude USB/Webcam devices â€” managed from USB/Webcam tab only
                   if (usbLinkedDevice && d.id === usbLinkedDevice && (!d.rtsp_url || d.rtsp_url === '')) return false;
                   // Show all enrolled cameras regardless of active state
                   return true;
@@ -3566,8 +3605,8 @@ export default function App() {
         <div style={{display: tab==='activity' ? 'block' : 'none'}}>
           <div style={{display:'flex',gap:4,marginBottom:20,borderBottom:`1px solid ${C.border}`,paddingBottom:12}}>
             {[
-              {id:'clips',  label:'🎬 Clips'},
-              {id:'events', label:'🚨 Events'},
+              {id:'clips',  label:'ðŸŽ¬ Clips'},
+              {id:'events', label:'ðŸš¨ Events'},
             ].map(st2=>(
               <button key={st2.id} onClick={()=>setActivitySubTab(st2.id)} style={{
                 padding:'7px 16px', borderRadius:6, cursor:'pointer', fontSize:13,
@@ -3589,9 +3628,9 @@ export default function App() {
         <div style={{display: tab==='admin' ? 'block' : 'none'}}>
           <div style={{display:'flex',gap:4,marginBottom:20,borderBottom:`1px solid ${C.border}`,paddingBottom:12}}>
             {[
-              {id:'members',      label:'👥 Members'},
-              {id:'settings',     label:'⚙️ Settings'},
-              {id:'subscription', label:'⭐ Subscription'},
+              {id:'members',      label:'ðŸ‘¥ Members'},
+              {id:'settings',     label:'âš™ï¸ Settings'},
+              {id:'subscription', label:'â­ Subscription'},
             ].map(st2=>(
               <button key={st2.id} onClick={()=>setAdminSubTab(st2.id)} style={{
                 padding:'7px 16px', borderRadius:6, cursor:'pointer', fontSize:13,
