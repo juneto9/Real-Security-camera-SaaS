@@ -3530,7 +3530,6 @@ export default function App() {
                 {devices.filter(d=>{
                   // Exclude USB/Webcam devices — managed from USB/Webcam tab only
                   if (usbLinkedDevice && d.id === usbLinkedDevice && (!d.rtsp_url || d.rtsp_url === '')) return false;
-                  if (d.device_type === 'usb' || d.device_type === 'webcam') return false;
                   // Show all enrolled cameras regardless of active state
                   return true;
                 }).map(d=>(
@@ -3631,6 +3630,8 @@ export default function App() {
     </div>
   );
 }
+
+
 
 
 
