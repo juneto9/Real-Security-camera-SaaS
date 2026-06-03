@@ -1135,7 +1135,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
     const token = localStorage.getItem('accessToken');
     const payload = token ? JSON.parse(atob(token.split('.')[1])) : {};
     const orgId = payload.organizationId || payload.org_id || organizationId;
-    const devName = devices.find(d=>d.id===linkedDevice)?.name || 'PC Camera';
+    const devName = devices.find(d=>d.id===linkedDevice)?.name || linkedDevice;
     camSocketRef.current.emit('auth',{deviceId:linkedDevice,deviceName:devName,role:'camera',organizationId:orgId,userId:payload.userId||userId});
     console.log('📡 Re-auth — deviceId:', linkedDevice, 'name:', devName);
   },[linkedDevice, devices]);
@@ -1153,7 +1153,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
     // Try to auth immediately if we have a device ID
     const currentLinkedDevice = linkedDeviceRef.current || sessionStorage.getItem('usbLinkedDevice') || (devices[0]?.id);
     if (currentLinkedDevice) {
-      const devName = devices.find(d=>d.id===currentLinkedDevice)?.name || 'PC Camera';
+      const devName = devices.find(d=>d.id===currentLinkedDevice)?.name || currentLinkedDevice;
       cs.emit('auth', {
         deviceId: currentLinkedDevice,
         deviceName: devName,
@@ -1390,7 +1390,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
         const token = localStorage.getItem('accessToken');
         const payload = token ? JSON.parse(atob(token.split('.')[1])) : {};
         const orgId = payload.organizationId || payload.org_id || organizationId;
-        camSocketRef.current.emit('auth',{ deviceId:linkedDevice, deviceName:devices.find(d=>d.id===linkedDevice)?.name||'USB Camera', role:'camera', organizationId:orgId, userId:payload.userId||userId });
+        camSocketRef.current.emit('auth',{ deviceId:linkedDevice, deviceName:devices.find(d=>d.id===linkedDevice)?.name||linkedDevice, role:'camera', organizationId:orgId, userId:payload.userId||userId });
         console.log('📡 Camera socket authed as:', devices.find(d=>d.id===linkedDevice)?.name, 'org:', orgId);
       }
     } catch(e) {
@@ -3625,3 +3625,4 @@ export default function App() {
     </div>
   );
 }
+
