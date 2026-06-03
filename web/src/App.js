@@ -560,7 +560,7 @@ function RTSPViewer({ device, onClose, orgId: propOrgId }) {
   );
 }
 
-function CameraCard({ device, socket, onEvent, onSettings, settings, onWatchRemote }) {
+function CameraCard({ device, socket, onEvent, onSettings, settings, onWatchRemote, onSwitchToUsb }) {
   const videoRef        = useRef(null);
   const pcRef           = useRef(null);
   const canvasRef       = useRef(null);
@@ -841,6 +841,12 @@ function CameraCard({ device, socket, onEvent, onSettings, settings, onWatchRemo
                 >
                   📡 Watch Remote
                 </button>
+              {onSwitchToUsb && (
+                <button
+                  style={{...st.btn,...st.btnGreen,width:'100%',marginTop:6}}
+                  onClick={onSwitchToUsb}
+                >📷 Arm / Monitor</button>
+              )}
               ) : (
                 <button
                   style={{...st.btn, flex:2,
@@ -2311,8 +2317,8 @@ function AddDeviceModal({ onClose, onAdded }) {
         <form onSubmit={submit}>
           <label style={st.label}>Device Name</label>
           <input style={{...st.input,marginBottom:12}} value={name} onChange={e=>setName(e.target.value)} required placeholder="e.g. Front Door"/>
-          <label style={st.label}>Location</label>
-          <input style={{...st.input,marginBottom:16}} value={loc} onChange={e=>setLoc(e.target.value)} placeholder="e.g. Living Room"/>
+          <label style={st.label}>Location *</label>
+          <input style={{...st.input,marginBottom:16}} value={loc} onChange={e=>setLoc(e.target.value)} required placeholder="e.g. Living Room"/>
           <div style={{display:'flex',gap:8}}>
             <button type="button" style={{...st.btn,...st.btnGray,flex:1}} onClick={onClose}>Cancel</button>
             <button type="submit" style={{...st.btn,...st.btnGreen,flex:1}} disabled={loading||!name.trim()||!loc.trim()}>
@@ -3587,6 +3593,7 @@ export default function App() {
                     settings={deviceSettings[d.id]}
                     onSettings={()=>setSettingsFor(d)}
                     onWatchRemote={(dev)=>setRtspViewing(dev)}
+                    onSwitchToUsb={d.device_type==='usb'?()=>setTab('usb'):null}
                   />
                 ))}
               </div>
@@ -3663,6 +3670,7 @@ export default function App() {
       )}
       {settingsFor && (
         <CameraSettingsPanel
+          key={settingsFor.id}
           device={settingsFor}
           settings={deviceSettings[settingsFor.id]}
           onChange={s=>setDeviceSettings(p=>({...p,[settingsFor.id]:s}))}
