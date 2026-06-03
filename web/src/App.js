@@ -560,7 +560,7 @@ function RTSPViewer({ device, onClose, orgId: propOrgId }) {
   );
 }
 
-function CameraCard({ device, socket, onEvent, onSettings, settings, onWatchRemote, onSwitchToUsb }) {
+function CameraCard({ device, socket, onEvent, onSettings, settings, onWatchRemote, onSwitchToUsb, onArmRemote }) {
   const videoRef        = useRef(null);
   const pcRef           = useRef(null);
   const canvasRef       = useRef(null);
@@ -855,7 +855,20 @@ function CameraCard({ device, socket, onEvent, onSettings, settings, onWatchRemo
                 </button>
               )}
               {onSwitchToUsb && (
-                <button style={{...st.btn,...st.btnGreen,width:'100%',marginTop:6}} onClick={onSwitchToUsb}>📷 Arm / Monitor</button>
+                <button style={{...st.btn,...st.btnGreen,width:'100%',marginTop:6}} onClick={()=>{
+                  if (device.online && window.__executeCommand) {
+                    window.__executeCommand('arm', {});
+                  } else {
+                    sessionStorage.setItem('returnToCameras', '1');
+                    sessionStorage.setItem('autoArmAfterStream', '1');
+                    if (window.__startBroadcasting) window.__startBroadcasting();
+                    onSwitchToUsb();
+                  }
+                }}>{device.online ? '🟢 Arm Now' : '📷 Start & Arm'}</button>
+              )}
+              {onArmRemote && (
+                <button style={{...st.btn,...st.btnGreen,width:'100%',marginTop:6}}
+                  onClick={onArmRemote}>🟢 Arm Camera</button>
               )}
             </>
           : <>
@@ -3591,6 +3604,7 @@ export default function App() {
                     onSettings={()=>setSettingsFor(d)}
                     onWatchRemote={(dev)=>setRtspViewing(dev)}
                     onSwitchToUsb={d.device_type==='usb'?()=>setTab('usb'):null}
+                    onArmRemote={d.device_type==='mobile'&&!d.rtsp_url?()=>socket?.emit('camera:command',{deviceId:d.id,command:'arm'}):null}
                   />
                 ))}
               </div>
