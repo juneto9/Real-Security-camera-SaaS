@@ -15,7 +15,6 @@ const updateUsage = async (req, res, next) => {
     const camResult = await pool.query(
       `SELECT COUNT(*) FROM devices
        WHERE user_id = $1
-         AND (status IS NULL OR status != 'pending_scan')
          AND deleted_at IS NULL`,
       [userId]
     );
@@ -26,7 +25,6 @@ const updateUsage = async (req, res, next) => {
       `SELECT COUNT(DISTINCT location) FROM devices
        WHERE user_id = $1
          AND location IS NOT NULL AND location != ''
-         AND (status IS NULL OR status != 'pending_scan')
          AND deleted_at IS NULL`,
       [userId]
     );
