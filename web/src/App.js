@@ -177,7 +177,7 @@ function Toggle({ value, onChange, color='#00ff88' }) {
 
 // ─── Camera Settings Panel ────────────────────────────────────────
 function CameraSettingsPanel({ device, settings, onChange, onClose, onDeviceUpdated }) {
-  const [s, setS] = useState({
+  const [s, setS] = useState(settings || {
     camMode: 'security',
     loopForever: false,
     loopDuration: 60,
@@ -186,8 +186,7 @@ function CameraSettingsPanel({ device, settings, onChange, onClose, onDeviceUpda
     soundEnabled: true,
     nightVision: false,
     nightVisionPro: false,
-    cloudUpload: true,   // default ON — uploads are already happening
-    ...(settings || {}), // override with any saved settings
+    cloudUpload: false,
   });
   const [devName,     setDevName]     = useState(device.name?.trim() || '');
   const [devLocation, setDevLocation] = useState(device.location?.trim() || '');
@@ -561,7 +560,7 @@ function RTSPViewer({ device, onClose, orgId: propOrgId }) {
   );
 }
 
-function CameraCard({ device, socket, onEvent, onSettings, settings, onWatchRemote, onSwitchToUsb, onArmRemote, usbArmed, onDisarmUsb }) {
+function CameraCard({ device, socket, onEvent, onSettings, settings, onWatchRemote, onSwitchToUsb }) {
   const videoRef        = useRef(null);
   const pcRef           = useRef(null);
   const canvasRef       = useRef(null);
@@ -856,11 +855,7 @@ function CameraCard({ device, socket, onEvent, onSettings, settings, onWatchRemo
                 </button>
               )}
               {onSwitchToUsb && (
-                usbArmed
-                  ? <button style={{...st.btn,width:'100%',marginTop:6,backgroundColor:'rgba(255,68,68,0.15)',color:C.red,border:`2px solid ${C.red}`,fontWeight:'bold'}}
-                      onClick={onDisarmUsb}>🔴 Stop Monitoring</button>
-                  : <button style={{...st.btn,...st.btnGreen,width:'100%',marginTop:6}}
-                      onClick={()=>{ sessionStorage.setItem('returnToCameras','1'); sessionStorage.setItem('autoArmAfterStream','1'); onSwitchToUsb(); }}>📷 Start & Arm</button>
+                <button style={{...st.btn,...st.btnGreen,width:'100%',marginTop:6}} onClick={onSwitchToUsb}>📷 Arm / Monitor</button>
               )}
             </>
           : <>
@@ -1142,6 +1137,26 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
   useEffect(()=>{
     isArmedRef.current = isArmed;
   },[isArmed]);
+
+  // Auto-start stream when triggered from Cameras tab Start & Arm button
+  useEffect(()=>{
+    if (!autoStart) return;
+    if (streaming) {
+      // Already streaming — just arm
+      setIsArmed(true); isArmedRef.current = true;
+      startMotionDetection();
+      if (soundEnabled) startSoundDetection();
+      setStatusMsg('🟢 Armed — monitoring...');
+      if (onAutoStartDone) onAutoStartDone();
+      return;
+    }
+    sessionStorage.setItem('autoArmAfterStream', '1');
+    sessionStorage.setItem('returnToCameras', '1');
+    setTimeout(() => {
+      startStream();
+      if (onAutoStartDone) onAutoStartDone();
+    }, 200);
+  },[autoStart]);
 
   // Re-auth camera socket when linkedDevice or devices changes
   useEffect(()=>{
@@ -1454,7 +1469,6 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
     setStatusMsg('🟢 Armed — monitoring...');
     startMotionDetection();
     if (soundEnabled) startSoundDetection();
-    if (onUsbStatus) onUsbStatus('armed');
   };
 
   const armWithClipChoice = (choice) => {
@@ -1471,7 +1485,6 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
     stopMotionDetection();
     if (isRecordingRef.current) stopRecording();
     setStatusMsg('🟢 Broadcasting — select mode below');
-    if (onUsbStatus) onUsbStatus('');
   };
 
   const startRecording = (triggered=false, triggerEventId=null) => {
@@ -1847,7 +1860,7 @@ function ClipsPage({ devices, onlineMap = {} }) {
   const loadClips = async () => {
     setLoading(true);
     try {
-      const res = await api.get('/api/recordings?limit=2000&offset=0');
+      const res = await api.get('/api/recordings');
       const data = res.data.data || [];
       setClips(data);
       setTotalSize(data.reduce((a,c)=>a+(parseFloat(c.size)||0),0));
@@ -3598,8 +3611,6 @@ export default function App() {
                     onSettings={()=>setSettingsFor(d)}
                     onWatchRemote={(dev)=>setRtspViewing(dev)}
                     onSwitchToUsb={d.device_type==='usb'?()=>setTab('usb'):null}
-                    usbArmed={d.device_type==='usb'?usbStatus==='armed':false}
-                    onDisarmUsb={d.device_type==='usb'?()=>{ socket?.emit('camera:command',{deviceId:d.id,command:'disarm'}); setUsbStatus(''); }:null}
                   />
                 ))}
               </div>
