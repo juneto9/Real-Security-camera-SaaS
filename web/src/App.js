@@ -1323,8 +1323,18 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
       id: Date.now(), type,
       time: now.toLocaleTimeString(),
       date: now.toLocaleDateString('en-US',{month:'short',day:'2-digit',year:'numeric'}),
-      device: (linkedDevice ? devices.find(d=>d.id===linkedDevice)?.name : null) || (camDevices.find(d=>d.deviceId===selectedDev)?.label) || 'Webcam',
-      deviceName: (linkedDevice ? devices.find(d=>d.id===linkedDevice)?.name : null) || (camDevices.find(d=>d.deviceId===selectedDev)?.label) || 'Webcam',
+      device: (() => {
+        const hwName = camDevices.find(d=>d.deviceId===selectedDev)?.label || '';
+        const regName = linkedDevice ? devices.find(d=>d.id===linkedDevice)?.name : '';
+        if (hwName && regName && hwName !== regName) return `${hwName} — ${regName}`;
+        return regName || hwName || 'Webcam';
+      })(),
+      deviceName: (() => {
+        const hwName = camDevices.find(d=>d.deviceId===selectedDev)?.label || '';
+        const regName = linkedDevice ? devices.find(d=>d.id===linkedDevice)?.name : '';
+        if (hwName && regName && hwName !== regName) return `${hwName} — ${regName}`;
+        return regName || hwName || 'Webcam';
+      })(),
       camMode: 'security',
     };
     const eventWithClip = {...event, clip_url: null, clip_pending: true};
@@ -3471,8 +3481,8 @@ export default function App() {
           <div style={st.stat}>
             <p style={{...st.statN,color:C.green}}>
               {new Set([
-                ...devices.filter(d=>(onlineMap[d.id]?.online||onlineMap[d.id]===true) && d.device_type!=='usb' && d.name?.trim()!=='PC Camera').map(d=>d.id),
-                ...Object.entries(onlineMap).filter(([k,v])=>(v?.online||v===true) && devices.find(d=>d.id===k && d.device_type!=='usb' && d.name!=='PC Camera')).map(([k])=>k)
+                ...devices.filter(d=>(onlineMap[d.id]?.online||onlineMap[d.id]===true) && d.device_type!=='usb').map(d=>d.id),
+                ...Object.entries(onlineMap).filter(([k,v])=>(v?.online||v===true) && devices.find(d=>d.id===k && d.device_type!=='usb')).map(([k])=>k)
               ]).size}
             </p>
             <p style={st.statL}>Online Now</p>
