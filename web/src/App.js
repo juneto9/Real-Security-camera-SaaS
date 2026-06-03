@@ -2776,7 +2776,7 @@ function getRtspSuggestion(ip, mac) {
 }
 
 // ─── Discover Page ────────────────────────────────────────────────
-function DiscoverPage({ socket, onDeviceAdded }) {
+function DiscoverPage({ socket, onDeviceAdded, onEnroll }) {
   const [scanning,     setScanning]     = useState(false);
   const [scanProgress, setScanProgress] = useState('');
   const [discovered,   setDiscovered]   = useState([]);
@@ -2877,7 +2877,7 @@ function DiscoverPage({ socket, onDeviceAdded }) {
         </div>
         <div style={{display:'flex',gap:8}}>
           <button style={{...st.btn,backgroundColor:'#4488ff20',color:C.blue,border:`1px solid ${C.blue}`}}
-            onClick={()=>setShowEnroll(true)}>📳 Enroll Camera</button>
+            onClick={()=>onEnroll&&onEnroll()}>📳 Enroll Camera</button>
           <button style={{...st.btn,...st.btnGreen,display:'flex',alignItems:'center',gap:8}}
             onClick={scanNetwork} disabled={scanning}>
             {scanning ? '⏳ Scanning...' : '🔍 Scan Network'}
@@ -3559,7 +3559,7 @@ export default function App() {
           <SubscriptionPage/>
         </div>
         <div style={{display: tab==='discover' ? 'block' : 'none'}}>
-          <DiscoverPage socket={socket} onDeviceAdded={()=>loadDevices()}/>
+          <DiscoverPage socket={socket} onDeviceAdded={()=>loadDevices()} onEnroll={()=>setShowEnroll(true)}/>
         </div>
         <div style={{display: tab==='admin' ? 'block' : 'none'}}>
           <div style={{display:'flex',gap:4,marginBottom:20,borderBottom:`1px solid ${C.border}`,paddingBottom:12}}>
