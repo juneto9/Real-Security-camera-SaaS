@@ -1138,7 +1138,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
     const devName = devices.find(d=>d.id===linkedDevice)?.name || linkedDevice;
     camSocketRef.current.emit('auth',{deviceId:linkedDevice,deviceName:devName,role:'camera',organizationId:orgId,userId:payload.userId||userId});
     console.log('📡 Re-auth — deviceId:', linkedDevice, 'name:', devName);
-  },[linkedDevice, devices]);
+  },[linkedDevice, devices, camSocket]);
 
   useEffect(()=>{
     const cs = camSocket;
@@ -3625,4 +3625,7 @@ export default function App() {
     </div>
   );
 }
+
+
+
 
