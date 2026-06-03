@@ -2154,7 +2154,7 @@ function EnrollmentModal({ onClose, onEnrolled }) {
             </div>
             <div style={{display:'flex',gap:8}}>
               <button style={{...st.btn,...st.btnGray,flex:1}} onClick={onClose}>Cancel</button>
-              <button style={{...st.btn,...st.btnGreen,flex:2}} onClick={generate} disabled={loading||!cameraName.trim()}>
+              <button style={{...st.btn,...st.btnGreen,flex:2}} onClick={generate} disabled={loading||!cameraName.trim()||!location.trim()}>
                 {loading ? 'Generating...' : '🔳 Generate QR Code'}
               </button>
             </div>
@@ -2309,7 +2309,7 @@ function AddDeviceModal({ onClose, onAdded }) {
           <input style={{...st.input,marginBottom:16}} value={loc} onChange={e=>setLoc(e.target.value)} placeholder="e.g. Living Room"/>
           <div style={{display:'flex',gap:8}}>
             <button type="button" style={{...st.btn,...st.btnGray,flex:1}} onClick={onClose}>Cancel</button>
-            <button type="submit" style={{...st.btn,...st.btnGreen,flex:1}} disabled={loading||!name.trim()}>
+            <button type="submit" style={{...st.btn,...st.btnGreen,flex:1}} disabled={loading||!name.trim()||!loc.trim()}>
               {loading?'Adding...':'Add Device'}
             </button>
           </div>
@@ -2812,6 +2812,7 @@ function DiscoverPage({ socket, onDeviceAdded, onEnroll }) {
   const [scanProgress, setScanProgress] = useState('');
   const [discovered,   setDiscovered]   = useState([]);
   const [enrolling,    setEnrolling]    = useState(null);
+    const [enrollPending, setEnrollPending] = useState(null);
   const [removing,     setRemoving]     = useState(null);
   const [mdnsDevices,  setMdnsDevices]  = useState([]);
 
@@ -2851,7 +2852,7 @@ function DiscoverPage({ socket, onDeviceAdded, onEnroll }) {
       const cameraName = brand ? `${brand} Camera (${device.ip})` : (device.name || device.device_name || `Camera ${device.ip}`);
       await api.post('/api/devices', {
         name: cameraName,
-        location: device.ip || 'Local Network',
+        location: device.location || device.ip || 'Local Network',
         rtsp_url: rtsp || '',
       });
       setDiscovered(d => d.map(x =>
@@ -3167,6 +3168,7 @@ function AdminPage({ user }) {
       }
     </div>
   );
+      {enrollPending && (<div style={st.modal} onClick={()=>setEnrollPending(null)}><div style={{...st.modalBox,maxWidth:420}} onClick={e=>e.stopPropagation()}><h3 style={{margin:'0 0 16px',color:C.green}}>Confirm Camera Enrollment</h3><label style={st.label}>Camera Name *</label><input style={{...st.input,marginBottom:12}} value={enrollPending.name} onChange={e=>setEnrollPending(p=>({...p,name:e.target.value}))} placeholder='e.g. Front Door Camera'/><label style={st.label}>Location *</label><input style={{...st.input,marginBottom:16}} value={enrollPending.location} onChange={e=>setEnrollPending(p=>({...p,location:e.target.value}))} placeholder='e.g. Front Yard, Living Room'/><div style={{display:'flex',gap:8}}><button style={{...st.btn,...st.btnGray,flex:1}} onClick={()=>setEnrollPending(null)}>Cancel</button><button style={{...st.btn,...st.btnGreen,flex:2}} disabled={!enrollPending.name.trim()||!enrollPending.location.trim()} onClick={confirmEnroll}>Add Camera</button></div></div></div>)}
 }
 
 // ─── Settings Page ────────────────────────────────────────────────
@@ -3630,6 +3632,11 @@ export default function App() {
     </div>
   );
 }
+
+
+
+
+
 
 
 
