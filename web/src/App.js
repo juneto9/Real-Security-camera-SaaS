@@ -995,7 +995,7 @@ const CLIP_SIZES = [
   { label:'5 min', value:300 },
 ];
 
-function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsbStatus, onLinkedDevice }) {
+function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsbStatus, onLinkedDevice, onSettings }) {
   const camSocketRef = useRef(null);
   const [camSocket, setCamSocket] = useState(null);
 
@@ -1691,7 +1691,14 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
         </div>
 
         <div style={st.card}>
-          <p style={{fontWeight:'bold',marginBottom:12,color:C.text,fontSize:15}}>⚙️ Security Settings</p>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+            <p style={{fontWeight:'bold',margin:0,color:C.text,fontSize:15}}>⚙️ Security Settings</p>
+            {linkedDevice && onSettings && (
+              <button style={{...st.btn,...st.btnGray,fontSize:12,padding:'4px 10px'}}
+                onClick={()=>{ const dev=devices.find(d=>d.id===linkedDevice); if(dev) onSettings(dev); }}
+                title='Rename / Edit Camera'>✏️ Edit Camera</button>
+            )}
+          </div>
 
           <p style={st.settingSection}>🎬 Recording Mode</p>
           <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:8}}>
@@ -3524,7 +3531,6 @@ export default function App() {
                   // Exclude USB/Webcam devices — managed from USB/Webcam tab only
                   if (usbLinkedDevice && d.id === usbLinkedDevice && (!d.rtsp_url || d.rtsp_url === '')) return false;
                   if (d.device_type === 'usb' || d.device_type === 'webcam') return false;
-                  if (d.name?.trim() === 'PC Camera') return false;
                   // Show all enrolled cameras regardless of active state
                   return true;
                 }).map(d=>(
@@ -3542,7 +3548,7 @@ export default function App() {
         </div>
 
         <div style={{display: tab==='usb' ? 'block' : 'none'}}>
-          <USBCameraPage socket={socket} devices={devices} userId={user?.userId} organizationId={user?.organizationId} onUsbStatus={setUsbStatus} onLinkedDevice={setUsbLinkedDevice} onEvent={e=>{
+          <USBCameraPage socket={socket} devices={devices} userId={user?.userId} organizationId={user?.organizationId} onUsbStatus={setUsbStatus} onLinkedDevice={setUsbLinkedDevice} onSettings={(dev)=>setSettingsFor(dev)} onEvent={e=>{
             if (e.type==='clip_ready') {
               setEvents(ev=>{
                 const updated = ev.map(existing=>
@@ -3625,6 +3631,9 @@ export default function App() {
     </div>
   );
 }
+
+
+
 
 
 
