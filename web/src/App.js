@@ -1047,9 +1047,17 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
   const executeCommandRef = useRef(null); // ref to command executor
 
   useEffect(()=>{ 
-    if(devices.length>0 && !linkedDevice) {
-      setLinkedDevice(devices[0].id);
-      linkedDeviceRef.current = devices[0].id;
+    if(devices.length>0) {
+      // If current linkedDevice is an IP camera, clear it and find a proper one
+      const currentDev = devices.find(d=>d.id===linkedDevice);
+      const isIpCamera = currentDev?.rtsp_url && currentDev.rtsp_url !== '';
+      if (!linkedDevice || isIpCamera) {
+        const nonIp = devices.find(d=>!d.rtsp_url||d.rtsp_url==='');
+        if (nonIp) {
+          setLinkedDevice(nonIp.id);
+          linkedDeviceRef.current = nonIp.id;
+        }
+      }
     }
   },[devices]);
   useEffect(()=>{ 
@@ -1110,7 +1118,11 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
     const autoLink = sessionStorage.getItem('autoLinkDevice');
     if (autoLink) { setLinkedDevice(autoLink); sessionStorage.removeItem('autoLinkDevice'); }
     const savedDevice = sessionStorage.getItem('usbLinkedDevice');
-    if (savedDevice) setLinkedDevice(savedDevice);
+    if (savedDevice) {
+      // Verify saved device is non-IP before restoring
+      // Will be validated against devices list when devices load
+      setLinkedDevice(savedDevice);
+    }
   },[]);
 
   useEffect(()=>{
