@@ -1695,7 +1695,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
             <p style={{fontWeight:'bold',margin:0,color:C.text,fontSize:15}}>⚙️ Security Settings</p>
             {linkedDevice && onSettings && (
               <button style={{...st.btn,...st.btnGray,fontSize:12,padding:'4px 10px'}}
-                onClick={()=>{ const dev=devices.find(d=>d.id===linkedDevice); if(dev) onSettings(dev); }}
+                onClick={()=>{ const dev=devices.find(d=>d.id===linkedDevice); if(dev) onSettings({...dev}); else if(linkedDevice) onSettings({id:linkedDevice, name:'', location:'', device_type:'usb'}); }}
                 title='Rename / Edit Camera'>✏️ Edit Camera</button>
             )}
           </div>
@@ -3630,6 +3630,7 @@ export default function App() {
     </div>
   );
 }
+
 
 
 
