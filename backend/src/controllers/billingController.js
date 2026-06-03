@@ -217,11 +217,11 @@ const getAddons = (req, res) => {
 // GET /api/billing/status
 const getBillingStatus = async (req, res, next) => {
   try {
-    const userId = req.user.id;
+    const userId = req.user.id || req.user.userId;
+
+    // Get user plan info
     const result = await pool.query(
-      `SELECT plan, plan_expires_at, stripe_customer_id, stripe_subscription_id,
-              storage_used_gb, cameras_count, ssids_count, admins_count,
-              liberations_used_this_month
+      `SELECT plan, plan_expires_at, stripe_customer_id, stripe_subscription_id
        FROM users WHERE id = $1`,
       [userId]
     );
@@ -229,13 +229,67 @@ const getBillingStatus = async (req, res, next) => {
     const plan = user?.plan || 'free';
     const planConfig = PLANS[plan] || PLANS.free;
 
+    // ── Compute live usage from real tables ──────────────────────────
+    // 1. Cameras — confirmed devices only
+    const camResult = await pool.query(
+      `SELECT COUNT(*) FROM devices
+       WHERE user_id = $1
+         AND (status IS NULL OR status != 'pending_scan')
+         AND deleted_at IS NULL`,
+      [userId]
+    );
+    const cameraCount = parseInt(camResult.rows[0].count, 10);
+
+    // 2. SSIDs — distinct non-null locations (represents distinct networks/sites)
+    const ssidResult = await pool.query(
+      `SELECT COUNT(DISTINCT location) FROM devices
+       WHERE user_id = $1
+         AND location IS NOT NULL AND location != ''
+         AND (status IS NULL OR status != 'pending_scan')
+         AND deleted_at IS NULL`,
+      [userId]
+    );
+    const ssidCount = parseInt(ssidResult.rows[0].count, 10);
+
+    // 3. Storage — sum file_size bytes from recordings, convert to GB
+    const storageResult = await pool.query(
+      `SELECT COALESCE(SUM(r.file_size), 0) AS total_bytes
+       FROM recordings r
+       JOIN devices d ON r.device_id = d.id
+       WHERE d.user_id = $1`,
+      [userId]
+    );
+    const storageGb = parseFloat(
+      (parseFloat(storageResult.rows[0].total_bytes) / (1024 * 1024 * 1024)).toFixed(4)
+    );
+
+    // 4. Liberations this month
+    const libResult = await pool.query(
+      `SELECT COUNT(*) FROM motion_events me
+       JOIN devices d ON me.device_id = d.id
+       WHERE d.user_id = $1
+         AND me.created_at >= date_trunc('month', NOW())`,
+      [userId]
+    );
+    const liberationsThisMonth = parseInt(libResult.rows[0].count, 10);
+
+    // Write back to users table so overage checker has fresh data
+    await pool.query(
+      `UPDATE users
+       SET cameras_count               = $1,
+           ssids_count                 = $2,
+           storage_used_gb             = $3,
+           liberations_used_this_month = $4,
+           updated_at                  = NOW()
+       WHERE id = $5`,
+      [cameraCount, ssidCount, storageGb, liberationsThisMonth, userId]
+    );
+
     // Get active add-ons
     const addonsResult = await pool.query(
       `SELECT * FROM user_addons WHERE user_id = $1 AND active = true`,
       [userId]
     );
-
-    // Calculate effective limits (base plan + add-ons)
     const addonTotals = addonsResult.rows.reduce((acc, addon) => {
       acc[addon.addon_type] = (acc[addon.addon_type] || 0) + addon.qty;
       return acc;
@@ -249,21 +303,21 @@ const getBillingStatus = async (req, res, next) => {
         plan_expires_at: user?.plan_expires_at || null,
         has_payment_method: !!user?.stripe_customer_id,
         limits: {
-          cameras: planConfig.cameras + (addonTotals.camera || 0),
-          ssids: planConfig.ssids + (addonTotals.ssid || 0),
-          storage_gb: planConfig.storage_gb + (addonTotals.storage || 0),
-          retention_days: planConfig.retention_days,
-          admins: planConfig.admins + (addonTotals.admin || 0),
+          cameras:              planConfig.cameras + (addonTotals.camera || 0),
+          ssids:                planConfig.ssids + (addonTotals.ssid || 0),
+          storage_gb:           planConfig.storage_gb + (addonTotals.storage || 0),
+          retention_days:       planConfig.retention_days,
+          admins:               planConfig.admins + (addonTotals.admin || 0),
           liberations_per_month: planConfig.liberations_per_month,
-          ai_intelligence: planConfig.ai_intelligence,
-          ai_features: planConfig.ai_features || [],
+          ai_intelligence:      planConfig.ai_intelligence,
+          ai_features:          planConfig.ai_features || [],
         },
         usage: {
-          cameras: user?.cameras_count || 0,
-          ssids: user?.ssids_count || 0,
-          storage_gb: user?.storage_used_gb || 0,
-          admins: user?.admins_count || 0,
-          liberations_this_month: user?.liberations_used_this_month || 0,
+          cameras:              cameraCount,
+          ssids:                ssidCount,
+          storage_gb:           storageGb,
+          admins:               0,
+          liberations_this_month: liberationsThisMonth,
         },
         addons: addonsResult.rows,
       },
