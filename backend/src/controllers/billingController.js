@@ -218,6 +218,8 @@ const getAddons = (req, res) => {
 const getBillingStatus = async (req, res, next) => {
   try {
     const userId = req.user.id || req.user.userId;
+    const orgId  = req.user.organization_id || req.user.organizationId;
+
     if (!userId) return next(new AppError('User not authenticated', 401));
 
     // Get user plan info
@@ -230,21 +232,21 @@ const getBillingStatus = async (req, res, next) => {
     const plan = user?.plan || 'free';
     const planConfig = PLANS[plan] || PLANS.free;
 
-    // ── Compute live usage from real tables ──────────────────────────
-    // 1. Cameras — confirmed devices only
+    // ── Live usage from real tables ──────────────────────────────────
+    // 1. Camera count
     const camResult = await pool.query(
       `SELECT COUNT(*) FROM devices
-       WHERE user_id = $1::uuid
+       WHERE user_id = $1
          AND (status IS NULL OR status != 'pending_scan')
          AND deleted_at IS NULL`,
       [userId]
     );
     const cameraCount = parseInt(camResult.rows[0].count, 10);
 
-    // 2. SSIDs — distinct non-null locations (represents distinct networks/sites)
+    // 2. SSIDs — distinct locations
     const ssidResult = await pool.query(
       `SELECT COUNT(DISTINCT location) FROM devices
-       WHERE user_id = $1::uuid
+       WHERE user_id = $1
          AND location IS NOT NULL AND location != ''
          AND (status IS NULL OR status != 'pending_scan')
          AND deleted_at IS NULL`,
@@ -252,28 +254,42 @@ const getBillingStatus = async (req, res, next) => {
     );
     const ssidCount = parseInt(ssidResult.rows[0].count, 10);
 
-    // 3. Storage — sum file_size bytes from recordings, convert to GB
-    const storageResult = await pool.query(
-      `SELECT COALESCE(SUM(COALESCE(r.size, r.file_size_bytes, 0)), 0) AS total_bytes
-       FROM recordings r
-       WHERE r.organization_id = (SELECT organization_id FROM users WHERE id = $1::uuid)`,
-      [userId]
-    );
-    const storageGb = parseFloat(
-      (parseFloat(storageResult.rows[0].total_bytes) / (1024 * 1024 * 1024)).toFixed(4)
-    );
+    // 3. Storage — use organization_id if available, else join via user_id
+    let storageGb = 0;
+    if (orgId) {
+      const storageResult = await pool.query(
+        `SELECT COALESCE(SUM(COALESCE(r.size, r.file_size_bytes, 0)), 0) AS total_bytes
+         FROM recordings r
+         WHERE r.organization_id = $1`,
+        [orgId]
+      );
+      storageGb = parseFloat(
+        (parseFloat(storageResult.rows[0].total_bytes) / (1024 * 1024 * 1024)).toFixed(4)
+      );
+    } else {
+      const storageResult = await pool.query(
+        `SELECT COALESCE(SUM(COALESCE(r.size, r.file_size_bytes, 0)), 0) AS total_bytes
+         FROM recordings r
+         JOIN devices d ON r.device_id = d.id
+         WHERE d.user_id = $1`,
+        [userId]
+      );
+      storageGb = parseFloat(
+        (parseFloat(storageResult.rows[0].total_bytes) / (1024 * 1024 * 1024)).toFixed(4)
+      );
+    }
 
     // 4. Liberations this month
     const libResult = await pool.query(
       `SELECT COUNT(*) FROM motion_events me
        JOIN devices d ON me.device_id = d.id
-       WHERE d.user_id = $1::uuid
+       WHERE d.user_id = $1
          AND me.created_at >= date_trunc('month', NOW())`,
       [userId]
     );
     const liberationsThisMonth = parseInt(libResult.rows[0].count, 10);
 
-    // Write back to users table so overage checker has fresh data
+    // Write back to users table
     await pool.query(
       `UPDATE users
        SET cameras_count               = $1,
@@ -281,7 +297,7 @@ const getBillingStatus = async (req, res, next) => {
            storage_used_gb             = $3,
            liberations_used_this_month = $4,
            updated_at                  = NOW()
-       WHERE id = $5::uuid`,
+       WHERE id = $5`,
       [cameraCount, ssidCount, storageGb, liberationsThisMonth, userId]
     );
 
@@ -303,20 +319,20 @@ const getBillingStatus = async (req, res, next) => {
         plan_expires_at: user?.plan_expires_at || null,
         has_payment_method: !!user?.stripe_customer_id,
         limits: {
-          cameras:              planConfig.cameras + (addonTotals.camera || 0),
-          ssids:                planConfig.ssids + (addonTotals.ssid || 0),
-          storage_gb:           planConfig.storage_gb + (addonTotals.storage || 0),
-          retention_days:       planConfig.retention_days,
-          admins:               planConfig.admins + (addonTotals.admin || 0),
+          cameras:               planConfig.cameras + (addonTotals.camera || 0),
+          ssids:                 planConfig.ssids + (addonTotals.ssid || 0),
+          storage_gb:            planConfig.storage_gb + (addonTotals.storage || 0),
+          retention_days:        planConfig.retention_days,
+          admins:                planConfig.admins + (addonTotals.admin || 0),
           liberations_per_month: planConfig.liberations_per_month,
-          ai_intelligence:      planConfig.ai_intelligence,
-          ai_features:          planConfig.ai_features || [],
+          ai_intelligence:       planConfig.ai_intelligence,
+          ai_features:           planConfig.ai_features || [],
         },
         usage: {
-          cameras:              cameraCount,
-          ssids:                ssidCount,
-          storage_gb:           storageGb,
-          admins:               0,
+          cameras:               cameraCount,
+          ssids:                 ssidCount,
+          storage_gb:            storageGb,
+          admins:                0,
           liberations_this_month: liberationsThisMonth,
         },
         addons: addonsResult.rows,
