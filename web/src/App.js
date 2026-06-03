@@ -1612,11 +1612,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
               </select>
             </div>
             <div>
-              <label style={st.label}>Link to Device <span style={{color:C.sub,fontSize:10,fontWeight:'normal'}}>(hub use)</span></label>
-              <select style={st.input} value={linkedDevice} onChange={e=>setLinkedDevice(e.target.value)}>
-                <option value="">— Auto-select —</option>
-                {devices.filter(d=>!d.rtsp_url||d.rtsp_url==='').map(d=><option key={d.id} value={d.id}>{d.name}</option>)}
-              </select>
+              {/* Link to Device dropdown removed */}
             </div>
           </div>
 
@@ -2194,7 +2190,7 @@ function EnrollmentModal({ onClose, onEnrolled }) {
             </div>
             <div style={{display:'flex',gap:8}}>
               <button style={{...st.btn,...st.btnGray,flex:1}} onClick={()=>setStep('form')}>← Back</button>
-              <button style={{...st.btn,...st.btnGreen,flex:1}} onClick={()=>{ onEnrolled(); onClose(); }}>✓ Done</button>
+              <button style={{...st.btn,...st.btnGreen,flex:1}} onClick={()=>{ onClose(); }}>✓ Done</button>
             </div>
           </>
         )}
@@ -2465,7 +2461,7 @@ function SubscriptionPage() {
             { label:'Cameras',     used: billing.usage.cameras,     limit: billing.limits.cameras,     unit:'' },
             { label:'SSIDs',       used: billing.usage.ssids,       limit: billing.limits.ssids,       unit:'' },
             { label:'Storage',     used: billing.usage.storage_gb,  limit: billing.limits.storage_gb,  unit:'GB' },
-            { label:'Liberations', used: billing.usage.liberations_this_month, limit: billing.limits.liberations_per_month, unit:'/mo' },
+            { label:'Liberations', used: billing.usage.liberations_this_month ?? billing.usage.liberations ?? 0, limit: billing.limits.liberations_per_month, unit:'/mo' },
           ].map(item => {
             const pct = item.limit > 0 ? Math.min(100, (item.used / item.limit) * 100) : 0;
             const isUnlimited = item.limit === -1;
