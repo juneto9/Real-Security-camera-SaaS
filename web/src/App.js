@@ -1809,7 +1809,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
 }
 
 // ─── Clips / Recordings Page ──────────────────────────────────────
-function ClipsPage({ devices }) {
+function ClipsPage({ devices, onlineMap = {} }) {
   const [clips,      setClips]      = React.useState([]);
   const [loading,    setLoading]    = React.useState(true);
   const [filter,     setFilter]     = React.useState('all');
@@ -1865,7 +1865,7 @@ function ClipsPage({ devices }) {
     return d.toLocaleDateString('en-US',{month:'short',day:'2-digit',year:'numeric'})+' '+d.toLocaleTimeString();
   };
 
-  const getDeviceName = id => { const d = devices.find(x=>x.id===id); return d?.name || d?.device_name || (id||'').slice(0,8) || 'Unknown'; };
+  const getDeviceName = id => { const d = devices.find(x=>x.id===id); return d?.name || d?.device_name || onlineMap[id]?.name || (id||'').slice(0,8) || 'Unknown'; };
 
   const filtered = clips
     .filter(c=> filter==='all' || c.device_id===filter)
@@ -3477,7 +3477,7 @@ export default function App() {
           <div style={st.stat}>
             <p style={{...st.statN,color:C.green}}>
               {new Set([
-                ...devices.filter(d=>(onlineMap[d.id]?.online||onlineMap[d.id]===true) && d.device_type!=='usb').map(d=>d.id),
+                ...devices.filter(d=>(onlineMap[d.id]?.online||onlineMap[d.id]===true)).map(d=>d.id),
                 ...Object.entries(onlineMap).filter(([k,v])=>(v?.online||v===true) && devices.find(d=>d.id===k && d.device_type!=='usb')).map(([k])=>k)
               ]).size}
             </p>
@@ -3570,7 +3570,7 @@ export default function App() {
               }}>{st2.label}</button>
             ))}
           </div>
-          {activitySubTab==='clips'  && <ClipsPage devices={devices}/>}
+          {activitySubTab==='clips'  && <ClipsPage devices={devices} onlineMap={onlineMap}/>}
           {activitySubTab==='events' && <EventsPanel events={events}/>}
         </div>
         <div style={{display: tab==='sub' ? 'block' : 'none'}}>
