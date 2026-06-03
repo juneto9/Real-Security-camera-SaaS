@@ -3504,7 +3504,7 @@ export default function App() {
             : <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(320px,1fr))',gap:16}}>
                 {devices.filter(d=>{
                   // Exclude USB/Webcam devices — managed from USB/Webcam tab only
-                  if (usbLinkedDevice && d.id === usbLinkedDevice) return false;
+                  if (usbLinkedDevice && d.id === usbLinkedDevice && (!d.rtsp_url || d.rtsp_url === '')) return false;
                   if (d.device_type === 'usb' || d.device_type === 'webcam') return false;
                   if (d.name?.trim() === 'PC Camera') return false;
                   // Show all enrolled cameras regardless of active state
