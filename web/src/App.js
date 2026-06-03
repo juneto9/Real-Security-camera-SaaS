@@ -1575,7 +1575,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
       <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:20}}>
 
         <div style={st.card}>
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:12}}>
+          <div style={{display:'grid',gridTemplateColumns:'1fr',gap:10,marginBottom:12}}>
             <div>
               <label style={st.label}>Camera Device</label>
               <select style={st.input} value={selectedDev} onChange={e=>setSelectedDev(e.target.value)}>
@@ -1589,13 +1589,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
                 }
               </select>
             </div>
-            <div>
-              <label style={st.label}>Link to Device</label>
-              <select style={st.input} value={linkedDevice} onChange={e=>setLinkedDevice(e.target.value)}>
-                <option value="">— Select device —</option>
-                {devices.filter(d=>!d.rtsp_url||d.rtsp_url==='').map(d=><option key={d.id} value={d.id}>{d.name}</option>)}
-              </select>
-            </div>
+
           </div>
 
           <div style={st.videoBox}>
