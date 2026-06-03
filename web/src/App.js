@@ -841,12 +841,6 @@ function CameraCard({ device, socket, onEvent, onSettings, settings, onWatchRemo
                 >
                   📡 Watch Remote
                 </button>
-              {onSwitchToUsb && (
-                <button
-                  style={{...st.btn,...st.btnGreen,width:'100%',marginTop:6}}
-                  onClick={onSwitchToUsb}
-                >📷 Arm / Monitor</button>
-              )}
               ) : (
                 <button
                   style={{...st.btn, flex:2,
@@ -859,6 +853,9 @@ function CameraCard({ device, socket, onEvent, onSettings, settings, onWatchRemo
                 >
                   {online ? '▶ Watch Live' : '▶ Watch Live (wake camera)'}
                 </button>
+              )}
+              {onSwitchToUsb && (
+                <button style={{...st.btn,...st.btnGreen,width:'100%',marginTop:6}} onClick={onSwitchToUsb}>📷 Arm / Monitor</button>
               )}
             </>
           : <>
