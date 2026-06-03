@@ -560,7 +560,7 @@ function RTSPViewer({ device, onClose, orgId: propOrgId }) {
   );
 }
 
-function CameraCard({ device, socket, onEvent, onSettings, settings, onWatchRemote, onSwitchToUsb, onArmRemote }) {
+function CameraCard({ device, socket, onEvent, onSettings, settings, onWatchRemote, onSwitchToUsb }) {
   const videoRef        = useRef(null);
   const pcRef           = useRef(null);
   const canvasRef       = useRef(null);
@@ -855,15 +855,7 @@ function CameraCard({ device, socket, onEvent, onSettings, settings, onWatchRemo
                 </button>
               )}
               {onSwitchToUsb && (
-                <button style={{...st.btn,...st.btnGreen,width:'100%',marginTop:6}} onClick={()=>{
-                  sessionStorage.setItem('returnToCameras', '1');
-                  sessionStorage.setItem('autoArmAfterStream', '1');
-                  onSwitchToUsb();
-                }}>📷 Start & Arm</button>
-              )}
-              {onArmRemote && (
-                <button style={{...st.btn,...st.btnGreen,width:'100%',marginTop:6}}
-                  onClick={onArmRemote}>🟢 Arm Camera</button>
+                <button style={{...st.btn,...st.btnGreen,width:'100%',marginTop:6}} onClick={onSwitchToUsb}>📷 Arm / Monitor</button>
               )}
             </>
           : <>
@@ -1127,18 +1119,24 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
   // Camera devices are enumerated inside startStream() AFTER getUserMedia
   // succeeds so that browser returns full labels (requires permission first).
   useEffect(()=>{
-    // Clear any stale auto-start flags from previous sessions
-    // Never auto-call startStream() — requires explicit user click for camera permission
     sessionStorage.removeItem('autoStartBroadcast');
     sessionStorage.removeItem('usbBroadcasting');
-    // Restore linked device selection if set
     const autoLink = sessionStorage.getItem('autoLinkDevice');
     if (autoLink) { setLinkedDevice(autoLink); sessionStorage.removeItem('autoLinkDevice'); }
     const savedDevice = sessionStorage.getItem('usbLinkedDevice');
-    if (savedDevice) {
-      // Verify saved device is non-IP before restoring
-      // Will be validated against devices list when devices load
-      setLinkedDevice(savedDevice);
+    if (savedDevice) { setLinkedDevice(savedDevice); }
+
+    // Auto-start stream if triggered from Cameras tab Start & Arm button
+    if (sessionStorage.getItem('autoArmAfterStream') === '1') {
+      if (navigator.permissions) {
+        navigator.permissions.query({name:'camera'}).then(perm => {
+          if (perm.state === 'granted') {
+            // Permission already granted — start immediately
+            setTimeout(() => startStream(), 300);
+          }
+          // If not granted, user sees Start Broadcasting button — one click starts + arms
+        }).catch(() => {});
+      }
     }
   },[]);
 
@@ -1395,15 +1393,6 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
 
       setStreaming(true);
       setStatusMsg('🟢 Broadcasting — select mode below');
-      if (sessionStorage.getItem('autoArmAfterStream') === '1') {
-        sessionStorage.removeItem('autoArmAfterStream');
-        setTimeout(() => {
-          setIsArmed(true); isArmedRef.current = true;
-          startMotionDetection();
-          if (soundEnabled) startSoundDetection();
-          setStatusMsg('🟢 Armed — monitoring...');
-        }, 800);
-      }
       try {
         const vt = stream.getVideoTracks()[0];
         const caps = vt.getCapabilities?.();
@@ -1677,7 +1666,9 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
 
           <div style={{display:'flex',gap:6,marginTop:8}}>
             {(!streaming && !streamRef.current && !videoRef.current?.srcObject)
-              ? <button style={{...st.btn,...st.btnGreen,flex:1}} onClick={startStream}>📡 Start Broadcasting</button>
+              ? <button style={{...st.btn,...st.btnGreen,flex:1}} onClick={startStream}>
+                    {sessionStorage.getItem('autoArmAfterStream')==='1' ? '📡 Start Broadcasting & Arm' : '📡 Start Broadcasting'}
+                  </button>
               : <>
                   {!isArmed
                     ? <button style={{...st.btn,flex:2,backgroundColor:'rgba(0,255,136,0.15)',color:C.green,border:`2px solid ${C.green}`,fontWeight:'bold'}}
@@ -2317,51 +2308,29 @@ function AdminManageModal({ onClose }) {
 
 // ─── Add Device Modal ─────────────────────────────────────────────
 function AddDeviceModal({ onClose, onAdded }) {
-  const [name,setName]=useState('');
-  const [loc,setLoc]=useState('');
-  const [loading,setLoading]=useState(false);
-  const [err,setErr]=useState('');
-  const submit = async () => {
-    if (!name.trim()) { setErr('Camera name is required.'); return; }
-    if (!loc.trim())  { setErr('Location is required.');    return; }
-    setErr(''); setLoading(true);
-    try {
-      await api.post('/api/devices', { name: name.trim(), location: loc.trim(), rtsp_url: '' });
-      onAdded();
-      onClose();
-    } catch(ex) {
-      setErr(ex.response?.data?.message || 'Failed to add camera. Please try again.');
-    }
+  const [name,setName]=useState(''); const [loc,setLoc]=useState(''); const [loading,setLoading]=useState(false);
+  const submit = async e => {
+    e.preventDefault(); setLoading(true);
+    try { await api.post('/api/devices',{name,location:loc,rtspUrl:''}); onAdded(); onClose(); }
+    catch(ex) { alert(ex.response?.data?.message||'Failed'); }
     setLoading(false);
   };
   return (
     <div style={st.modal} onClick={onClose}>
       <div style={st.modalBox} onClick={e=>e.stopPropagation()}>
-        <h2 style={{marginTop:0,color:C.green}}>➕ Add Camera</h2>
-        <p style={{color:C.sub,fontSize:13,marginBottom:16}}>Register a new IP camera or placeholder entry.</p>
-        <label style={st.label}>Camera Name *</label>
-        <input
-          style={{...st.input,marginBottom:12,borderColor:err&&!name.trim()?C.red:C.border}}
-          value={name}
-          onChange={e=>{setName(e.target.value);setErr('');}}
-          placeholder="e.g. Front Door, Garage"
-          autoFocus
-        />
-        <label style={st.label}>Location *</label>
-        <input
-          style={{...st.input,marginBottom:err?8:16,borderColor:err&&!loc.trim()?C.red:C.border}}
-          value={loc}
-          onChange={e=>{setLoc(e.target.value);setErr('');}}
-          placeholder="e.g. Front Yard, Master Bedroom"
-          onKeyDown={e=>{ if(e.key==='Enter') submit(); }}
-        />
-        {err && <p style={{color:C.red,fontSize:12,marginBottom:12,marginTop:0}}>{err}</p>}
-        <div style={{display:'flex',gap:8}}>
-          <button style={{...st.btn,...st.btnGray,flex:1}} onClick={onClose} disabled={loading}>Cancel</button>
-          <button style={{...st.btn,...st.btnGreen,flex:2}} onClick={submit} disabled={loading}>
-            {loading ? '⏳ Adding...' : '✓ Add Camera'}
-          </button>
-        </div>
+        <h2 style={{marginTop:0,color:C.green}}>Add Camera</h2>
+        <form onSubmit={submit}>
+          <label style={st.label}>Device Name</label>
+          <input style={{...st.input,marginBottom:12}} value={name} onChange={e=>setName(e.target.value)} required placeholder="e.g. Front Door"/>
+          <label style={st.label}>Location *</label>
+          <input style={{...st.input,marginBottom:16}} value={loc} onChange={e=>setLoc(e.target.value)} required placeholder="e.g. Living Room"/>
+          <div style={{display:'flex',gap:8}}>
+            <button type="button" style={{...st.btn,...st.btnGray,flex:1}} onClick={onClose}>Cancel</button>
+            <button type="submit" style={{...st.btn,...st.btnGreen,flex:1}} disabled={loading||!name.trim()||!loc.trim()}>
+              {loading?'Adding...':'Add Device'}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );
@@ -2928,6 +2897,11 @@ function DiscoverPage({ socket, onDeviceAdded, onEnroll }) {
   };
 
   const unenroll = async (device) => {
+    if (!device.id) {
+      // Device was already unenrolled — just remove from local list
+      setDiscovered(d => d.filter(x => (x.ip||x.mac) !== (device.ip||device.mac)));
+      return;
+    }
     if (!window.confirm(`Remove "${device.name || device.device_name || device.ip}"?`)) return;
     setRemoving(device.id);
     try {
@@ -3630,7 +3604,6 @@ export default function App() {
                     onSettings={()=>setSettingsFor(d)}
                     onWatchRemote={(dev)=>setRtspViewing(dev)}
                     onSwitchToUsb={d.device_type==='usb'?()=>setTab('usb'):null}
-                    onArmRemote={d.device_type==='mobile'&&!d.rtsp_url?()=>socket?.emit('camera:command',{deviceId:d.id,command:'arm'}):null}
                   />
                 ))}
               </div>
