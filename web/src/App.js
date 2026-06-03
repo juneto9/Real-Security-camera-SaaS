@@ -856,15 +856,10 @@ function CameraCard({ device, socket, onEvent, onSettings, settings, onWatchRemo
               )}
               {onSwitchToUsb && (
                 <button style={{...st.btn,...st.btnGreen,width:'100%',marginTop:6}} onClick={()=>{
-                  if (device.online && window.__executeCommand) {
-                    window.__executeCommand('arm', {});
-                  } else {
-                    sessionStorage.setItem('returnToCameras', '1');
-                    sessionStorage.setItem('autoArmAfterStream', '1');
-                    if (window.__startBroadcasting) window.__startBroadcasting();
-                    onSwitchToUsb();
-                  }
-                }}>{device.online ? '🟢 Arm Now' : '📷 Start & Arm'}</button>
+                  sessionStorage.setItem('returnToCameras', '1');
+                  sessionStorage.setItem('autoArmAfterStream', '1');
+                  onSwitchToUsb();
+                }}>📷 Start & Arm</button>
               )}
               {onArmRemote && (
                 <button style={{...st.btn,...st.btnGreen,width:'100%',marginTop:6}}
@@ -1400,6 +1395,15 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
 
       setStreaming(true);
       setStatusMsg('🟢 Broadcasting — select mode below');
+      if (sessionStorage.getItem('autoArmAfterStream') === '1') {
+        sessionStorage.removeItem('autoArmAfterStream');
+        setTimeout(() => {
+          setIsArmed(true); isArmedRef.current = true;
+          startMotionDetection();
+          if (soundEnabled) startSoundDetection();
+          setStatusMsg('🟢 Armed — monitoring...');
+        }, 800);
+      }
       try {
         const vt = stream.getVideoTracks()[0];
         const caps = vt.getCapabilities?.();
@@ -2313,29 +2317,51 @@ function AdminManageModal({ onClose }) {
 
 // ─── Add Device Modal ─────────────────────────────────────────────
 function AddDeviceModal({ onClose, onAdded }) {
-  const [name,setName]=useState(''); const [loc,setLoc]=useState(''); const [loading,setLoading]=useState(false);
-  const submit = async e => {
-    e.preventDefault(); setLoading(true);
-    try { await api.post('/api/devices',{name,location:loc,rtspUrl:''}); onAdded(); onClose(); }
-    catch(ex) { alert(ex.response?.data?.message||'Failed'); }
+  const [name,setName]=useState('');
+  const [loc,setLoc]=useState('');
+  const [loading,setLoading]=useState(false);
+  const [err,setErr]=useState('');
+  const submit = async () => {
+    if (!name.trim()) { setErr('Camera name is required.'); return; }
+    if (!loc.trim())  { setErr('Location is required.');    return; }
+    setErr(''); setLoading(true);
+    try {
+      await api.post('/api/devices', { name: name.trim(), location: loc.trim(), rtsp_url: '' });
+      onAdded();
+      onClose();
+    } catch(ex) {
+      setErr(ex.response?.data?.message || 'Failed to add camera. Please try again.');
+    }
     setLoading(false);
   };
   return (
     <div style={st.modal} onClick={onClose}>
       <div style={st.modalBox} onClick={e=>e.stopPropagation()}>
-        <h2 style={{marginTop:0,color:C.green}}>Add Camera</h2>
-        <form onSubmit={submit}>
-          <label style={st.label}>Device Name</label>
-          <input style={{...st.input,marginBottom:12}} value={name} onChange={e=>setName(e.target.value)} required placeholder="e.g. Front Door"/>
-          <label style={st.label}>Location *</label>
-          <input style={{...st.input,marginBottom:16}} value={loc} onChange={e=>setLoc(e.target.value)} required placeholder="e.g. Living Room"/>
-          <div style={{display:'flex',gap:8}}>
-            <button type="button" style={{...st.btn,...st.btnGray,flex:1}} onClick={onClose}>Cancel</button>
-            <button type="submit" style={{...st.btn,...st.btnGreen,flex:1}} disabled={loading||!name.trim()||!loc.trim()}>
-              {loading?'Adding...':'Add Device'}
-            </button>
-          </div>
-        </form>
+        <h2 style={{marginTop:0,color:C.green}}>➕ Add Camera</h2>
+        <p style={{color:C.sub,fontSize:13,marginBottom:16}}>Register a new IP camera or placeholder entry.</p>
+        <label style={st.label}>Camera Name *</label>
+        <input
+          style={{...st.input,marginBottom:12,borderColor:err&&!name.trim()?C.red:C.border}}
+          value={name}
+          onChange={e=>{setName(e.target.value);setErr('');}}
+          placeholder="e.g. Front Door, Garage"
+          autoFocus
+        />
+        <label style={st.label}>Location *</label>
+        <input
+          style={{...st.input,marginBottom:err?8:16,borderColor:err&&!loc.trim()?C.red:C.border}}
+          value={loc}
+          onChange={e=>{setLoc(e.target.value);setErr('');}}
+          placeholder="e.g. Front Yard, Master Bedroom"
+          onKeyDown={e=>{ if(e.key==='Enter') submit(); }}
+        />
+        {err && <p style={{color:C.red,fontSize:12,marginBottom:12,marginTop:0}}>{err}</p>}
+        <div style={{display:'flex',gap:8}}>
+          <button style={{...st.btn,...st.btnGray,flex:1}} onClick={onClose} disabled={loading}>Cancel</button>
+          <button style={{...st.btn,...st.btnGreen,flex:2}} onClick={submit} disabled={loading}>
+            {loading ? '⏳ Adding...' : '✓ Add Camera'}
+          </button>
+        </div>
       </div>
     </div>
   );
