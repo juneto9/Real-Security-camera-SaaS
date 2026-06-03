@@ -1575,7 +1575,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
       <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:20}}>
 
         <div style={st.card}>
-          <div style={{display:'grid',gridTemplateColumns:'1fr',gap:10,marginBottom:12}}>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:12}}>
             <div>
               <label style={st.label}>Camera Device</label>
               <select style={st.input} value={selectedDev} onChange={e=>setSelectedDev(e.target.value)}>
@@ -1803,7 +1803,7 @@ function ClipsPage({ devices }) {
       const res = await api.get('/api/recordings');
       const data = res.data.data || [];
       setClips(data);
-      setTotalSize(data.reduce((a,c)=>a+(c.size||0),0));
+      setTotalSize(data.reduce((a,c)=>a+(parseFloat(c.size)||0),0));
     } catch(e) { console.error('Clips load error:', e.message); }
     setLoading(false);
   };
@@ -1833,7 +1833,7 @@ function ClipsPage({ devices }) {
     setSelected(new Set(filtered.map(c=>c.id)));
   };
 
-  const fmtSize = b => !b ? '-' : b<1048576 ? (b/1024).toFixed(1)+' KB' : b<1073741824 ? (b/1048576).toFixed(1)+' MB' : (b/1073741824).toFixed(2)+' GB';
+  const fmtSize = b => { const n=parseFloat(b)||0; if(!n||!isFinite(n)) return '-'; if(n<1048576) return (n/1024).toFixed(1)+' KB'; if(n<1073741824) return (n/1048576).toFixed(1)+' MB'; if(n<1099511627776) return (n/1073741824).toFixed(2)+' GB'; return (n/1099511627776).toFixed(2)+' TB'; };
 
   const fmtDate = s => {
     if (!s) return '-';
@@ -2875,10 +2875,14 @@ function DiscoverPage({ socket, onDeviceAdded }) {
           <h2 style={{color:C.text,margin:0,fontSize:20}}>🔍 Discover Cameras</h2>
           <p style={{color:C.sub,fontSize:13,margin:'4px 0 0'}}>Find phones and IP cameras on your network</p>
         </div>
-        <button style={{...st.btn,...st.btnGreen,display:'flex',alignItems:'center',gap:8}}
-          onClick={scanNetwork} disabled={scanning}>
-          {scanning ? '⏳ Scanning...' : '🔍 Scan Network'}
-        </button>
+        <div style={{display:'flex',gap:8}}>
+          <button style={{...st.btn,backgroundColor:'#4488ff20',color:C.blue,border:`1px solid ${C.blue}`}}
+            onClick={()=>setShowEnroll(true)}>📳 Enroll Camera</button>
+          <button style={{...st.btn,...st.btnGreen,display:'flex',alignItems:'center',gap:8}}
+            onClick={scanNetwork} disabled={scanning}>
+            {scanning ? '⏳ Scanning...' : '🔍 Scan Network'}
+          </button>
+        </div>
       </div>
 
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:20}}>
