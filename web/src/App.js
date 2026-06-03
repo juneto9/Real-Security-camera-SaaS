@@ -1589,7 +1589,13 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
                 }
               </select>
             </div>
-
+            <div>
+              <label style={st.label}>Link to Device <span style={{color:C.sub,fontSize:10,fontWeight:'normal'}}>(hub use)</span></label>
+              <select style={st.input} value={linkedDevice} onChange={e=>setLinkedDevice(e.target.value)}>
+                <option value="">— Auto-select —</option>
+                {devices.filter(d=>!d.rtsp_url||d.rtsp_url==='').map(d=><option key={d.id} value={d.id}>{d.name}</option>)}
+              </select>
+            </div>
           </div>
 
           <div style={st.videoBox}>
