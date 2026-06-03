@@ -3489,7 +3489,7 @@ export default function App() {
               {t.id==='usb' && usbStatus==='recording' && <span style={{marginLeft:5,fontSize:10,color:C.red,fontWeight:'normal'}}>⏺</span>}
             </button>
           ))}
-          {(tab==='cameras'||tab==='discover') && <div style={{display:'flex',gap:6,marginLeft:'auto'}}>
+          <div style={{display:'flex',gap:6,marginLeft:'auto'}}>
             <button style={{...st.btn,backgroundColor:'#4488ff20',color:C.blue,border:`1px solid ${C.blue}`}} onClick={()=>setShowEnroll(true)}>📳 Enroll Camera</button>
             <button style={{...st.btn,...st.btnGreen}} onClick={()=>setShowAdd(true)}>+ Add Camera</button>
           </div>
