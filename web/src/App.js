@@ -1311,8 +1311,8 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
       id: Date.now(), type,
       time: now.toLocaleTimeString(),
       date: now.toLocaleDateString('en-US',{month:'short',day:'2-digit',year:'numeric'}),
-      device: devices.find(d=>d.id===linkedDevice)?.name || 'USB Camera',
-      deviceName: devices.find(d=>d.id===linkedDevice)?.name || 'USB Camera',
+      device: (linkedDevice ? devices.find(d=>d.id===linkedDevice)?.name : null) || (camDevices.find(d=>d.deviceId===selectedDev)?.label) || 'Webcam',
+      deviceName: (linkedDevice ? devices.find(d=>d.id===linkedDevice)?.name : null) || (camDevices.find(d=>d.deviceId===selectedDev)?.label) || 'Webcam',
       camMode: 'security',
     };
     const eventWithClip = {...event, clip_url: null, clip_pending: true};
@@ -3507,8 +3507,7 @@ export default function App() {
                   if (usbLinkedDevice && d.id === usbLinkedDevice) return false;
                   if (d.device_type === 'usb' || d.device_type === 'webcam') return false;
                   if (d.name?.trim() === 'PC Camera') return false;
-                  // Only show enrolled active devices
-                  if (!d.is_active) return false;
+                  // Show all enrolled cameras regardless of active state
                   return true;
                 }).map(d=>(
                   <CameraCard key={d.id}
