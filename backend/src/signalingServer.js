@@ -71,7 +71,7 @@ async function autoEnrollDevice({ deviceId, deviceName, orgId, userId }) {
     const streamKey = require('crypto').randomUUID();
     await db.query(
       `INSERT INTO devices (id, user_id, organization_id, name, location, stream_key, status, is_active, is_motion_detection_enabled, motion_sensitivity, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, 'offline', true, true, 50, NOW(), NOW())`,
+       VALUES ($1, $2, $3, $4, $5, $6, 'offline', false, true, 50, NOW(), NOW())`,
       [deviceId, userId, orgId, deviceName || 'Phone Camera', 'Auto-enrolled via app', streamKey]
     );
 
