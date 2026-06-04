@@ -188,14 +188,14 @@ function CameraSettingsPanel({ device, settings, onChange, onClose, onDeviceUpda
     nightVisionPro: false,
     cloudUpload: true,   // default ON — uploads already happening
   });
-  const [devName,     setDevName]     = useState(device.name?.trim() || '');
+  const [devName,     setDevName]     = useState(device.name?.trim() || device.device_name?.trim() || '');
   const [devLocation, setDevLocation] = useState(device.location?.trim() || '');
   // Sync with device prop when modal opens with different device
   React.useEffect(() => {
-    setDevName(device.name?.trim() || '');
+    setDevName(device.name?.trim() || device.device_name?.trim() || '');
     setDevLocation(device.location?.trim() || '');
     setDevRtsp(device.rtsp_url || '');
-  }, [device.id]);
+  }, [device.id, device.name, device.device_name]);
   const [devRtsp,     setDevRtsp]     = useState(device.rtsp_url || '');
   const [saving,      setSaving]      = useState(false);
   const [saveMsg,     setSaveMsg]     = useState('');
@@ -842,7 +842,7 @@ function CameraCard({ device, socket, onEvent, onSettings, settings, onWatchRemo
                   📡 Watch Remote
                 </button>
               ) : (
-                <button
+                !onSwitchToUsb && <button
                   style={{...st.btn, flex:2,
                     backgroundColor: online ? C.green : '#4488ff',
                     color:'#000',
@@ -1062,6 +1062,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
   const [streaming,      setStreaming]      = useState(false);
   const [selectedDev,    setSelectedDev]    = useState('');
   const [camDevices,     setCamDevices]     = useState([]);
+  const camDevicesRef = useRef([]);
   const [linkedDevice,   setLinkedDevice]   = useState('');
   const linkedDeviceRef   = useRef('');  // always current linkedDevice for socket closures
   const executeCommandRef = useRef(null); // ref to command executor
@@ -1374,16 +1375,18 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
       time: now.toLocaleTimeString(),
       date: now.toLocaleDateString('en-US',{month:'short',day:'2-digit',year:'numeric'}),
       device: (() => {
-        const hwName = camDevices.find(d=>d.deviceId===selectedDev)?.label || camDevices[0]?.label || '';
-        const regName = linkedDevice ? (devices.find(d=>d.id===linkedDevice)?.name || '') : '';
-        if (regName) return regName;
-        return hwName || 'Webcam';
+        const cds = camDevicesRef.current.length ? camDevicesRef.current : camDevices;
+        const hwName = cds.find(d=>d.deviceId===selectedDev)?.label || cds[0]?.label || '';
+        const regName = (linkedDevice ? devices.find(d=>d.id===linkedDevice)?.name : null)
+          || devices.find(d=>d.device_type==='usb')?.name || hwName || 'Webcam';
+        return regName;
       })(),
       deviceName: (() => {
-        const hwName = camDevices.find(d=>d.deviceId===selectedDev)?.label || camDevices[0]?.label || '';
-        const regName = linkedDevice ? (devices.find(d=>d.id===linkedDevice)?.name || '') : '';
-        if (regName) return regName;
-        return hwName || 'Webcam';
+        const cds = camDevicesRef.current.length ? camDevicesRef.current : camDevices;
+        const hwName = cds.find(d=>d.deviceId===selectedDev)?.label || cds[0]?.label || '';
+        const regName = (linkedDevice ? devices.find(d=>d.id===linkedDevice)?.name : null)
+          || devices.find(d=>d.device_type==='usb')?.name || hwName || 'Webcam';
+        return regName;
       })(),
       camMode: 'security',
     };
@@ -1423,7 +1426,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
       // PATCH 1: Enumerate devices HERE — after permission granted, labels are available
       const devs = await navigator.mediaDevices.enumerateDevices();
       const vids = devs.filter(d=>d.kind==='videoinput');
-      setCamDevices(vids);
+      setCamDevices(vids); camDevicesRef.current = vids;
       if (vids.length>0) setSelectedDev(vids[0].deviceId);
 
       setStreaming(true);
