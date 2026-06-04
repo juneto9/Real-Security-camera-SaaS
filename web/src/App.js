@@ -186,17 +186,17 @@ function CameraSettingsPanel({ device, settings, onChange, onClose, onDeviceUpda
     soundEnabled: true,
     nightVision: false,
     nightVisionPro: false,
-    cloudUpload: true,   // default ON — uploads already happening
+    cloudUpload: false,
   });
   const [devName,     setDevName]     = useState(device.name?.trim() || '');
   const [devLocation, setDevLocation] = useState(device.location?.trim() || '');
-  const [devRtsp,     setDevRtsp]     = useState(device.rtsp_url || '');
-  // Re-sync fields when a different device is opened
+  // Sync with device prop when modal opens with different device
   React.useEffect(() => {
     setDevName(device.name?.trim() || '');
     setDevLocation(device.location?.trim() || '');
     setDevRtsp(device.rtsp_url || '');
   }, [device.id]);
+  const [devRtsp,     setDevRtsp]     = useState(device.rtsp_url || '');
   const [saving,      setSaving]      = useState(false);
   const [saveMsg,     setSaveMsg]     = useState('');
   const [deleting,    setDeleting]    = useState(false);
@@ -299,7 +299,7 @@ function CameraSettingsPanel({ device, settings, onChange, onClose, onDeviceUpda
         </div>
 
         {/* Loop options */}
-        <p style={st.settingSection}>🔁 Recording Mode</p>
+        <p style={st.settingSection}>📁 Recording Mode</p>
         <div style={{display:'flex', gap:6, flexWrap:'wrap', marginBottom:8}}>
           <button onClick={()=>update('loopForever',true)} style={{
             ...st.btn, backgroundColor:s.loopForever?C.gold:C.card,
@@ -560,7 +560,7 @@ function RTSPViewer({ device, onClose, orgId: propOrgId }) {
   );
 }
 
-function CameraCard({ device, socket, onEvent, onSettings, settings, onWatchRemote, onSwitchToUsb, usbArmed, onDisarmUsb, onArmRemote }) {
+function CameraCard({ device, socket, onEvent, onSettings, settings, onWatchRemote, onSwitchToUsb, onArmRemote }) {
   const videoRef        = useRef(null);
   const pcRef           = useRef(null);
   const canvasRef       = useRef(null);
@@ -855,11 +855,11 @@ function CameraCard({ device, socket, onEvent, onSettings, settings, onWatchRemo
                 </button>
               )}
               {onSwitchToUsb && (
-                usbArmed
-                  ? <button style={{...st.btn,width:'100%',marginTop:6,backgroundColor:'rgba(255,68,68,0.15)',color:C.red,border:`2px solid ${C.red}`,fontWeight:'bold'}}
-                      onClick={onDisarmUsb}>🔴 Stop Monitoring</button>
-                  : <button style={{...st.btn,...st.btnGreen,width:'100%',marginTop:6}}
-                      onClick={()=>{ sessionStorage.setItem('returnToCameras','1'); sessionStorage.setItem('autoArmAfterStream','1'); onSwitchToUsb(); }}>📷 Start & Arm</button>
+                <button style={{...st.btn,...st.btnGreen,width:'100%',marginTop:6}} onClick={()=>{
+                  sessionStorage.setItem('returnToCameras', '1');
+                  sessionStorage.setItem('autoArmAfterStream', '1');
+                  onSwitchToUsb();
+                }}>📷 Start & Arm</button>
               )}
               {onArmRemote && (
                 <button style={{...st.btn,...st.btnGreen,width:'100%',marginTop:6}}
@@ -890,7 +890,7 @@ function CameraCard({ device, socket, onEvent, onSettings, settings, onWatchRemo
         <div style={{marginTop:8,backgroundColor:'#0d0d0d',borderRadius:8,padding:10,border:`1px solid ${C.border}`}}>
           <div style={{marginBottom:10}}>
             <div style={{...st.flexBetween,marginBottom:4}}>
-              <span style={{fontSize:12,color:C.sub}}>🔍 Zoom {zoom.toFixed(1)}x</span>
+              <span style={{fontSize:12,color:C.sub}}>📍 Zoom {zoom.toFixed(1)}x</span>
               <button style={{...st.btn,...st.btnGray,padding:'2px 8px',fontSize:11}} onClick={()=>setZoom(1)}>Reset</button>
             </div>
             <input type="range" min={1} max={4} step={0.1} value={zoom}
@@ -1012,7 +1012,7 @@ const CLIP_SIZES = [
   { label:'5 min', value:300 },
 ];
 
-function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsbStatus, onLinkedDevice, onSettings, autoStart, onAutoStartDone }) {
+function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsbStatus, onLinkedDevice, onSettings }) {
   const camSocketRef = useRef(null);
   const [camSocket, setCamSocket] = useState(null);
 
@@ -1145,22 +1145,6 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
   useEffect(()=>{
     isArmedRef.current = isArmed;
   },[isArmed]);
-
-  useEffect(()=>{
-    if (!autoStart) return;
-    if (streaming) {
-      setIsArmed(true); isArmedRef.current=true;
-      startMotionDetection();
-      if (soundEnabled) startSoundDetection();
-      setStatusMsg('🟢 Armed — monitoring...');
-      if (onUsbStatus) onUsbStatus('armed');
-      if (onAutoStartDone) onAutoStartDone();
-      return;
-    }
-    sessionStorage.setItem('autoArmAfterStream','1');
-    sessionStorage.setItem('returnToCameras','1');
-    setTimeout(()=>{ startStream(); if(onAutoStartDone) onAutoStartDone(); },200);
-  },[autoStart]);
 
   // Re-auth camera socket when linkedDevice or devices changes
   useEffect(()=>{
@@ -1411,15 +1395,14 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
 
       setStreaming(true);
       setStatusMsg('🟢 Broadcasting — select mode below');
-      if (sessionStorage.getItem('autoArmAfterStream')==='1') {
+      if (sessionStorage.getItem('autoArmAfterStream') === '1') {
         sessionStorage.removeItem('autoArmAfterStream');
-        setTimeout(()=>{
-          setIsArmed(true); isArmedRef.current=true;
+        setTimeout(() => {
+          setIsArmed(true); isArmedRef.current = true;
           startMotionDetection();
           if (soundEnabled) startSoundDetection();
           setStatusMsg('🟢 Armed — monitoring...');
-          if (onUsbStatus) onUsbStatus('armed');
-        },800);
+        }, 800);
       }
       try {
         const vt = stream.getVideoTracks()[0];
@@ -1499,7 +1482,6 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
     stopMotionDetection();
     if (isRecordingRef.current) stopRecording();
     setStatusMsg('🟢 Broadcasting — select mode below');
-    if (onUsbStatus) onUsbStatus('');
   };
 
   const startRecording = (triggered=false, triggerEventId=null) => {
@@ -1684,7 +1666,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
           {streaming && (
             <div style={{marginTop:8,backgroundColor:'#0d0d0d',borderRadius:8,padding:8}}>
               <div style={{...st.flexBetween,marginBottom:6}}>
-                <span style={{fontSize:12,color:C.sub}}>🔍 {zoomLevel.toFixed(1)}x {hwZoomSupported&&<span style={{color:C.green,fontSize:10}}>HW</span>}</span>
+                <span style={{fontSize:12,color:C.sub}}>📍 {zoomLevel.toFixed(1)}x {hwZoomSupported&&<span style={{color:C.green,fontSize:10}}>HW</span>}</span>
                 <button style={{...st.btn,...st.btnGray,padding:'3px 8px',fontSize:11}} onClick={()=>handleZoom(1)}>Reset</button>
               </div>
               <input type="range" min={1} max={hwZoomSupported?hwZoomRange.max:3} step={hwZoomSupported?hwZoomRange.step:0.1}
@@ -1875,7 +1857,7 @@ function ClipsPage({ devices, onlineMap = {} }) {
   const loadClips = async () => {
     setLoading(true);
     try {
-      const res = await api.get('/api/recordings?limit=2000');
+      const res = await api.get('/api/recordings');
       const data = res.data.data || [];
       setClips(data);
       setTotalSize(data.reduce((a,c)=>a+(parseFloat(c.size)||0),0));
@@ -2292,7 +2274,7 @@ function AdminManageModal({ onClose }) {
           <button style={{...st.btn,...st.btnGray}} onClick={onClose}>✕</button>
         </div>
         <div style={{backgroundColor:'#0a1a2a',border:`1px solid ${C.blue}30`,borderRadius:8,padding:12,marginBottom:16,fontSize:12,color:C.sub}}>
-          <div style={{color:C.blue,fontWeight:'bold',marginBottom:4}}>🔐 Access Control</div>
+          <div style={{color:C.blue,fontWeight:'bold',marginBottom:4}}>📐 Access Control</div>
           <div>Select up to <strong style={{color:C.text}}>2 admin accounts</strong> (e.g. you and your spouse). Only admins can view live feeds and trigger cameras.</div>
         </div>
         {loading ? <div style={{textAlign:'center',padding:20,color:C.sub}}>Loading...</div> : (
@@ -2343,23 +2325,43 @@ function AddDeviceModal({ onClose, onAdded }) {
     if (!name.trim()) { setErr('Camera name is required.'); return; }
     if (!loc.trim())  { setErr('Location is required.');    return; }
     setErr(''); setLoading(true);
-    try { await api.post('/api/devices',{name:name.trim(),location:loc.trim(),rtsp_url:''}); onAdded(); onClose(); }
-    catch(ex) { setErr(ex.response?.data?.message||'Failed to add camera.'); }
+    try {
+      await api.post('/api/devices', { name: name.trim(), location: loc.trim(), rtsp_url: '' });
+      onAdded();
+      onClose();
+    } catch(ex) {
+      setErr(ex.response?.data?.message || 'Failed to add camera. Please try again.');
+    }
     setLoading(false);
   };
   return (
     <div style={st.modal} onClick={onClose}>
       <div style={st.modalBox} onClick={e=>e.stopPropagation()}>
-        <h2 style={{marginTop:0,color:C.green}}>Add Camera</h2>
+        <h2 style={{marginTop:0,color:C.green}}>➕ Add Camera</h2>
+        <p style={{color:C.sub,fontSize:13,marginBottom:16}}>Register a new IP camera or placeholder entry.</p>
         <label style={st.label}>Camera Name *</label>
-          <input style={{...st.input,marginBottom:12}} value={name} onChange={e=>{setName(e.target.value);setErr('');}} placeholder="e.g. Front Door" autoFocus/>
-          <label style={st.label}>Location *</label>
-          <input style={{...st.input,marginBottom:err?8:16}} value={loc} onChange={e=>{setLoc(e.target.value);setErr('');}} placeholder="e.g. Living Room" onKeyDown={e=>{ if(e.key==='Enter') submit(); }}/>
-          {err && <p style={{color:C.red,fontSize:12,marginBottom:12}}>{err}</p>}
-          <div style={{display:'flex',gap:8}}>
-            <button style={{...st.btn,...st.btnGray,flex:1}} onClick={onClose} disabled={loading}>Cancel</button>
-            <button style={{...st.btn,...st.btnGreen,flex:2}} onClick={submit} disabled={loading}>{loading?'⏳ Adding...':'✓ Add Camera'}</button>
-          </div>
+        <input
+          style={{...st.input,marginBottom:12,borderColor:err&&!name.trim()?C.red:C.border}}
+          value={name}
+          onChange={e=>{setName(e.target.value);setErr('');}}
+          placeholder="e.g. Front Door, Garage"
+          autoFocus
+        />
+        <label style={st.label}>Location *</label>
+        <input
+          style={{...st.input,marginBottom:err?8:16,borderColor:err&&!loc.trim()?C.red:C.border}}
+          value={loc}
+          onChange={e=>{setLoc(e.target.value);setErr('');}}
+          placeholder="e.g. Front Yard, Master Bedroom"
+          onKeyDown={e=>{ if(e.key==='Enter') submit(); }}
+        />
+        {err && <p style={{color:C.red,fontSize:12,marginBottom:12,marginTop:0}}>{err}</p>}
+        <div style={{display:'flex',gap:8}}>
+          <button style={{...st.btn,...st.btnGray,flex:1}} onClick={onClose} disabled={loading}>Cancel</button>
+          <button style={{...st.btn,...st.btnGreen,flex:2}} onClick={submit} disabled={loading}>
+            {loading ? '⏳ Adding...' : '✓ Add Camera'}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -2805,6 +2807,8 @@ function identifyDevice(mac) {
 
 // ─── MAC → Brand/RTSP detection ──────────────────────────────────
 const MAC_BRANDS = {
+  // Sercomm/ADC
+  '00:0E:8F':'Sercomm','2C:26:17':'Sercomm','B0:B2:DC':'Sercomm',
   // Zmodo/Monitorix
   'B8:3A:9D':'Zmodo','54:C4:15':'Zmodo',
   // Hikvision
@@ -2831,7 +2835,8 @@ const RTSP_TEMPLATES = {
   'Hikvision': (ip) => `rtsp://admin:password@${ip}:554/Streaming/Channels/101`,
   'Dahua':     (ip) => `rtsp://admin:password@${ip}:554/cam/realmonitor?channel=1&subtype=0`,
   'Reolink':   (ip) => `rtsp://admin:password@${ip}:554/h264Preview_01_main`,
-  'Zmodo':     (ip) => `rtsp://admin:password@${ip}:554/live/main`,
+  'Sercomm':   (ip) => `rtsp://root:adcvideo@${ip}:554/stream1`,
+    'Zmodo':     (ip) => `rtsp://admin:password@${ip}:554/live/main`,
   'Axis':      (ip) => `rtsp://admin:password@${ip}:554/axis-media/media.amp`,
   'Amcrest':   (ip) => `rtsp://admin:password@${ip}:554/cam/realmonitor?channel=1`,
   'TP-Link':   (ip) => `rtsp://admin:password@${ip}:554/stream1`,
@@ -2858,7 +2863,7 @@ function DiscoverPage({ socket, onDeviceAdded, onEnroll }) {
   const [scanProgress, setScanProgress] = useState('');
   const [discovered,   setDiscovered]   = useState([]);
   const [enrolling,    setEnrolling]    = useState(null);
-  const [enrollPending, setEnrollPending] = useState(null);
+    const [enrollPending, setEnrollPending] = useState(null);
   const [removing,     setRemoving]     = useState(null);
   const [mdnsDevices,  setMdnsDevices]  = useState([]);
 
@@ -2894,7 +2899,7 @@ function DiscoverPage({ socket, onDeviceAdded, onEnroll }) {
   const enroll = (device) => {
     const { brand, rtsp } = getRtspSuggestion(device.ip, device.mac);
     const cameraName = brand ? `${brand} Camera (${device.ip})` : (device.name || device.device_name || `Camera Device (${device.ip})`);
-    const loc = (device.location && !/^\d+\.\d+\.\d+\.\d+$/.test(device.location)) ? device.location : (device.ip || '');
+    const loc = (device.location && !/^\d+\.\d+\.\d+\.\d+$/.test(device.location)) ? device.location : '';
     setEnrollPending({ name: cameraName, location: loc, rtsp: rtsp||'', device });
   };
 
@@ -2904,7 +2909,11 @@ function DiscoverPage({ socket, onDeviceAdded, onEnroll }) {
     setEnrolling(device.id || device.ip);
     setEnrollPending(null);
     try {
-      await api.post('/api/devices', { name, location: location||device.ip||'', rtsp_url: rtsp||'' });
+      await api.post('/api/devices', {
+        name,
+        location,
+        rtsp_url: rtsp || '',
+      });
       setDiscovered(d => d.map(x =>
         (x.id || x.ip) === (device.id || device.ip)
           ? { ...x, source: 'registered', is_active: true }
@@ -2954,12 +2963,12 @@ function DiscoverPage({ socket, onDeviceAdded, onEnroll }) {
     <div style={{padding:24,maxWidth:900,margin:'0 auto'}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
         <div>
-          <h2 style={{color:C.text,margin:0,fontSize:20}}>🔍 Discover Cameras</h2>
+          <h2 style={{color:C.text,margin:0,fontSize:20}}>📍 Discover Cameras</h2>
           <p style={{color:C.sub,fontSize:13,margin:'4px 0 0'}}>Find phones and IP cameras on your network</p>
         </div>
         <button style={{...st.btn,...st.btnGreen,display:'flex',alignItems:'center',gap:8}}
           onClick={scanNetwork} disabled={scanning}>
-          {scanning ? '⏳ Scanning...' : '🔍 Scan Network'}
+          {scanning ? '⏳ Scanning...' : '📍 Scan Network'}
         </button>
       </div>
 
@@ -3057,24 +3066,32 @@ function DiscoverPage({ socket, onDeviceAdded, onEnroll }) {
             </div>
           );
         })}
+
       {enrollPending && (
         <div style={st.modal} onClick={()=>setEnrollPending(null)}>
           <div style={{...st.modalBox,maxWidth:420}} onClick={e=>e.stopPropagation()}>
-            <h3 style={{margin:'0 0 16px',color:C.green}}>📷 Confirm Camera Enrollment</h3>
+            <h3 style={{margin:'0 0 16px',color:C.green}}>Confirm Camera Enrollment</h3>
             <p style={{color:C.sub,fontSize:13,marginBottom:16}}>Review detected info — edit if needed.</p>
             <label style={st.label}>Camera Name *</label>
-            <input style={{...st.input,marginBottom:12}} value={enrollPending.name}
+            <input style={{...st.input,marginBottom:12}}
+              value={enrollPending.name}
               onChange={e=>setEnrollPending(p=>({...p,name:e.target.value}))}
               placeholder="e.g. Front Door Camera"/>
-            <label style={st.label}>Location</label>
-            <input style={{...st.input,marginBottom:16}} value={enrollPending.location}
+            <label style={st.label}>Location *</label>
+            <input style={{...st.input,marginBottom:16}}
+              value={enrollPending.location}
               onChange={e=>setEnrollPending(p=>({...p,location:e.target.value}))}
               placeholder="e.g. Front Yard, Living Room"/>
+            {enrollPending.rtsp && (
+              <div style={{fontSize:11,color:C.sub,marginBottom:12,fontFamily:'monospace',wordBreak:'break-all'}}>
+                RTSP: {enrollPending.rtsp}
+              </div>
+            )}
             <div style={{display:'flex',gap:8}}>
               <button style={{...st.btn,...st.btnGray,flex:1}} onClick={()=>setEnrollPending(null)}>Cancel</button>
               <button style={{...st.btn,...st.btnGreen,flex:2}}
-                disabled={!enrollPending.name.trim()}
-                onClick={confirmEnroll}>✓ Add Camera</button>
+                disabled={!enrollPending.name.trim()||!enrollPending.location.trim()}
+                onClick={confirmEnroll}>Add Camera</button>
             </div>
           </div>
         </div>
@@ -3082,6 +3099,7 @@ function DiscoverPage({ socket, onDeviceAdded, onEnroll }) {
       </div>
     </div>
   );
+
 }
 
 // ─── Admin Page ───────────────────────────────────────────────────
@@ -3425,7 +3443,6 @@ export default function App() {
   const [adminSubTab,  setAdminSubTab]  = useState('members');
   const [activitySubTab, setActivitySubTab] = useState('clips');
   const [usbStatus,    setUsbStatus]    = useState(''); // 'armed' | 'recording' | ''
-  const [usbAutoStart,   setUsbAutoStart]   = useState(false);
   const [usbLinkedDevice, setUsbLinkedDevice] = useState(()=>sessionStorage.getItem('usbLinkedDevice')||'');
   const [theme, setTheme] = useState(()=>localStorage.getItem('rsc_theme')||'operator');
   const [, forceRender] = useState(0);
@@ -3528,7 +3545,7 @@ export default function App() {
   const TABS = [
     {id:'cameras',  label:'📷 Cameras'},
     {id:'usb',      label:'🖥️ USB/Webcam'},
-    {id:'discover', label:'🔍 Discover'},
+    {id:'discover', label:'📍 Discover'},
     {id:'activity', label:'🎬 Activity'},
     {id:'admin',    label:'👥 Admin'},
   ];
@@ -3559,7 +3576,7 @@ export default function App() {
             <p style={{...st.statN,color:C.green}}>
               {new Set([
                 ...devices.filter(d=>(onlineMap[d.id]?.online||onlineMap[d.id]===true)).map(d=>d.id),
-                ...Object.entries(onlineMap).filter(([k,v])=>(v?.online||v===true) && devices.find(d=>d.id===k && d.device_type!=='usb')).map(([k])=>k)
+                ...Object.entries(onlineMap).filter(([k,v])=>(v?.online||v===true)).map(([k])=>k)
               ]).size}
             </p>
             <p style={st.statL}>Online Now</p>
@@ -3603,8 +3620,6 @@ export default function App() {
             : <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(320px,1fr))',gap:16}}>
                 {devices.filter(d=>{
                   // Exclude USB/Webcam devices — managed from USB/Webcam tab only
-                  if (usbLinkedDevice && d.id === usbLinkedDevice && (!d.rtsp_url || d.rtsp_url === '')) return false;
-                  // Show all enrolled cameras regardless of active state
                   return true;
                 }).map(d=>(
                   <CameraCard key={d.id}
@@ -3614,9 +3629,7 @@ export default function App() {
                     settings={deviceSettings[d.id]}
                     onSettings={()=>setSettingsFor(d)}
                     onWatchRemote={(dev)=>setRtspViewing(dev)}
-                    onSwitchToUsb={d.device_type==='usb'?()=>{ setUsbAutoStart(true); setTab('usb'); }:null}
-                    usbArmed={d.device_type==='usb'?usbStatus==='armed':false}
-                    onDisarmUsb={d.device_type==='usb'?()=>{ socket?.emit('camera:command',{deviceId:d.id,command:'disarm'}); setUsbStatus(''); }:null}
+                    onSwitchToUsb={d.device_type==='usb'?()=>setTab('usb'):null}
                     onArmRemote={d.device_type==='mobile'&&!d.rtsp_url?()=>socket?.emit('camera:command',{deviceId:d.id,command:'arm'}):null}
                   />
                 ))}
@@ -3625,7 +3638,7 @@ export default function App() {
         </div>
 
         <div style={{display: tab==='usb' ? 'block' : 'none'}}>
-          <USBCameraPage socket={socket} devices={devices} userId={user?.userId} organizationId={user?.organizationId} onUsbStatus={setUsbStatus} onLinkedDevice={setUsbLinkedDevice} onSettings={(dev)=>setSettingsFor(dev)} autoStart={usbAutoStart} onAutoStartDone={()=>setUsbAutoStart(false)} onEvent={e=>{
+          <USBCameraPage socket={socket} devices={devices} userId={user?.userId} organizationId={user?.organizationId} onUsbStatus={setUsbStatus} onLinkedDevice={setUsbLinkedDevice} onSettings={(dev)=>setSettingsFor(dev)} onEvent={e=>{
             if (e.type==='clip_ready') {
               setEvents(ev=>{
                 const updated = ev.map(existing=>
@@ -3695,7 +3708,7 @@ export default function App() {
       {settingsFor && (
         <CameraSettingsPanel
           key={settingsFor.id}
-          device={devices.find(d=>d.id===settingsFor.id)||settingsFor}
+          device={settingsFor}
           settings={deviceSettings[settingsFor.id]}
           onChange={s=>setDeviceSettings(p=>({...p,[settingsFor.id]:s}))}
           onClose={()=>setSettingsFor(null)}
@@ -3709,6 +3722,9 @@ export default function App() {
     </div>
   );
 }
+
+
+
 
 
 
