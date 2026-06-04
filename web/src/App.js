@@ -150,7 +150,7 @@ const st = {
   flexBetween: { display:'flex', alignItems:'center', justifyContent:'space-between' },
   tabs:        { display:'flex', gap:4, marginBottom:20, flexWrap:'wrap' },
   tab:         { padding:'8px 16px', borderRadius:6, cursor:'pointer', fontSize:13, fontWeight:'bold', border:'none' },
-  modal:       { position:'fixed', inset:0, backgroundColor:'rgba(0,0,0,0.85)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:200, padding:16 },
+  modal:       { position:'fixed', inset:0, backgroundColor:'rgba(0,0,0,0.85)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:400, padding:16 },
   modalBox:    { backgroundColor:C.surface, borderRadius:12, padding:24, width:'100%', maxWidth:520, border:`1px solid ${C.border}`, maxHeight:'90vh', overflowY:'auto' },
   toast:       { position:'fixed', bottom:20, right:20, backgroundColor:C.green, color:'#000', padding:'12px 20px', borderRadius:10, fontWeight:'bold', zIndex:300, fontSize:14, boxShadow:'0 4px 20px rgba(0,255,136,0.4)', maxWidth:340 },
   toggle:      { display:'flex', alignItems:'center', justifyContent:'space-between', padding:'10px 0', borderBottom:`1px solid ${C.border}` },
@@ -1374,16 +1374,16 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
       time: now.toLocaleTimeString(),
       date: now.toLocaleDateString('en-US',{month:'short',day:'2-digit',year:'numeric'}),
       device: (() => {
-        const hwName = camDevices.find(d=>d.deviceId===selectedDev)?.label || '';
-        const regName = linkedDevice ? devices.find(d=>d.id===linkedDevice)?.name : '';
-        if (hwName && regName && hwName !== regName) return `${hwName} — ${regName}`;
-        return regName || hwName || 'Webcam';
+        const hwName = camDevices.find(d=>d.deviceId===selectedDev)?.label || camDevices[0]?.label || '';
+        const regName = linkedDevice ? (devices.find(d=>d.id===linkedDevice)?.name || '') : '';
+        if (regName) return regName;
+        return hwName || 'Webcam';
       })(),
       deviceName: (() => {
-        const hwName = camDevices.find(d=>d.deviceId===selectedDev)?.label || '';
-        const regName = linkedDevice ? devices.find(d=>d.id===linkedDevice)?.name : '';
-        if (hwName && regName && hwName !== regName) return `${hwName} — ${regName}`;
-        return regName || hwName || 'Webcam';
+        const hwName = camDevices.find(d=>d.deviceId===selectedDev)?.label || camDevices[0]?.label || '';
+        const regName = linkedDevice ? (devices.find(d=>d.id===linkedDevice)?.name || '') : '';
+        if (regName) return regName;
+        return hwName || 'Webcam';
       })(),
       camMode: 'security',
     };
@@ -3492,6 +3492,7 @@ export default function App() {
   const [usbStatus,    setUsbStatus]    = useState(''); // 'armed' | 'recording' | ''
   const [usbAutoStart,   setUsbAutoStart]   = useState(false);
   const [usbExpanded,    setUsbExpanded]    = useState(false);
+  const [clipsRefreshKey, setClipsRefreshKey] = useState(0);
   const [usbLinkedDevice, setUsbLinkedDevice] = useState(()=>sessionStorage.getItem('usbLinkedDevice')||'');
   const [theme, setTheme] = useState(()=>localStorage.getItem('rsc_theme')||'operator');
   const [, forceRender] = useState(0);
@@ -3533,7 +3534,7 @@ export default function App() {
       setDevices(devs);
       // Sync camera count to billing DB so usage meters are accurate
       try {
-        const activeCount = devs.filter(d=>(d.is_active===true||d.is_active===1)&&!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(d.name||'')).length;
+        const activeCount = devs.filter(d=>d.is_active!==false&&!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(d.name||'')).length;
         await api.patch('/api/users/usage', { cameras_count: activeCount });
       } catch {}
     } catch {}
@@ -3690,7 +3691,7 @@ export default function App() {
             <div style={{maxWidth:1000,margin:'0 auto'}}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
                 <h2 style={{color:C.green,margin:0}}>🖥️ USB / Webcam — Security Camera</h2>
-                <button style={{...st.btn,...st.btnGray,fontSize:13}} onClick={()=>{ setUsbExpanded(false); setUsbAutoStart(false); }}>✕ Close</button>
+                <button style={{...st.btn,...st.btnGray,fontSize:13}} onClick={()=>{ setUsbExpanded(false); setUsbAutoStart(false); setClipsRefreshKey(k=>k+1); }}>✕ Close</button>
               </div>
         <div style={{display:'block'}}>
           <USBCameraPage socket={socket} devices={devices} userId={user?.userId} organizationId={user?.organizationId} onUsbStatus={setUsbStatus} onLinkedDevice={setUsbLinkedDevice} onSettings={(dev)=>setSettingsFor(dev)} autoStart={usbAutoStart} onAutoStartDone={()=>setUsbAutoStart(false)} onEvent={e=>{
@@ -3725,7 +3726,7 @@ export default function App() {
               }}>{st2.label}</button>
             ))}
           </div>
-          {activitySubTab==='clips'  && <ClipsPage devices={devices} onlineMap={onlineMap}/>}
+          {activitySubTab==='clips'  && <ClipsPage key={clipsRefreshKey} devices={devices} onlineMap={onlineMap}/>}
           {activitySubTab==='events' && <EventsPanel events={events} devices={devices}/>}
         </div>
         <div style={{display: tab==='sub' ? 'block' : 'none'}}>
