@@ -1393,7 +1393,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
       })(),
       camMode: 'security',
     };
-    const eventWithClip = {...event, clip_url: null, clip_pending: true};
+    const eventWithClip = {...event, clip_url: null, clip_pending: true, isArmed: true};
     setEvents(ev=>[eventWithClip,...ev].slice(0,50));
     if (onEvent) onEvent(eventWithClip);
     setStatusMsg(`⚠️ ${type==='motion'?'Motion':'Sound'} detected! — Recording...`);
@@ -2169,10 +2169,10 @@ function EnrollmentModal({ onClose, onEnrolled }) {
   const qrRef = useRef(null);
 
   const generate = async () => {
-    if (!cameraName.trim()) return;
     setLoading(true);
     try {
-      const res = await api.post('/api/enrollment/generate', { cameraName, location, expiresIn });
+      // cameraName is auto-generated server-side — only location and expiresIn needed
+      const res = await api.post('/api/enrollment/generate', { location, expiresIn });
       setEnrollData(res.data.data);
       setStep('qr');
       setTimeout(()=>{
@@ -2207,10 +2207,9 @@ function EnrollmentModal({ onClose, onEnrolled }) {
             <p style={{color:C.sub,fontSize:13,marginBottom:16}}>
               Generate a QR code. Any device that scans it automatically becomes a security camera in your system.
             </p>
-            <label style={st.label}>Camera Name *</label>
-            <input style={{...st.input,marginBottom:12}} value={cameraName}
-              onChange={e=>setCameraName(e.target.value)}
-              placeholder="e.g. Front Door, Garage, Living Room"/>
+            <p style={{color:C.sub,fontSize:12,marginBottom:12,backgroundColor:C.card,padding:'8px 10px',borderRadius:6,border:`1px solid ${C.border}`}}>
+              📷 Camera name is assigned automatically. You can rename it in Camera Settings after enrollment.
+            </p>
             <label style={st.label}>Location</label>
             <input style={{...st.input,marginBottom:12}} value={location}
               onChange={e=>setLocation(e.target.value)}
@@ -2236,7 +2235,7 @@ function EnrollmentModal({ onClose, onEnrolled }) {
             </div>
             <div style={{display:'flex',gap:8}}>
               <button style={{...st.btn,...st.btnGray,flex:1}} onClick={onClose}>Cancel</button>
-              <button style={{...st.btn,...st.btnGreen,flex:2}} onClick={generate} disabled={loading||!cameraName.trim()||!location.trim()}>
+              <button style={{...st.btn,...st.btnGreen,flex:2}} onClick={generate} disabled={loading||!location.trim()}>
                 {loading ? 'Generating...' : '🔳 Generate QR Code'}
               </button>
             </div>
@@ -2373,16 +2372,15 @@ function AdminManageModal({ onClose }) {
 
 // ─── Add Device Modal ─────────────────────────────────────────────
 function AddDeviceModal({ onClose, onAdded }) {
-  const [name,setName]=useState('');
   const [loc,setLoc]=useState('');
   const [loading,setLoading]=useState(false);
   const [err,setErr]=useState('');
   const submit = async () => {
-    if (!name.trim()) { setErr('Camera name is required.'); return; }
-    if (!loc.trim())  { setErr('Location is required.');    return; }
+    if (!loc.trim()) { setErr('Location is required.'); return; }
     setErr(''); setLoading(true);
     try {
-      await api.post('/api/devices', { name: name.trim(), location: loc.trim(), rtsp_url: '' });
+      // Name is auto-generated server-side from userId — only location needed
+      await api.post('/api/devices', { location: loc.trim(), rtsp_url: '' });
       onAdded();
       onClose();
     } catch(ex) {
@@ -2394,21 +2392,14 @@ function AddDeviceModal({ onClose, onAdded }) {
     <div style={st.modal} onClick={onClose}>
       <div style={st.modalBox} onClick={e=>e.stopPropagation()}>
         <h2 style={{marginTop:0,color:C.green}}>➕ Add Camera</h2>
-        <p style={{color:C.sub,fontSize:13,marginBottom:16}}>Register a new IP camera or placeholder entry.</p>
-        <label style={st.label}>Camera Name *</label>
-        <input
-          style={{...st.input,marginBottom:12,borderColor:err&&!name.trim()?C.red:C.border}}
-          value={name}
-          onChange={e=>{setName(e.target.value);setErr('');}}
-          placeholder="e.g. Front Door, Garage"
-          autoFocus
-        />
+        <p style={{color:C.sub,fontSize:13,marginBottom:16}}>Register a new camera. A unique name is assigned automatically — you can rename it in Camera Settings.</p>
         <label style={st.label}>Location *</label>
         <input
           style={{...st.input,marginBottom:err?8:16,borderColor:err&&!loc.trim()?C.red:C.border}}
           value={loc}
           onChange={e=>{setLoc(e.target.value);setErr('');}}
           placeholder="e.g. Front Yard, Master Bedroom"
+          autoFocus
           onKeyDown={e=>{ if(e.key==='Enter') submit(); }}
         />
         {err && <p style={{color:C.red,fontSize:12,marginBottom:12,marginTop:0}}>{err}</p>}
@@ -3524,9 +3515,14 @@ export default function App() {
       )); } catch {}
       return updated;
     });
-    // Show 14-second toast for motion/sound events
+    // Show 14-second toast ONLY when the source device is armed
+    // usbStatus is 'armed' when the USB/webcam is actively armed
+    // For IP cameras, check the device's is_armed flag if available
     if (e.type==='motion'||e.type==='sound') {
-      showToast(`🚨 ${e.type==='motion'?'Motion':'Sound'} detected — ${e.deviceName||'Camera'}`, 14000);
+      const sourceIsArmed = e.isArmed === true || e.armed === true || usbStatus === 'armed';
+      if (sourceIsArmed) {
+        showToast(`🚨 ${e.type==='motion'?'Motion':'Sound'} detected — ${e.deviceName||'Camera'}`, 14000);
+      }
     }
   };
 
