@@ -186,7 +186,7 @@ function CameraSettingsPanel({ device, settings, onChange, onClose, onDeviceUpda
     soundEnabled: true,
     nightVision: false,
     nightVisionPro: false,
-    cloudUpload: true,   // default ON — uploads already happening
+    cloudUpload: false,
   });
   const [devName,     setDevName]     = useState(device.name?.trim() || '');
   const [devLocation, setDevLocation] = useState(device.location?.trim() || '');
@@ -560,7 +560,7 @@ function RTSPViewer({ device, onClose, orgId: propOrgId }) {
   );
 }
 
-function CameraCard({ device, socket, onEvent, onSettings, settings, onWatchRemote, onSwitchToUsb, onArmRemote }) {
+function CameraCard({ device, socket, onEvent, onSettings, settings, onWatchRemote, onSwitchToUsb, onArmRemote, usbArmed, onDisarmUsb }) {
   const videoRef        = useRef(null);
   const pcRef           = useRef(null);
   const canvasRef       = useRef(null);
@@ -855,11 +855,14 @@ function CameraCard({ device, socket, onEvent, onSettings, settings, onWatchRemo
                 </button>
               )}
               {onSwitchToUsb && (
-                <button style={{...st.btn,...st.btnGreen,width:'100%',marginTop:6}} onClick={()=>{
-                  sessionStorage.setItem('returnToCameras', '1');
-                  sessionStorage.setItem('autoArmAfterStream', '1');
-                  onSwitchToUsb();
-                }}>📷 Start & Arm</button>
+                usbArmed
+                  ? <button style={{...st.btn,width:'100%',marginTop:6,backgroundColor:'rgba(255,68,68,0.15)',color:C.red,border:`2px solid ${C.red}`,fontWeight:'bold'}}
+                      onClick={onDisarmUsb}>🔴 Stop Monitoring</button>
+                  : <button style={{...st.btn,...st.btnGreen,width:'100%',marginTop:6}} onClick={()=>{
+                      sessionStorage.setItem('returnToCameras','1');
+                      sessionStorage.setItem('autoArmAfterStream','1');
+                      onSwitchToUsb();
+                    }}>📷 Start & Arm</button>
               )}
               {onArmRemote && (
                 <button style={{...st.btn,...st.btnGreen,width:'100%',marginTop:6}}
@@ -1012,7 +1015,7 @@ const CLIP_SIZES = [
   { label:'5 min', value:300 },
 ];
 
-function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsbStatus, onLinkedDevice, onSettings, autoStart, onAutoStartDone }) {
+function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsbStatus, onLinkedDevice, onSettings }) {
   const camSocketRef = useRef(null);
   const [camSocket, setCamSocket] = useState(null);
 
@@ -1145,23 +1148,6 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
   useEffect(()=>{
     isArmedRef.current = isArmed;
   },[isArmed]);
-
-  // Auto-start stream when triggered from Cameras tab Start & Arm button
-  useEffect(()=>{
-    if (!autoStart) return;
-    if (streaming) {
-      setIsArmed(true); isArmedRef.current=true;
-      startMotionDetection();
-      if (soundEnabled) startSoundDetection();
-      setStatusMsg('🟢 Armed — monitoring...');
-      if (onUsbStatus) onUsbStatus('armed');
-      if (onAutoStartDone) onAutoStartDone();
-      return;
-    }
-    sessionStorage.setItem('autoArmAfterStream','1');
-    sessionStorage.setItem('returnToCameras','1');
-    setTimeout(()=>{ startStream(); if(onAutoStartDone) onAutoStartDone(); },200);
-  },[autoStart]);
 
   // Re-auth camera socket when linkedDevice or devices changes
   useEffect(()=>{
@@ -1874,7 +1860,7 @@ function ClipsPage({ devices, onlineMap = {} }) {
   const loadClips = async () => {
     setLoading(true);
     try {
-      const res = await api.get('/api/recordings?limit=2000');
+      const res = await api.get('/api/recordings');
       const data = res.data.data || [];
       setClips(data);
       setTotalSize(data.reduce((a,c)=>a+(parseFloat(c.size)||0),0));
@@ -3460,7 +3446,6 @@ export default function App() {
   const [adminSubTab,  setAdminSubTab]  = useState('members');
   const [activitySubTab, setActivitySubTab] = useState('clips');
   const [usbStatus,    setUsbStatus]    = useState(''); // 'armed' | 'recording' | ''
-  const [usbAutoStart,   setUsbAutoStart]   = useState(false);
   const [usbLinkedDevice, setUsbLinkedDevice] = useState(()=>sessionStorage.getItem('usbLinkedDevice')||'');
   const [theme, setTheme] = useState(()=>localStorage.getItem('rsc_theme')||'operator');
   const [, forceRender] = useState(0);
@@ -3592,10 +3577,7 @@ export default function App() {
           </div>
           <div style={st.stat}>
             <p style={{...st.statN,color:C.green}}>
-              {new Set([
-                ...devices.filter(d=>(onlineMap[d.id]?.online||onlineMap[d.id]===true)).map(d=>d.id),
-                ...Object.entries(onlineMap).filter(([k,v])=>(v?.online||v===true)).map(([k])=>k)
-              ]).size}
+              {devices.filter(d=>onlineMap[d.id]?.online||onlineMap[d.id]===true).length}
             </p>
             <p style={st.statL}>Online Now</p>
           </div>
@@ -3637,8 +3619,7 @@ export default function App() {
               </div>
             : <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(320px,1fr))',gap:16}}>
                 {devices.filter(d=>{
-                  // Only show confirmed/active devices — exclude pending QR devices
-                  if (d.is_active === false && d.status !== 'online' && d.status !== 'offline') return false;
+                  // Exclude USB/Webcam devices — managed from USB/Webcam tab only
                   return true;
                 }).map(d=>(
                   <CameraCard key={d.id}
@@ -3649,6 +3630,8 @@ export default function App() {
                     onSettings={()=>setSettingsFor(d)}
                     onWatchRemote={(dev)=>setRtspViewing(dev)}
                     onSwitchToUsb={d.device_type==='usb'?()=>{ setUsbAutoStart(true); setTab('usb'); }:null}
+                    usbArmed={d.device_type==='usb'?usbStatus==='armed':false}
+                    onDisarmUsb={d.device_type==='usb'?()=>{ socket?.emit('camera:command',{deviceId:d.id,command:'disarm'}); setUsbStatus(''); }:null}
                     onArmRemote={d.device_type==='mobile'&&!d.rtsp_url?()=>socket?.emit('camera:command',{deviceId:d.id,command:'arm'}):null}
                   />
                 ))}
@@ -3657,7 +3640,7 @@ export default function App() {
         </div>
 
         <div style={{display: tab==='usb' ? 'block' : 'none'}}>
-          <USBCameraPage socket={socket} devices={devices} userId={user?.userId} organizationId={user?.organizationId} onUsbStatus={setUsbStatus} onLinkedDevice={setUsbLinkedDevice} onSettings={(dev)=>setSettingsFor(dev)} autoStart={usbAutoStart} onAutoStartDone={()=>setUsbAutoStart(false)} onEvent={e=>{
+          <USBCameraPage socket={socket} devices={devices} userId={user?.userId} organizationId={user?.organizationId} onUsbStatus={setUsbStatus} onLinkedDevice={setUsbLinkedDevice} onSettings={(dev)=>setSettingsFor(dev)} onEvent={e=>{
             if (e.type==='clip_ready') {
               setEvents(ev=>{
                 const updated = ev.map(existing=>
