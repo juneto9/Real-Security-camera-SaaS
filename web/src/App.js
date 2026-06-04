@@ -1422,6 +1422,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
           startMotionDetection();
           if (soundEnabled) startSoundDetection();
           setStatusMsg('🟢 Armed — monitoring...');
+          if (onUsbStatus) onUsbStatus('armed');
         }, 800);
       }
       try {
@@ -1486,6 +1487,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
     setStatusMsg('🟢 Armed — monitoring...');
     startMotionDetection();
     if (soundEnabled) startSoundDetection();
+    if (onUsbStatus) onUsbStatus('armed');
   };
 
   const armWithClipChoice = (choice) => {
@@ -3501,7 +3503,10 @@ export default function App() {
     if (!token) return;
     try {
       const res=await api.get('/api/devices');
-      const devs = res.data.data||[];
+      const devs = (res.data.data||[]).map(d=>({
+        ...d,
+        name: d.name || d.device_name || '',  // normalize: DB returns device_name
+      }));
       setDevices(devs);
       // Sync camera count to billing DB so usage meters are accurate
       try {
