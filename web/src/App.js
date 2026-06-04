@@ -188,14 +188,14 @@ function CameraSettingsPanel({ device, settings, onChange, onClose, onDeviceUpda
     nightVisionPro: false,
     cloudUpload: true,   // default ON — uploads already happening
   });
-  const [devName,     setDevName]     = useState(device.name?.trim() || device.device_name?.trim() || '');
+  const [devName,     setDevName]     = useState(device.name?.trim() || '');
   const [devLocation, setDevLocation] = useState(device.location?.trim() || '');
   // Sync with device prop when modal opens with different device
   React.useEffect(() => {
-    setDevName(device.name?.trim() || device.device_name?.trim() || '');
+    setDevName(device.name?.trim() || '');
     setDevLocation(device.location?.trim() || '');
     setDevRtsp(device.rtsp_url || '');
-  }, [device.id, device.name, device.device_name]);
+  }, [device.id]);
   const [devRtsp,     setDevRtsp]     = useState(device.rtsp_url || '');
   const [saving,      setSaving]      = useState(false);
   const [saveMsg,     setSaveMsg]     = useState('');
@@ -842,7 +842,7 @@ function CameraCard({ device, socket, onEvent, onSettings, settings, onWatchRemo
                   📡 Watch Remote
                 </button>
               ) : (
-                !onSwitchToUsb && <button
+                <button
                   style={{...st.btn, flex:2,
                     backgroundColor: online ? C.green : '#4488ff',
                     color:'#000',
@@ -1062,7 +1062,6 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
   const [streaming,      setStreaming]      = useState(false);
   const [selectedDev,    setSelectedDev]    = useState('');
   const [camDevices,     setCamDevices]     = useState([]);
-  const camDevicesRef = useRef([]);
   const [linkedDevice,   setLinkedDevice]   = useState('');
   const linkedDeviceRef   = useRef('');  // always current linkedDevice for socket closures
   const executeCommandRef = useRef(null); // ref to command executor
@@ -1121,6 +1120,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
   const loopTimerRef     = useRef(null);
   const recTimerRef      = useRef(null);
   const alertActiveRef   = useRef(false);
+  const soundCleanupRef   = useRef(null);
   const isArmedRef       = useRef(false);
   const isRecordingRef   = useRef(false);
   const canvasCleanupRef  = useRef(null);
@@ -1346,6 +1346,10 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
   };
   stopMotionDetRef.current = stopMotionDetection;
 
+  const stopSoundDetection = () => {
+    if (soundCleanupRef.current) { soundCleanupRef.current(); soundCleanupRef.current = null; }
+  };
+
   const startSoundDetection = () => {
     startSoundDetRef.current = startSoundDetection;
     if (!streamRef.current || !soundEnabled) return;
@@ -1360,9 +1364,10 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
         if (!isArmedRef.current || alertActiveRef.current) return;
         analyser.getByteFrequencyData(data);
         const avg = data.reduce((a,b)=>a+b,0)/data.length;
-        if (avg > 20) triggerAlert('sound');
+        if (avg > 50) triggerAlert('sound');
       }, 600);
-      return ()=>{ clearInterval(checkSound); audioCtx.close(); };
+      soundCleanupRef.current = ()=>{ clearInterval(checkSound); try { audioCtx.close(); } catch {} };
+      return soundCleanupRef.current;
     } catch(e) { console.log('Sound detection error:', e.message); }
   };
 
@@ -1375,18 +1380,16 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
       time: now.toLocaleTimeString(),
       date: now.toLocaleDateString('en-US',{month:'short',day:'2-digit',year:'numeric'}),
       device: (() => {
-        const cds = camDevicesRef.current.length ? camDevicesRef.current : camDevices;
-        const hwName = cds.find(d=>d.deviceId===selectedDev)?.label || cds[0]?.label || '';
-        const regName = (linkedDevice ? devices.find(d=>d.id===linkedDevice)?.name : null)
-          || devices.find(d=>d.device_type==='usb')?.name || hwName || 'Webcam';
-        return regName;
+        const hwName = camDevices.find(d=>d.deviceId===selectedDev)?.label || camDevices[0]?.label || '';
+        const regName = linkedDevice ? (devices.find(d=>d.id===linkedDevice)?.name || '') : '';
+        if (regName) return regName;
+        return hwName || 'Webcam';
       })(),
       deviceName: (() => {
-        const cds = camDevicesRef.current.length ? camDevicesRef.current : camDevices;
-        const hwName = cds.find(d=>d.deviceId===selectedDev)?.label || cds[0]?.label || '';
-        const regName = (linkedDevice ? devices.find(d=>d.id===linkedDevice)?.name : null)
-          || devices.find(d=>d.device_type==='usb')?.name || hwName || 'Webcam';
-        return regName;
+        const hwName = camDevices.find(d=>d.deviceId===selectedDev)?.label || camDevices[0]?.label || '';
+        const regName = linkedDevice ? (devices.find(d=>d.id===linkedDevice)?.name || '') : '';
+        if (regName) return regName;
+        return hwName || 'Webcam';
       })(),
       camMode: 'security',
     };
@@ -1426,7 +1429,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
       // PATCH 1: Enumerate devices HERE — after permission granted, labels are available
       const devs = await navigator.mediaDevices.enumerateDevices();
       const vids = devs.filter(d=>d.kind==='videoinput');
-      setCamDevices(vids); camDevicesRef.current = vids;
+      setCamDevices(vids);
       if (vids.length>0) setSelectedDev(vids[0].deviceId);
 
       setStreaming(true);
@@ -1484,6 +1487,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
     sessionStorage.removeItem('usbBroadcasting');
     sessionStorage.removeItem('usbLinkedDevice');
     stopMotionDetection();
+    stopSoundDetection();
     clearInterval(loopTimerRef.current);
     clearInterval(recTimerRef.current);
     if (mediaRecRef.current) { try { mediaRecRef.current.stop(); } catch {} mediaRecRef.current=null; }
@@ -1518,6 +1522,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
   const disarmCamera = () => {
     setIsArmed(false); isArmedRef.current=false;
     stopMotionDetection();
+    stopSoundDetection();
     if (isRecordingRef.current) stopRecording();
     setStatusMsg('🟢 Broadcasting — select mode below');
     if (onUsbStatus) onUsbStatus('');
