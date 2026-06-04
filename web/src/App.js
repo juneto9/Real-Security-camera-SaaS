@@ -842,7 +842,7 @@ function CameraCard({ device, socket, onEvent, onSettings, settings, onWatchRemo
                   📡 Watch Remote
                 </button>
               ) : (
-                <button
+                !onSwitchToUsb && <button
                   style={{...st.btn, flex:2,
                     backgroundColor: online ? C.green : '#4488ff',
                     color:'#000',
@@ -1757,7 +1757,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
             <p style={{fontWeight:'bold',margin:0,color:C.text,fontSize:15}}>⚙️ Security Settings</p>
             {linkedDevice && onSettings && (
               <button style={{...st.btn,...st.btnGray,fontSize:12,padding:'4px 10px'}}
-                onClick={()=>{ const dev=devices.find(d=>d.id===linkedDevice); if(dev) onSettings({...dev}); else if(linkedDevice) onSettings({id:linkedDevice, name:'', location:'', device_type:'usb'}); }}
+                onClick={()=>{ const dev=devices.find(d=>d.id===linkedDevice)||devices[0]; if(dev) onSettings({...dev}); }}
                 title='Rename / Edit Camera'>✏️ Edit Camera</button>
             )}
           </div>
