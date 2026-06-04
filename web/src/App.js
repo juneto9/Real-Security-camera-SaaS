@@ -188,16 +188,14 @@ function CameraSettingsPanel({ device, settings, onChange, onClose, onDeviceUpda
     nightVisionPro: false,
     cloudUpload: true,   // default ON — uploads already happening
   });
-  const [devName,     setDevName]     = useState(device.name?.trim() || device.device_name?.trim() || '');
+  const [devName,     setDevName]     = useState(device.name?.trim() || '');
   const [devLocation, setDevLocation] = useState(device.location?.trim() || '');
   // Sync with device prop when modal opens with different device
   React.useEffect(() => {
-    const nm = device.name?.trim() || device.device_name?.trim() || '';
-    const loc = device.location?.trim() || '';
-    setDevName(nm);
-    setDevLocation(loc);
+    setDevName(device.name?.trim() || '');
+    setDevLocation(device.location?.trim() || '');
     setDevRtsp(device.rtsp_url || '');
-  }, [device.id, device.name, device.device_name]);
+  }, [device.id]);
   const [devRtsp,     setDevRtsp]     = useState(device.rtsp_url || '');
   const [saving,      setSaving]      = useState(false);
   const [saveMsg,     setSaveMsg]     = useState('');
@@ -1064,7 +1062,6 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
   const [streaming,      setStreaming]      = useState(false);
   const [selectedDev,    setSelectedDev]    = useState('');
   const [camDevices,     setCamDevices]     = useState([]);
-  const camDevicesRef = useRef([]);
   const [linkedDevice,   setLinkedDevice]   = useState('');
   const linkedDeviceRef   = useRef('');  // always current linkedDevice for socket closures
   const executeCommandRef = useRef(null); // ref to command executor
@@ -1377,16 +1374,16 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
       time: now.toLocaleTimeString(),
       date: now.toLocaleDateString('en-US',{month:'short',day:'2-digit',year:'numeric'}),
       device: (() => {
-        const cds = camDevicesRef.current.length ? camDevicesRef.current : camDevices;
-        const hwName = cds.find(d=>d.deviceId===selectedDev)?.label || cds[0]?.label || '';
+        const hwName = camDevices.find(d=>d.deviceId===selectedDev)?.label || camDevices[0]?.label || '';
         const regName = linkedDevice ? (devices.find(d=>d.id===linkedDevice)?.name || '') : '';
-        return regName || hwName || devices.find(d=>d.device_type==='usb')?.name || 'Webcam';
+        if (regName) return regName;
+        return hwName || 'Webcam';
       })(),
       deviceName: (() => {
-        const cds = camDevicesRef.current.length ? camDevicesRef.current : camDevices;
-        const hwName = cds.find(d=>d.deviceId===selectedDev)?.label || cds[0]?.label || '';
+        const hwName = camDevices.find(d=>d.deviceId===selectedDev)?.label || camDevices[0]?.label || '';
         const regName = linkedDevice ? (devices.find(d=>d.id===linkedDevice)?.name || '') : '';
-        return regName || hwName || devices.find(d=>d.device_type==='usb')?.name || 'Webcam';
+        if (regName) return regName;
+        return hwName || 'Webcam';
       })(),
       camMode: 'security',
     };
@@ -1426,7 +1423,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
       // PATCH 1: Enumerate devices HERE — after permission granted, labels are available
       const devs = await navigator.mediaDevices.enumerateDevices();
       const vids = devs.filter(d=>d.kind==='videoinput');
-      setCamDevices(vids); camDevicesRef.current = vids;
+      setCamDevices(vids);
       if (vids.length>0) setSelectedDev(vids[0].deviceId);
 
       setStreaming(true);
@@ -1550,7 +1547,8 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
       if (clipManagement==='cloud' || clipManagement==='both') {
         const formData = new FormData();
         formData.append('video', blob, filename);
-        formData.append('device_id', linkedDevice||'');
+        const uploadDeviceId = linkedDevice || devices.find(d=>d.device_type==='usb')?.id || '';
+        formData.append('device_id', uploadDeviceId);
         formData.append('filename', filename);
         const token = localStorage.getItem('accessToken');
         setStatusMsg('☁️ Uploading...');
