@@ -2004,10 +2004,9 @@ function ClipsPage({ devices, onlineMap = {} }) {
 
       {!loading && Object.entries(grouped).filter(([deviceId])=>{
         const dev = devices.find(d=>d.id===deviceId);
-        if (!dev) return false; // unknown device - hide
-        if (dev.is_active===false) return false; // unscanned QR - hide
-        const nm = dev.name||dev.device_name||'';
-        if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(nm)) return false; // UUID name = auto-enrolled ghost
+        if (!dev) return false;
+        if (dev.is_active===false) return false;
+        if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(dev.name||'')) return false;
         return true;
       }).map(([deviceId, dclips])=>(
         <div key={deviceId} style={{marginBottom:24}}>
@@ -2087,9 +2086,14 @@ function ClipsPage({ devices, onlineMap = {} }) {
   );
 }
 
-function EventsPanel({ events }) {
+function EventsPanel({ events, devices=[] }) {
   const [playingUrl, setPlayingUrl] = useState(null);
-  const nonSystem = events.filter(e=>e.type!=='system'&&e.type!=='clip_ready');
+  const activeIds = new Set(devices.filter(d=>d.is_active!==false&&!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(d.name||'')).map(d=>d.id));
+  const nonSystem = events.filter(e=>{
+    if (e.type==='system'||e.type==='clip_ready') return false;
+    if (e.deviceId && activeIds.size>0 && !activeIds.has(e.deviceId)) return false;
+    return true;
+  });
   return (
     <div style={st.card}>
       <div style={{...st.flexBetween,marginBottom:12}}>
@@ -3524,16 +3528,11 @@ export default function App() {
     if (!token) return;
     try {
       const res=await api.get('/api/devices');
-      const devs = (res.data.data||[]).map(d=>({...d, name: d.name||d.device_name||''}));
+      const devs = (res.data.data||[]).map(d=>({...d,name:d.name||d.device_name||''}));
       setDevices(devs);
       // Sync camera count to billing DB so usage meters are accurate
       try {
-        const activeCount = devs.filter(d=>{
-          if (!(d.is_active===true||d.is_active===1)) return false;
-          const nm = d.name||d.device_name||'';
-          if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(nm)) return false;
-          return true;
-        }).length;
+        const activeCount = devs.filter(d=>(d.is_active===true||d.is_active===1)&&!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(d.name||'')).length;
         await api.patch('/api/users/usage', { cameras_count: activeCount });
       } catch {}
     } catch {}
@@ -3617,12 +3616,7 @@ export default function App() {
         <div style={st.statRow}>
           <div style={st.stat}>
             <p style={st.statN}>
-              {devices.filter(d=>{
-                if (d.is_active===false) return false;
-                const nm = d.name||d.device_name||'';
-                if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(nm)) return false;
-                return true;
-              }).length}
+              {devices.filter(d=>d.is_active!==false&&!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(d.name||'')).length}
             </p>
             <p style={st.statL}>Total Cameras</p>
           </div>
@@ -3671,8 +3665,7 @@ export default function App() {
             : <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(320px,1fr))',gap:16}}>
                 {devices.filter(d=>{
                   if (d.is_active === false) return false;
-                  const nm = d.name||d.device_name||'';
-                  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(nm)) return false;
+                  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(d.name||'')) return false;
                   return true;
                 }).map(d=>(
                   <CameraCard key={d.id}
@@ -3722,7 +3715,7 @@ export default function App() {
             ))}
           </div>
           {activitySubTab==='clips'  && <ClipsPage devices={devices} onlineMap={onlineMap}/>}
-          {activitySubTab==='events' && <EventsPanel events={events}/>}
+          {activitySubTab==='events' && <EventsPanel events={events} devices={devices}/>}
         </div>
         <div style={{display: tab==='sub' ? 'block' : 'none'}}>
           <SubscriptionPage/>
