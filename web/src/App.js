@@ -2939,7 +2939,7 @@ function DiscoverPage({ socket, onDeviceAdded, onEnroll }) {
     setScanProgress('Checking backend for discovered devices...');
     setDiscovered([]);
     try {
-      const res = await api.get('/api/device-discover');
+      const res = await api.get('/api/devices/discover');
       const found = res.data.data || [];
       mdnsDevices.forEach(m => { if (!found.find(d => d.ip === m.ip)) found.push(m); });
       setDiscovered(found);
