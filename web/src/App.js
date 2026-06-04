@@ -1153,18 +1153,12 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
   useEffect(()=>{
     if (!autoStart) return;
     if (streaming) {
-      // Already streaming — arm immediately then return to Cameras tab
       setIsArmed(true); isArmedRef.current=true;
       startMotionDetection();
       if (soundEnabled) startSoundDetection();
       setStatusMsg('🟢 Armed — monitoring...');
       if (onUsbStatus) onUsbStatus('armed');
       if (onAutoStartDone) onAutoStartDone();
-      // Return to Cameras tab after arming (same as first-time flow)
-      setTimeout(()=>{
-        const tabs = document.querySelectorAll('[data-tab]');
-        tabs.forEach(t=>{ if(t.dataset.tab==='cameras') t.click(); });
-      }, 800);
       return;
     }
     sessionStorage.setItem('autoArmAfterStream','1');
@@ -1428,7 +1422,6 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
           startMotionDetection();
           if (soundEnabled) startSoundDetection();
           setStatusMsg('🟢 Armed — monitoring...');
-          if (onUsbStatus) onUsbStatus('armed');
         }, 800);
       }
       try {
@@ -1509,7 +1502,16 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
     stopMotionDetection();
     if (isRecordingRef.current) stopRecording();
     setStatusMsg('🟢 Broadcasting — select mode below');
+    if (onUsbStatus) onUsbStatus('');
   };
+
+  // Wire up command executor so both socket handler and window bridge can call arm/disarm
+  const executeCommand = (command, params={}) => {
+    if (command === 'arm')    armCamera();
+    if (command === 'disarm') disarmCamera();
+  };
+  executeCommandRef.current = executeCommand;
+  window.__executeCommand    = executeCommand;
 
   const startRecording = (triggered=false, triggerEventId=null) => {
     if (triggerEventId) triggerEventIdRef.current = triggerEventId;
@@ -3632,7 +3634,7 @@ export default function App() {
           ))}
           <div style={{display:'flex',gap:6,marginLeft:'auto'}}>
             <button style={{...st.btn,backgroundColor:'#4488ff20',color:C.blue,border:`1px solid ${C.blue}`}} onClick={()=>setShowEnroll(true)}>📳 Enroll Camera</button>
-            <button style={{...st.btn,...st.btnGreen}} onClick={()=>setShowAdd(true)}>+ Add Camera</button>
+
           </div>
         </div>
 
