@@ -1370,7 +1370,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
     alertActiveRef.current = true;
     const now = new Date();
     const event = {
-      id: Date.now(), type,
+      id: Date.now(), type, deviceId: linkedDevice||'',
       time: now.toLocaleTimeString(),
       date: now.toLocaleDateString('en-US',{month:'short',day:'2-digit',year:'numeric'}),
       device: (() => {
@@ -2002,7 +2002,14 @@ function ClipsPage({ devices, onlineMap = {} }) {
         </div>
       )}
 
-      {!loading && Object.entries(grouped).map(([deviceId, dclips])=>(
+      {!loading && Object.entries(grouped).filter(([deviceId])=>{
+        const dev = devices.find(d=>d.id===deviceId);
+        if (!dev) return false; // unknown device - hide
+        if (dev.is_active===false) return false; // unscanned QR - hide
+        const nm = dev.name||dev.device_name||'';
+        if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(nm)) return false; // UUID name = auto-enrolled ghost
+        return true;
+      }).map(([deviceId, dclips])=>(
         <div key={deviceId} style={{marginBottom:24}}>
           <div style={{...st.flexBetween,marginBottom:10}}>
             <div style={{display:'flex',alignItems:'center',gap:8}}>
@@ -3517,11 +3524,16 @@ export default function App() {
     if (!token) return;
     try {
       const res=await api.get('/api/devices');
-      const devs = res.data.data||[];
+      const devs = (res.data.data||[]).map(d=>({...d, name: d.name||d.device_name||''}));
       setDevices(devs);
       // Sync camera count to billing DB so usage meters are accurate
       try {
-        const activeCount = devs.filter(d=>d.is_active===true||d.is_active===1).length;
+        const activeCount = devs.filter(d=>{
+          if (!(d.is_active===true||d.is_active===1)) return false;
+          const nm = d.name||d.device_name||'';
+          if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(nm)) return false;
+          return true;
+        }).length;
         await api.patch('/api/users/usage', { cameras_count: activeCount });
       } catch {}
     } catch {}
@@ -3605,7 +3617,12 @@ export default function App() {
         <div style={st.statRow}>
           <div style={st.stat}>
             <p style={st.statN}>
-              {devices.filter(d=>d.is_active!==false).length}
+              {devices.filter(d=>{
+                if (d.is_active===false) return false;
+                const nm = d.name||d.device_name||'';
+                if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(nm)) return false;
+                return true;
+              }).length}
             </p>
             <p style={st.statL}>Total Cameras</p>
           </div>
@@ -3653,8 +3670,9 @@ export default function App() {
               </div>
             : <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(320px,1fr))',gap:16}}>
                 {devices.filter(d=>{
-                  // Hide unscanned QR devices (is_active=false = QR generated, not scanned)
                   if (d.is_active === false) return false;
+                  const nm = d.name||d.device_name||'';
+                  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(nm)) return false;
                   return true;
                 }).map(d=>(
                   <CameraCard key={d.id}
