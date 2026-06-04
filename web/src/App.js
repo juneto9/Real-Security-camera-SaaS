@@ -1066,6 +1066,15 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
   const linkedDeviceRef   = useRef('');  // always current linkedDevice for socket closures
   const executeCommandRef = useRef(null); // ref to command executor
 
+  // Expose command executor to parent window for direct disarm/arm from Cameras tab
+  useEffect(()=>{
+    window.__executeCommand = (command, params={}) => {
+      if (command==='arm')    { armCamera(); }
+      if (command==='disarm') { disarmCamera(); }
+    };
+    return () => { window.__executeCommand = null; };
+  });
+
   useEffect(()=>{ 
     if(devices.length>0) {
       // If current linkedDevice is an IP camera, clear it and find a proper one
@@ -1422,7 +1431,6 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
           startMotionDetection();
           if (soundEnabled) startSoundDetection();
           setStatusMsg('🟢 Armed — monitoring...');
-          if (onUsbStatus) onUsbStatus('armed');
         }, 800);
       }
       try {
@@ -1487,7 +1495,6 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
     setStatusMsg('🟢 Armed — monitoring...');
     startMotionDetection();
     if (soundEnabled) startSoundDetection();
-    if (onUsbStatus) onUsbStatus('armed');
   };
 
   const armWithClipChoice = (choice) => {
@@ -1504,6 +1511,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
     stopMotionDetection();
     if (isRecordingRef.current) stopRecording();
     setStatusMsg('🟢 Broadcasting — select mode below');
+    if (onUsbStatus) onUsbStatus('');
   };
 
   const startRecording = (triggered=false, triggerEventId=null) => {
@@ -3503,10 +3511,7 @@ export default function App() {
     if (!token) return;
     try {
       const res=await api.get('/api/devices');
-      const devs = (res.data.data||[]).map(d=>({
-        ...d,
-        name: d.name || d.device_name || '',  // normalize: DB returns device_name
-      }));
+      const devs = res.data.data||[];
       setDevices(devs);
       // Sync camera count to billing DB so usage meters are accurate
       try {
@@ -3594,7 +3599,7 @@ export default function App() {
         <div style={st.statRow}>
           <div style={st.stat}>
             <p style={st.statN}>
-              {devices.length}
+              {devices.filter(d=>d.is_active!==false).length}
             </p>
             <p style={st.statL}>Total Cameras</p>
           </div>
@@ -3630,7 +3635,7 @@ export default function App() {
           ))}
           <div style={{display:'flex',gap:6,marginLeft:'auto'}}>
             <button style={{...st.btn,backgroundColor:'#4488ff20',color:C.blue,border:`1px solid ${C.blue}`}} onClick={()=>setShowEnroll(true)}>📳 Enroll Camera</button>
-            <button style={{...st.btn,...st.btnGreen}} onClick={()=>setShowAdd(true)}>+ Add Camera</button>
+
           </div>
         </div>
 
@@ -3655,7 +3660,7 @@ export default function App() {
                     onWatchRemote={(dev)=>setRtspViewing(dev)}
                     onSwitchToUsb={d.device_type==='usb'?()=>{ setUsbAutoStart(true); setTab('usb'); }:null}
                     usbArmed={d.device_type==='usb'?usbStatus==='armed':false}
-                    onDisarmUsb={d.device_type==='usb'?()=>{ socket?.emit('camera:command',{deviceId:d.id,command:'disarm'}); setUsbStatus(''); }:null}
+                    onDisarmUsb={d.device_type==='usb'?()=>{ if(window.__executeCommand) window.__executeCommand('disarm',{}); else socket?.emit('camera:command',{deviceId:d.id,command:'disarm'}); setUsbStatus(''); }:null}
                     onArmRemote={d.device_type==='mobile'&&!d.rtsp_url?()=>socket?.emit('camera:command',{deviceId:d.id,command:'arm'}):null}
                   />
                 ))}
