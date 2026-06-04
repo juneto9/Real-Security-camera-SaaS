@@ -560,7 +560,7 @@ function RTSPViewer({ device, onClose, orgId: propOrgId }) {
   );
 }
 
-function CameraCard({ device, socket, onEvent, onSettings, settings, onWatchRemote, onSwitchToUsb, onArmRemote, usbArmed, onDisarmUsb }) {
+function CameraCard({ device, socket, onEvent, onSettings, settings, onWatchRemote, onSwitchToUsb, onArmRemote, usbArmed, onDisarmUsb, usbExpanded, onCollapseUsb }) {
   const videoRef        = useRef(null);
   const pcRef           = useRef(null);
   const canvasRef       = useRef(null);
@@ -3491,6 +3491,7 @@ export default function App() {
   const [activitySubTab, setActivitySubTab] = useState('clips');
   const [usbStatus,    setUsbStatus]    = useState(''); // 'armed' | 'recording' | ''
   const [usbAutoStart,   setUsbAutoStart]   = useState(false);
+  const [usbExpanded,    setUsbExpanded]    = useState(false);
   const [usbLinkedDevice, setUsbLinkedDevice] = useState(()=>sessionStorage.getItem('usbLinkedDevice')||'');
   const [theme, setTheme] = useState(()=>localStorage.getItem('rsc_theme')||'operator');
   const [, forceRender] = useState(0);
@@ -3592,7 +3593,6 @@ export default function App() {
 
   const TABS = [
     {id:'cameras',  label:'📷 Cameras'},
-    {id:'usb',      label:'🖥️ USB/Webcam'},
     {id:'discover', label:'📍 Discover'},
     {id:'activity', label:'🎬 Activity'},
     {id:'admin',    label:'👥 Admin'},
@@ -3646,8 +3646,6 @@ export default function App() {
               position:'relative',
             }}>
               {t.label}
-              {t.id==='usb' && usbStatus==='armed' && <span style={{marginLeft:5,fontSize:10,color:C.green,fontWeight:'normal'}}>🟢</span>}
-              {t.id==='usb' && usbStatus==='recording' && <span style={{marginLeft:5,fontSize:10,color:C.red,fontWeight:'normal'}}>⏺</span>}
             </button>
           ))}
           <div style={{display:'flex',gap:6,marginLeft:'auto'}}>
@@ -3675,9 +3673,11 @@ export default function App() {
                     settings={deviceSettings[d.id]}
                     onSettings={()=>setSettingsFor(d)}
                     onWatchRemote={(dev)=>setRtspViewing(dev)}
-                    onSwitchToUsb={d.device_type==='usb'?()=>{ setUsbAutoStart(true); setTab('usb'); }:null}
+                    onSwitchToUsb={d.device_type==='usb'?()=>{ setUsbAutoStart(true); setUsbExpanded(true); }:null}
                     usbArmed={d.device_type==='usb'?usbStatus==='armed':false}
-                    onDisarmUsb={d.device_type==='usb'?()=>{ if(window.__executeCommand) window.__executeCommand('disarm',{}); else socket?.emit('camera:command',{deviceId:d.id,command:'disarm'}); setUsbStatus(''); }:null}
+                    onDisarmUsb={d.device_type==='usb'?()=>{ if(window.__executeCommand) window.__executeCommand('disarm',{}); else socket?.emit('camera:command',{deviceId:d.id,command:'disarm'}); setUsbStatus(''); setUsbExpanded(false); }:null}
+                    usbExpanded={d.device_type==='usb'?usbExpanded:false}
+                    onCollapseUsb={d.device_type==='usb'?()=>setUsbExpanded(false):null}
                     onArmRemote={d.device_type==='mobile'&&!d.rtsp_url?()=>socket?.emit('camera:command',{deviceId:d.id,command:'arm'}):null}
                   />
                 ))}
@@ -3685,7 +3685,14 @@ export default function App() {
           }
         </div>
 
-        <div style={{display: tab==='usb' ? 'block' : 'none'}}>
+        {usbExpanded && (
+          <div style={{position:'fixed',inset:0,backgroundColor:'rgba(0,0,0,0.92)',zIndex:300,overflow:'auto',padding:20}}>
+            <div style={{maxWidth:1000,margin:'0 auto'}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+                <h2 style={{color:C.green,margin:0}}>🖥️ USB / Webcam — Security Camera</h2>
+                <button style={{...st.btn,...st.btnGray,fontSize:13}} onClick={()=>{ setUsbExpanded(false); setUsbAutoStart(false); }}>✕ Close</button>
+              </div>
+        <div style={{display:'block'}}>
           <USBCameraPage socket={socket} devices={devices} userId={user?.userId} organizationId={user?.organizationId} onUsbStatus={setUsbStatus} onLinkedDevice={setUsbLinkedDevice} onSettings={(dev)=>setSettingsFor(dev)} autoStart={usbAutoStart} onAutoStartDone={()=>setUsbAutoStart(false)} onEvent={e=>{
             if (e.type==='clip_ready') {
               setEvents(ev=>{
@@ -3700,6 +3707,10 @@ export default function App() {
             }
           }}/>
         </div>
+          </div>
+        </div>
+        )}
+        <div style={{display:'none'}}><div/></div>
         <div style={{display: tab==='activity' ? 'block' : 'none'}}>
           <div style={{display:'flex',gap:4,marginBottom:20,borderBottom:`1px solid ${C.border}`,paddingBottom:12}}>
             {[
