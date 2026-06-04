@@ -1,22 +1,44 @@
-// redeployed: 2026-06-01 00:04:58
-const express = require('express');
-const router = express.Router();
+// routes/devices.js
+// Fixed routes — arm, disarm, activate, pending all added
+
+const express          = require('express');
+const router           = express.Router();
 const deviceController = require('../controllers/deviceController');
-const authMiddleware = require('../middleware/auth');
+const authMiddleware   = require('../middleware/auth');
 
-// All routes require authentication
-// IMPORTANT: Static routes (/discover) MUST be declared before dynamic routes (/:deviceId)
-// or Express will match "discover" as a deviceId param and crash with a UUID error.
+// All routes require a valid JWT
+router.use(authMiddleware);
 
-router.get('/', authMiddleware, deviceController.getDevices);
-router.post('/', authMiddleware, deviceController.createDevice);
+// ── Listings ──────────────────────────────────────────────────
+// GET  /api/devices           — qr_activated + non-deleted only
+router.get('/',            deviceController.getDevices);
 
-// Static route — must come before /:deviceId
-router.get('/discover', authMiddleware, deviceController.discoverDevices);
+// GET  /api/devices/pending   — not yet activated (QR flow / admin)
+// IMPORTANT: must be defined BEFORE /:deviceId or Express matches
+// the literal string "pending" as a deviceId parameter
+router.get('/pending',     deviceController.getPendingDevices);
 
-// Dynamic routes
-router.get('/:deviceId', authMiddleware, deviceController.getDevice);
-router.put('/:deviceId', authMiddleware, deviceController.updateDevice);
-router.delete('/:deviceId', authMiddleware, deviceController.deleteDevice);
+// ── Single device CRUD ────────────────────────────────────────
+// GET    /api/devices/:deviceId
+router.get('/:deviceId',          deviceController.getDevice);
+
+// POST   /api/devices             — create (name is auto-generated)
+router.post('/',                  deviceController.createDevice);
+
+// PUT    /api/devices/:deviceId   — rename, location, settings
+router.put('/:deviceId',          deviceController.updateDevice);
+
+// DELETE /api/devices/:deviceId   — soft delete
+router.delete('/:deviceId',       deviceController.deleteDevice);
+
+// ── State changes ─────────────────────────────────────────────
+// POST /api/devices/:deviceId/activate  — after QR code scan
+router.post('/:deviceId/activate', deviceController.activateDevice);
+
+// POST /api/devices/:deviceId/arm       — "Start & Arm" button
+router.post('/:deviceId/arm',      deviceController.armDevice);
+
+// POST /api/devices/:deviceId/disarm    — "Stop & Disarm" button
+router.post('/:deviceId/disarm',   deviceController.disarmDevice);
 
 module.exports = router;

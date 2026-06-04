@@ -1,11 +1,20 @@
+// controllers/deviceController.js
+// Uses correct schema: name (not device_name), status (not is_active only)
+
 const Device = require('../models/Device');
 const logger = require('../utils/logger');
-const db = require('../utils/database');
 
+// ─────────────────────────────────────────────────────────────
+// GET /api/devices — only qr_activated, non-deleted devices
+// ─────────────────────────────────────────────────────────────
 exports.getDevices = async (req, res, next) => {
   try {
     const { page = 1, limit = 50 } = req.query;
-    const result = await Device.getByUserId(req.user.userId, parseInt(limit), (page - 1) * limit);
+    const result = await Device.getByUserId(
+      req.user.userId,
+      parseInt(limit),
+      (page - 1) * parseInt(limit)
+    );
     res.json({ success: true, data: result.data, total: result.total, page, limit });
   } catch (err) {
     logger.error('Error getting devices', { error: err.message });
@@ -13,41 +22,22 @@ exports.getDevices = async (req, res, next) => {
   }
 };
 
-// GET /api/devices/discover — MUST be before /:deviceId
-exports.discoverDevices = async (req, res, next) => {
+// ─────────────────────────────────────────────────────────────
+// GET /api/devices/pending — not yet QR activated (admin only)
+// ─────────────────────────────────────────────────────────────
+exports.getPendingDevices = async (req, res, next) => {
   try {
-    const orgId = req.user.organization_id || req.user.organizationId || req.user.org_id;
-    const userId = req.user.userId;
-    const results = [];
-
-    try {
-      const reportResult = await db.query(
-        `SELECT agent_ip, count, discovered_at, devices
-         FROM discovery_reports WHERE org_id = $1
-         ORDER BY discovered_at DESC LIMIT 1`,
-        [orgId]
-      );
-      if (reportResult.rows.length > 0) {
-        const report = reportResult.rows[0];
-        const deviceList = Array.isArray(report.devices) ? report.devices : [];
-        deviceList.forEach(d => results.push({
-          ...d, source: d.source || 'agent', lastSeen: report.discovered_at,
-        }));
-      }
-    } catch (dbErr) {
-      logger.warn('Could not read discovery_reports', { error: dbErr.message });
-    }
-
-    const registered = await Device.getByUserId(userId, 50, 0);
-    registered.data.forEach(d => results.push({ ...d, source: 'registered' }));
-
-    res.json({ success: true, data: results, total: results.length });
+    const devices = await Device.getPendingByUserId(req.user.userId);
+    res.json({ success: true, data: devices });
   } catch (err) {
-    logger.error('Error discovering devices', { error: err.message });
+    logger.error('Error getting pending devices', { error: err.message });
     next(err);
   }
 };
 
+// ─────────────────────────────────────────────────────────────
+// GET /api/devices/:deviceId
+// ─────────────────────────────────────────────────────────────
 exports.getDevice = async (req, res, next) => {
   try {
     const device = await Device.findById(req.params.deviceId, req.user.userId);
@@ -59,23 +49,19 @@ exports.getDevice = async (req, res, next) => {
   }
 };
 
+// ─────────────────────────────────────────────────────────────
+// POST /api/devices — create; name is AUTO-GENERATED
+// Body only needs: location (optional), device_type (optional)
+// ─────────────────────────────────────────────────────────────
 exports.createDevice = async (req, res, next) => {
   try {
-    // Accept both 'name' and 'device_name' for compatibility with web + mobile
-    const name = req.body.name || req.body.device_name;
-    const location = req.body.location;
-    const rtsp_url = req.body.rtsp_url || '';
-
-    if (!name || !location) {
-      return res.status(400).json({ success: false, message: 'Name and location are required' });
-    }
+    const { location = 'Unset', device_type = 'camera' } = req.body;
 
     const device = await Device.create(
       req.user.userId,
       req.user.organization_id,
-      name,
       location,
-      rtsp_url
+      device_type
     );
 
     res.status(201).json({ success: true, data: device });
@@ -85,6 +71,54 @@ exports.createDevice = async (req, res, next) => {
   }
 };
 
+// ─────────────────────────────────────────────────────────────
+// POST /api/devices/:deviceId/activate — QR scan calls this
+// ─────────────────────────────────────────────────────────────
+exports.activateDevice = async (req, res, next) => {
+  try {
+    const device = await Device.activate(req.params.deviceId, req.user.userId);
+    if (!device) {
+      return res.status(404).json({ success: false, message: 'Device not found or already deleted' });
+    }
+    logger.info(`Device activated: ${req.params.deviceId}`);
+    res.json({ success: true, data: device, message: 'Device activated successfully' });
+  } catch (err) {
+    logger.error('Error activating device', { error: err.message });
+    next(err);
+  }
+};
+
+// ─────────────────────────────────────────────────────────────
+// POST /api/devices/:deviceId/arm — "Start & Arm" button
+// ─────────────────────────────────────────────────────────────
+exports.armDevice = async (req, res, next) => {
+  try {
+    const device = await Device.setArmed(req.params.deviceId, req.user.userId, true);
+    if (!device) return res.status(404).json({ success: false, message: 'Device not found' });
+    res.json({ success: true, data: device, message: 'Device armed — alerts active' });
+  } catch (err) {
+    logger.error('Error arming device', { error: err.message });
+    next(err);
+  }
+};
+
+// ─────────────────────────────────────────────────────────────
+// POST /api/devices/:deviceId/disarm — "Stop & Disarm" button
+// ─────────────────────────────────────────────────────────────
+exports.disarmDevice = async (req, res, next) => {
+  try {
+    const device = await Device.setArmed(req.params.deviceId, req.user.userId, false);
+    if (!device) return res.status(404).json({ success: false, message: 'Device not found' });
+    res.json({ success: true, data: device, message: 'Device disarmed — alerts off' });
+  } catch (err) {
+    logger.error('Error disarming device', { error: err.message });
+    next(err);
+  }
+};
+
+// ─────────────────────────────────────────────────────────────
+// PUT /api/devices/:deviceId — rename, location, settings
+// ─────────────────────────────────────────────────────────────
 exports.updateDevice = async (req, res, next) => {
   try {
     const device = await Device.update(req.params.deviceId, req.user.userId, req.body);
@@ -96,6 +130,9 @@ exports.updateDevice = async (req, res, next) => {
   }
 };
 
+// ─────────────────────────────────────────────────────────────
+// DELETE /api/devices/:deviceId — soft delete only
+// ─────────────────────────────────────────────────────────────
 exports.deleteDevice = async (req, res, next) => {
   try {
     const deleted = await Device.softDelete(req.params.deviceId, req.user.userId);
