@@ -1435,6 +1435,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
           startMotionDetection();
           if (soundEnabled) startSoundDetection();
           setStatusMsg('🟢 Armed — monitoring...');
+          if (onUsbStatus) onUsbStatus('armed');
         }, 800);
       }
       try {
@@ -1499,6 +1500,7 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
     setStatusMsg('🟢 Armed — monitoring...');
     startMotionDetection();
     if (soundEnabled) startSoundDetection();
+    if (onUsbStatus) onUsbStatus('armed');
   };
 
   const armWithClipChoice = (choice) => {
@@ -3519,7 +3521,7 @@ export default function App() {
       setDevices(devs);
       // Sync camera count to billing DB so usage meters are accurate
       try {
-        const activeCount = devs.filter(d=>d.is_active).length;
+        const activeCount = devs.filter(d=>d.is_active===true||d.is_active===1).length;
         await api.patch('/api/users/usage', { cameras_count: activeCount });
       } catch {}
     } catch {}
