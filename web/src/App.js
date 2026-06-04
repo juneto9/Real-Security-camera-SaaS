@@ -2934,7 +2934,7 @@ function DiscoverPage({ socket, onDeviceAdded, onEnroll }) {
     setScanProgress('Checking backend for discovered devices...');
     setDiscovered([]);
     try {
-      const res = await api.get('/api/devices/discover');
+      const res = await api.get('/api/device-discover');
       const found = res.data.data || [];
       mdnsDevices.forEach(m => { if (!found.find(d => d.ip === m.ip)) found.push(m); });
       setDiscovered(found);
@@ -3536,11 +3536,8 @@ export default function App() {
       const res=await api.get('/api/devices');
       const devs = (res.data.data||[]).map(d=>({...d,name:d.name||d.device_name||''}));
       setDevices(devs);
-      // Sync camera count to billing DB so usage meters are accurate
-      try {
-        const activeCount = devs.filter(d=>d.is_active!==false&&!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(d.name||'')).length;
-        await api.patch('/api/users/usage', { cameras_count: activeCount });
-      } catch {}
+      // Sync usage to billing DB — backend recomputes from real data, ignore client count
+      try { await api.patch('/api/users/usage', {}); } catch {}
     } catch {}
   },[token]);
 
@@ -3621,7 +3618,7 @@ export default function App() {
         <div style={st.statRow}>
           <div style={st.stat}>
             <p style={st.statN}>
-              {devices.filter(d=>d.is_active!==false&&!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(d.name||'')).length}
+              {devices.length}
             </p>
             <p style={st.statL}>Total Cameras</p>
           </div>
@@ -3666,11 +3663,7 @@ export default function App() {
                 <div style={{marginTop:12}}>No cameras yet. Click "+ Add Camera" above.</div>
               </div>
             : <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(320px,1fr))',gap:16}}>
-                {devices.filter(d=>{
-                  if (d.is_active === false) return false;
-                  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(d.name||'')) return false;
-                  return true;
-                }).map(d=>(
+                {devices.map(d=>(
                   <CameraCard key={d.id}
                     device={{...d,online:onlineMap[d.id]?.online||onlineMap[d.id]===true}}
                     socket={socket}

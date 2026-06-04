@@ -67,13 +67,13 @@ router.get('/claim/:token', async (req, res) => {
 
     const enrollment = result.rows[0];
 
-    // Create device record
+    // Create device record — must include user_id (created_by) and qr_activated=true
     const finalName = deviceName || enrollment.camera_name || 'Enrolled Camera';
     const devResult = await req.app.get('db').query(
-      `INSERT INTO devices (name, location, organization_id, is_active, device_type, created_at)
-       VALUES ($1, $2, $3, TRUE, $4, NOW())
-       RETURNING id, name, location, organization_id`,
-      [finalName, enrollment.location, enrollment.organization_id, deviceType]
+      `INSERT INTO devices (name, location, organization_id, user_id, is_active, qr_activated, qr_activated_at, device_type, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, TRUE, TRUE, NOW(), $5, NOW(), NOW())
+       RETURNING id, name, location, organization_id, user_id`,
+      [finalName, enrollment.location, enrollment.organization_id, enrollment.created_by, deviceType]
     );
     const device = devResult.rows[0];
 

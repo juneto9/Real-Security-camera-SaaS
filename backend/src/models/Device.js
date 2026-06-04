@@ -106,7 +106,7 @@ class Device {
       const result = await db.query(
         `SELECT
            id, organization_id, user_id, name, description, location,
-           device_type, status, is_active, is_armed, qr_activated,
+           rtsp_url, device_type, status, is_active, is_armed, qr_activated,
            qr_activated_at, is_motion_detection_enabled, motion_sensitivity,
            is_recording, last_heartbeat, last_stream_at,
            ip_address, mac_address, firmware_version,

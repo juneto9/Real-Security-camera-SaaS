@@ -11,21 +11,26 @@ const updateUsage = async (req, res, next) => {
     const userId = req.user.id || req.user.userId;
 
     // Always recompute from real data — never trust client-sent numbers
-    // 1. Camera count (confirmed devices only, no pending_scan)
+    // 1. Camera count — only qr_activated (confirmed) devices
     const camResult = await pool.query(
       `SELECT COUNT(*) FROM devices
-       WHERE user_id = $1
-         AND deleted_at IS NULL`,
+       WHERE user_id      = $1
+         AND qr_activated = true
+         AND deleted_at   IS NULL`,
       [userId]
     );
     const cameraCount = parseInt(camResult.rows[0].count, 10);
 
-    // 2. SSIDs — distinct non-null locations across confirmed devices
+    // 2. SSIDs — distinct non-null, non-IP, non-default locations across confirmed devices
     const ssidResult = await pool.query(
       `SELECT COUNT(DISTINCT location) FROM devices
-       WHERE user_id = $1
-         AND location IS NOT NULL AND location != ''
-         AND deleted_at IS NULL`,
+       WHERE user_id      = $1
+         AND qr_activated = true
+         AND deleted_at   IS NULL
+         AND location IS NOT NULL
+         AND location != ''
+         AND location != 'Unset'
+         AND location !~ '^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+$'`,
       [userId]
     );
     const ssidCount = parseInt(ssidResult.rows[0].count, 10);

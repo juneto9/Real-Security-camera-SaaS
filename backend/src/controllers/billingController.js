@@ -233,11 +233,12 @@ const getBillingStatus = async (req, res, next) => {
     const planConfig = PLANS[plan] || PLANS.free;
 
     // ── Live usage from real tables ──────────────────────────────────
-    // 1. Camera count
+    // 1. Camera count — only qr_activated (confirmed) devices
     const camResult = await pool.query(
       `SELECT COUNT(*) FROM devices
-       WHERE user_id = $1
-         AND deleted_at IS NULL`,
+       WHERE user_id      = $1
+         AND qr_activated = true
+         AND deleted_at   IS NULL`,
       [userId]
     );
     const cameraCount = parseInt(camResult.rows[0].count, 10);
