@@ -191,6 +191,12 @@ function CameraSettingsPanel({ device, settings, onChange, onClose, onDeviceUpda
   const [devName,     setDevName]     = useState(device.name?.trim() || '');
   const [devLocation, setDevLocation] = useState(device.location?.trim() || '');
   const [devRtsp,     setDevRtsp]     = useState(device.rtsp_url || '');
+  // Re-sync fields when a different device is opened
+  React.useEffect(() => {
+    setDevName(device.name?.trim() || '');
+    setDevLocation(device.location?.trim() || '');
+    setDevRtsp(device.rtsp_url || '');
+  }, [device.id]);
   const [saving,      setSaving]      = useState(false);
   const [saveMsg,     setSaveMsg]     = useState('');
   const [deleting,    setDeleting]    = useState(false);
@@ -2852,6 +2858,7 @@ function DiscoverPage({ socket, onDeviceAdded, onEnroll }) {
   const [scanProgress, setScanProgress] = useState('');
   const [discovered,   setDiscovered]   = useState([]);
   const [enrolling,    setEnrolling]    = useState(null);
+  const [enrollPending, setEnrollPending] = useState(null);
   const [removing,     setRemoving]     = useState(null);
   const [mdnsDevices,  setMdnsDevices]  = useState([]);
 
@@ -2884,23 +2891,27 @@ function DiscoverPage({ socket, onDeviceAdded, onEnroll }) {
     setScanning(false);
   };
 
-  const enroll = async (device) => {
+  const enroll = (device) => {
+    const { brand, rtsp } = getRtspSuggestion(device.ip, device.mac);
+    const cameraName = brand ? `${brand} Camera (${device.ip})` : (device.name || device.device_name || `Camera Device (${device.ip})`);
+    const loc = (device.location && !/^\d+\.\d+\.\d+\.\d+$/.test(device.location)) ? device.location : (device.ip || '');
+    setEnrollPending({ name: cameraName, location: loc, rtsp: rtsp||'', device });
+  };
+
+  const confirmEnroll = async () => {
+    if (!enrollPending) return;
+    const { name, location, rtsp, device } = enrollPending;
     setEnrolling(device.id || device.ip);
+    setEnrollPending(null);
     try {
-      const { brand, rtsp } = getRtspSuggestion(device.ip, device.mac);
-      const cameraName = brand ? `${brand} Camera (${device.ip})` : (device.name || device.device_name || `Camera ${device.ip}`);
-      await api.post('/api/devices', {
-        name: cameraName,
-        location: device.location || device.ip || 'Local Network',
-        rtsp_url: rtsp || '',
-      });
+      await api.post('/api/devices', { name, location: location||device.ip||'', rtsp_url: rtsp||'' });
       setDiscovered(d => d.map(x =>
         (x.id || x.ip) === (device.id || device.ip)
           ? { ...x, source: 'registered', is_active: true }
           : x
       ));
       if (onDeviceAdded) onDeviceAdded();
-      setScanProgress(`✅ ${cameraName} enrolled${brand ? ` as ${brand}` : ''} — set RTSP password in Camera Settings`);
+      setScanProgress(`✅ ${name} enrolled — set RTSP password in Camera Settings if needed`);
     } catch(e) {
       alert('Enrollment failed: ' + (e.response?.data?.message || e.message));
     }
@@ -3046,6 +3057,28 @@ function DiscoverPage({ socket, onDeviceAdded, onEnroll }) {
             </div>
           );
         })}
+      {enrollPending && (
+        <div style={st.modal} onClick={()=>setEnrollPending(null)}>
+          <div style={{...st.modalBox,maxWidth:420}} onClick={e=>e.stopPropagation()}>
+            <h3 style={{margin:'0 0 16px',color:C.green}}>📷 Confirm Camera Enrollment</h3>
+            <p style={{color:C.sub,fontSize:13,marginBottom:16}}>Review detected info — edit if needed.</p>
+            <label style={st.label}>Camera Name *</label>
+            <input style={{...st.input,marginBottom:12}} value={enrollPending.name}
+              onChange={e=>setEnrollPending(p=>({...p,name:e.target.value}))}
+              placeholder="e.g. Front Door Camera"/>
+            <label style={st.label}>Location</label>
+            <input style={{...st.input,marginBottom:16}} value={enrollPending.location}
+              onChange={e=>setEnrollPending(p=>({...p,location:e.target.value}))}
+              placeholder="e.g. Front Yard, Living Room"/>
+            <div style={{display:'flex',gap:8}}>
+              <button style={{...st.btn,...st.btnGray,flex:1}} onClick={()=>setEnrollPending(null)}>Cancel</button>
+              <button style={{...st.btn,...st.btnGreen,flex:2}}
+                disabled={!enrollPending.name.trim()}
+                onClick={confirmEnroll}>✓ Add Camera</button>
+            </div>
+          </div>
+        </div>
+      )}
       </div>
     </div>
   );
@@ -3661,6 +3694,7 @@ export default function App() {
       )}
       {settingsFor && (
         <CameraSettingsPanel
+          key={settingsFor.id}
           device={devices.find(d=>d.id===settingsFor.id)||settingsFor}
           settings={deviceSettings[settingsFor.id]}
           onChange={s=>setDeviceSettings(p=>({...p,[settingsFor.id]:s}))}
