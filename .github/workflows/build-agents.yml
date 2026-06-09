@@ -42,7 +42,7 @@ jobs:
           npm install --no-fund --no-audit
 
       - name: Install pkg
-        run: npm install -g @vercel/pkg
+        run: npm install -g @yao-pkg/pkg
 
       - name: Build binary
         run: |
@@ -70,14 +70,7 @@ jobs:
           name: Discovery Agent - Latest Build
           body: |
             ## RealSecCam Discovery Agent
-            
-            Download the installer for your platform and double-click to run.
-            No installation required — single self-contained executable.
-            
-            | Platform | File |
-            |----------|------|
-            | Windows | RealSecCam-Discovery-Agent-Windows.exe |
-            | macOS | RealSecCam-Discovery-Agent-macOS |
-            | Linux | RealSecCam-Discovery-Agent-Linux |
-          files: dist/*
-          make_latest: true
+            Auto-built binaries for Windows, macOS, and Linux.
+            Download the file for your platform and run it directly — no installation required.
+          files: dist/**
+          prerelease: false
