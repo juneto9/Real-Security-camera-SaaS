@@ -12,58 +12,71 @@ permissions:
   contents: write
 
 jobs:
-  build:
-    strategy:
-      matrix:
-        include:
-          - os: windows-latest
-            target: node20-win-x64
-            artifact: RealSecCam-Discovery-Agent-Windows.exe
-          - os: macos-latest
-            target: node20-macos-x64
-            artifact: RealSecCam-Discovery-Agent-macOS
-          - os: ubuntu-latest
-            target: node20-linux-x64
-            artifact: RealSecCam-Discovery-Agent-Linux
-
-    runs-on: ${{ matrix.os }}
-
+  build-windows:
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+      - name: Install deps and build
+        run: |
+          cd scripts
+          echo {"name":"discovery-agent","version":"2.0.0","dependencies":{"axios":"^1.6.0"}} > package.json
+          npm install --no-fund --no-audit
+          npm install -g pkg
+          pkg agent.js --target node18-win-x64 --output RealSecCam-Discovery-Agent-Windows.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-binary
+          path: scripts/RealSecCam-Discovery-Agent-Windows.exe
 
-      - name: Install dependencies
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      - name: Install deps and build
         run: |
           cd scripts
           echo '{"name":"discovery-agent","version":"2.0.0","dependencies":{"axios":"^1.6.0"}}' > package.json
           npm install --no-fund --no-audit
+          npm install -g pkg
+          pkg agent.js --target node18-macos-x64 --output RealSecCam-Discovery-Agent-macOS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-binary
+          path: scripts/RealSecCam-Discovery-Agent-macOS
 
-      - name: Install pkg
-        run: npm install -g @vercel/pkg
-
-      - name: Build binary
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      - name: Install deps and build
         run: |
           cd scripts
-          pkg discovery-agent.js --target ${{ matrix.target }} --output ${{ matrix.artifact }}
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+          echo '{"name":"discovery-agent","version":"2.0.0","dependencies":{"axios":"^1.6.0"}}' > package.json
+          npm install --no-fund --no-audit
+          npm install -g pkg
+          pkg agent.js --target node18-linux-x64 --output RealSecCam-Discovery-Agent-Linux
+      - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
-          path: scripts/${{ matrix.artifact }}
+          name: linux-binary
+          path: scripts/RealSecCam-Discovery-Agent-Linux
 
   release:
-    needs: build
+    needs: [build-windows, build-macos, build-linux]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
-
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
@@ -71,7 +84,7 @@ jobs:
           name: Discovery Agent - Latest Build
           body: |
             ## RealSecCam Discovery Agent
-            Download the installer for your platform and double-click to run.
-            No installation required - single self-contained executable.
+            Download the binary for your platform and run it directly.
+            No installation required.
           files: dist/*
           make_latest: true
