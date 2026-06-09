@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - 'scripts/discovery-agent.js'
+      - 'installer/**'
     branches:
       - main
   workflow_dispatch:
@@ -12,79 +13,132 @@ permissions:
   contents: write
 
 jobs:
-  build-windows:
+
+  # ── Windows: pkg .exe binary wrapped in Inno Setup professional installer ──
+  build-windows-installer:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
-          node-version: '18'
-      - name: Install deps and build
+          node-version: '20'
+
+      - name: Install dependencies
+        working-directory: scripts
+        shell: cmd
         run: |
-          cd scripts
-          echo {"name":"discovery-agent","version":"2.0.0","dependencies":{"axios":"^1.6.0"}} > package.json
+          echo {"name":"discovery-agent","version":"3.0.0","dependencies":{"axios":"^1.6.0"}} > package.json
           npm install --no-fund --no-audit
-          npm install -g pkg
-          pkg agent.js --target node18-win-x64 --output RealSecCam-Discovery-Agent-Windows.exe
+
+      - name: Build standalone binary with @yao-pkg/pkg
+        working-directory: scripts
+        shell: cmd
+        run: |
+          npm install -g @yao-pkg/pkg
+          pkg agent.js --target node20-win-x64 --output RealSecCam-Discovery-Agent.exe
+
+      - name: Stage binary for Inno Setup
+        shell: cmd
+        run: |
+          mkdir installer\bin
+          copy scripts\RealSecCam-Discovery-Agent.exe installer\bin\RealSecCam-Discovery-Agent.exe
+          mkdir installer\assets
+          mkdir installer\dist
+
+      - name: Build enterprise .exe installer with Inno Setup
+        uses: Minionguyjpro/Inno-Setup-Action@v1.2.4
+        with:
+          path: installer/realseccam.iss
+          options: /O+
+
+      - name: Rename output
+        shell: cmd
+        run: ren installer\dist\RealSecCam-Install.exe RealSecCam-Install-Windows.exe
+
       - uses: actions/upload-artifact@v4
         with:
-          name: windows-binary
-          path: scripts/RealSecCam-Discovery-Agent-Windows.exe
+          name: windows-installer
+          path: installer/dist/RealSecCam-Install-Windows.exe
+          retention-days: 30
 
+  # ── macOS: standalone binary ───────────────────────────────────────────────
   build-macos:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '18'
-      - name: Install deps and build
+          node-version: '20'
+      - name: Install and build
+        working-directory: scripts
         run: |
-          cd scripts
-          echo '{"name":"discovery-agent","version":"2.0.0","dependencies":{"axios":"^1.6.0"}}' > package.json
+          echo '{"name":"discovery-agent","version":"3.0.0","dependencies":{"axios":"^1.6.0"}}' > package.json
           npm install --no-fund --no-audit
-          npm install -g pkg
-          pkg agent.js --target node18-macos-x64 --output RealSecCam-Discovery-Agent-macOS
+          npm install -g @yao-pkg/pkg
+          pkg agent.js --target node20-macos-x64 --output RealSecCam-Discovery-Agent-macOS
       - uses: actions/upload-artifact@v4
         with:
           name: macos-binary
           path: scripts/RealSecCam-Discovery-Agent-macOS
+          retention-days: 30
 
+  # ── Linux: standalone binary ───────────────────────────────────────────────
   build-linux:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '18'
-      - name: Install deps and build
+          node-version: '20'
+      - name: Install and build
+        working-directory: scripts
         run: |
-          cd scripts
-          echo '{"name":"discovery-agent","version":"2.0.0","dependencies":{"axios":"^1.6.0"}}' > package.json
+          echo '{"name":"discovery-agent","version":"3.0.0","dependencies":{"axios":"^1.6.0"}}' > package.json
           npm install --no-fund --no-audit
-          npm install -g pkg
-          pkg agent.js --target node18-linux-x64 --output RealSecCam-Discovery-Agent-Linux
+          npm install -g @yao-pkg/pkg
+          pkg agent.js --target node20-linux-x64 --output RealSecCam-Discovery-Agent-Linux
       - uses: actions/upload-artifact@v4
         with:
           name: linux-binary
           path: scripts/RealSecCam-Discovery-Agent-Linux
+          retention-days: 30
 
+  # ── GitHub Release: attach all three artifacts ─────────────────────────────
   release:
-    needs: [build-windows, build-macos, build-linux]
+    needs: [build-windows-installer, build-macos, build-linux]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
         with:
-          path: dist
           merge-multiple: true
-      - name: Create Release
+          path: dist/
+
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: agent-latest
-          name: Discovery Agent - Latest Build
+          tag_name: v3.0.${{ github.run_number }}
+          name: RealSecCam Discovery Agent v3.0.${{ github.run_number }}
           body: |
-            ## RealSecCam Discovery Agent
-            Download the binary for your platform and run it directly.
-            No installation required.
+            ## RealSecCam Discovery Agent v3.0
+
+            ### 💻 Windows
+            Download **RealSecCam-Install-Windows.exe** and double-click.
+            Standard Windows installer — UAC elevation built in. No scripts, no PowerShell, no execution policy. Works on any Windows 10/11 machine.
+
+            ### 🍎 macOS
+            Download **RealSecCam-Discovery-Agent-macOS**, then run:
+            ```
+            chmod +x RealSecCam-Discovery-Agent-macOS && ./RealSecCam-Discovery-Agent-macOS
+            ```
+
+            ### 🐧 Linux
+            Download **RealSecCam-Discovery-Agent-Linux**, then run:
+            ```
+            chmod +x RealSecCam-Discovery-Agent-Linux && ./RealSecCam-Discovery-Agent-Linux
+            ```
           files: dist/*
-          make_latest: true
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
