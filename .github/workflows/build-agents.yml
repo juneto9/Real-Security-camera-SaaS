@@ -1,0 +1,77 @@
+name: Build & Release Discovery Agent
+
+on:
+  push:
+    paths:
+      - 'scripts/discovery-agent.js'
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            target: node20-win-x64
+            artifact: RealSecCam-Discovery-Agent-Windows.exe
+          - os: macos-latest
+            target: node20-macos-x64
+            artifact: RealSecCam-Discovery-Agent-macOS
+          - os: ubuntu-latest
+            target: node20-linux-x64
+            artifact: RealSecCam-Discovery-Agent-Linux
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: |
+          cd scripts
+          echo '{"name":"discovery-agent","version":"2.0.0","dependencies":{"axios":"^1.6.0"}}' > package.json
+          npm install --no-fund --no-audit
+
+      - name: Install pkg
+        run: npm install -g @vercel/pkg
+
+      - name: Build binary
+        run: |
+          cd scripts
+          pkg discovery-agent.js --target ${{ matrix.target }} --output ${{ matrix.artifact }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: scripts/${{ matrix.artifact }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: agent-latest
+          name: Discovery Agent - Latest Build
+          body: |
+            ## RealSecCam Discovery Agent
+            Download the installer for your platform and double-click to run.
+            No installation required - single self-contained executable.
+          files: dist/*
+          make_latest: true
