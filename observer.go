@@ -2,16 +2,15 @@
 // Zero-touch background discovery agent. Pure Go stdlib. No CGO. No external deps.
 //
 // v1.9 changes vs v1.8:
-//   - Versioned output filenames: RealSecCam-Observer-v1.9-Windows.exe
-//   - Child process hiding moved to observer_windows.go (build tag) — no more CMD flashes
-//   - Notification via PowerShell MessageBox (comes to foreground reliably)
-//   - ARP on Windows via pure Go net.Interfaces — no subprocess at all
+//   - Versioned output filenames: RealSecCam-Observer-v1.9-Windows.exe etc.
+//   - All OS-specific logic uses runtime.GOOS switches (single file, no build tags)
+//   - No syscall dependency — compiles cleanly on all platforms via cross-compilation
 //   - Version bump to 1.9.0
 //
 // Build:
-//   Windows: GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w -H windowsgui" -o RealSecCam-Observer-v1.9-Windows.exe .
-//   macOS:   GOOS=darwin  GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w"               -o RealSecCam-Observer-v1.9-macOS    .
-//   Linux:   GOOS=linux   GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w"               -o RealSecCam-Observer-v1.9-Linux     .
+//   Windows: GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w -H windowsgui" -o RealSecCam-Observer-v1.9-Windows.exe observer.go
+//   macOS:   GOOS=darwin  GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w"               -o RealSecCam-Observer-v1.9-macOS    observer.go
+//   Linux:   GOOS=linux   GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w"               -o RealSecCam-Observer-v1.9-Linux     observer.go
 
 package main
 
@@ -75,14 +74,14 @@ var OUITable = map[string]string{
 	// ── Axis ──
 	"b4:e6:2d": "Axis", "00:0f:7c": "Axis", "ac:cc:8e": "Axis", "00:40:8c": "Axis",
 	// ── Other IP Camera Brands ──
-	"00:62:6e": "Foscam",     "9c:8e:cd": "TP-Link Tapo",
-	"1c:61:b4": "Arlo",       "70:56:81": "Ring",
-	"b8:a4:4f": "Hanwha",     "d4:6a:6a": "Hanwha",
-	"b0:be:76": "Eufy",       "5c:aa:fd": "Eufy",       "c0:49:ef": "Eufy",
-	"00:80:f0": "Panasonic",  "00:1b:c5": "Bosch",       "00:30:48": "Pelco",
-	"d8:d7:75": "Uniview",    "e8:26:89": "Uniview",
+	"00:62:6e": "Foscam",    "9c:8e:cd": "TP-Link Tapo",
+	"1c:61:b4": "Arlo",      "70:56:81": "Ring",
+	"b8:a4:4f": "Hanwha",    "d4:6a:6a": "Hanwha",
+	"b0:be:76": "Eufy",      "5c:aa:fd": "Eufy",      "c0:49:ef": "Eufy",
+	"00:80:f0": "Panasonic", "00:1b:c5": "Bosch",      "00:30:48": "Pelco",
+	"d8:d7:75": "Uniview",   "e8:26:89": "Uniview",
 	"2c:63:45": "Tiandy",
-	"00:09:18": "Vivotek",    "00:1a:07": "Vivotek",
+	"00:09:18": "Vivotek",   "00:1a:07": "Vivotek",
 	"00:03:c5": "Mobotix",
 	"00:1e:c0": "Avigilon",
 	// ── Apple ──
@@ -184,7 +183,6 @@ var (
 	onceMode     bool
 	shutdownCh   = make(chan struct{})
 
-	// Cached at startup
 	cachedSSID   string
 	cachedIP     string
 	cachedSubnet string
@@ -248,14 +246,106 @@ func startKillServer() {
 			Version, h, scanCount.Load(), lastFound.Load())
 	})
 	srv := &http.Server{Addr: fmt.Sprintf("127.0.0.1:%d", KillPort), Handler: mux}
-	go func() {
-		srv.ListenAndServe()
-	}()
+	go func() { srv.ListenAndServe() }()
 	go func() {
 		<-shutdownCh
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
 		srv.Shutdown(ctx)
+	}()
+}
+
+// ─── SSID detection (runtime switch, no syscall) ──────────────────────────────
+
+func detectSSID() string {
+	switch runtime.GOOS {
+	case "windows":
+		out, err := exec.Command("netsh", "wlan", "show", "interfaces").Output()
+		if err != nil {
+			return "(wired)"
+		}
+		for _, line := range strings.Split(string(out), "\n") {
+			t := strings.TrimSpace(line)
+			if strings.HasPrefix(t, "SSID") && !strings.HasPrefix(t, "BSSID") {
+				if parts := strings.SplitN(t, ":", 2); len(parts) == 2 {
+					return strings.TrimSpace(parts[1])
+				}
+			}
+		}
+	case "darwin":
+		out, err := exec.Command("/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport", "-I").Output()
+		if err == nil {
+			for _, line := range strings.Split(string(out), "\n") {
+				t := strings.TrimSpace(line)
+				if strings.HasPrefix(t, "SSID:") {
+					if parts := strings.SplitN(t, ":", 2); len(parts) == 2 {
+						return strings.TrimSpace(parts[1])
+					}
+				}
+			}
+		}
+	default:
+		out, err := exec.Command("iwgetid", "-r").Output()
+		if err == nil {
+			if s := strings.TrimSpace(string(out)); s != "" {
+				return s
+			}
+		}
+		out, _ = exec.Command("sh", "-c", "nmcli -t -f active,ssid dev wifi 2>/dev/null | grep '^yes' | cut -d: -f2").Output()
+		if s := strings.TrimSpace(string(out)); s != "" {
+			return s
+		}
+	}
+	return "(wired)"
+}
+
+// ─── ARP table (runtime switch) ───────────────────────────────────────────────
+
+func getARPTable() map[string]string {
+	m := map[string]string{}
+	var out []byte
+	var err error
+	if runtime.GOOS == "windows" {
+		out, err = exec.Command("arp", "-a").Output()
+	} else {
+		out, err = exec.Command("sh", "-c", "arp -n 2>/dev/null || arp -a 2>/dev/null").Output()
+	}
+	if err != nil {
+		return m
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		var ip, mac string
+		for _, f := range strings.Fields(line) {
+			if net.ParseIP(f) != nil && strings.Contains(f, ".") {
+				ip = f
+			}
+			if (strings.Count(f, ":") == 5 || strings.Count(f, "-") == 5) && len(f) >= 17 {
+				mac = strings.ToLower(strings.ReplaceAll(f, "-", ":"))
+			}
+		}
+		if ip != "" && mac != "" && mac != "ff:ff:ff:ff:ff:ff" {
+			m[ip] = mac
+		}
+	}
+	return m
+}
+
+// ─── Install notification ─────────────────────────────────────────────────────
+
+func showInstallNotification() {
+	if runtime.GOOS != "windows" {
+		return
+	}
+	vbs := `MsgBox "RealSecCam Observer v1.9 is now running." & vbCrLf & vbCrLf & "Your cameras will appear in the dashboard automatically. You can close this message — the Observer will continue running quietly in the background.", 64, "RealSecCam"`
+	tmpFile := filepath.Join(os.TempDir(), "realseccam-notify.vbs")
+	if err := os.WriteFile(tmpFile, []byte(vbs), 0644); err != nil {
+		return
+	}
+	cmd := exec.Command("wscript.exe", "//nologo", tmpFile)
+	cmd.Start()
+	go func() {
+		time.Sleep(30 * time.Second)
+		os.Remove(tmpFile)
 	}()
 }
 
@@ -318,9 +408,7 @@ func getNetworkInterfacesRaw() []NetworkInterface {
 	return result
 }
 
-func getNetworkInterfaces() []NetworkInterface {
-	return getNetworkInterfacesRaw()
-}
+func getNetworkInterfaces() []NetworkInterface { return getNetworkInterfacesRaw() }
 
 func lookupOUI(mac string) string {
 	if mac == "" {
@@ -521,9 +609,10 @@ func registerAutostart() {
 	switch runtime.GOOS {
 	case "windows":
 		quotedPath := `"` + exePath + `"`
-		runHidden("reg", "add",
+		cmd := exec.Command("reg", "add",
 			`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`,
 			"/v", "RealSecCamObserver", "/t", "REG_SZ", "/d", quotedPath, "/f")
+		cmd.Run()
 	case "darwin":
 		plistPath := filepath.Join(os.Getenv("HOME"), "Library", "LaunchAgents", "com.realseccam.observer.plist")
 		if _, err := os.Stat(plistPath); err == nil {
@@ -539,8 +628,7 @@ func registerAutostart() {
 </dict></plist>`, exePath)
 		os.MkdirAll(filepath.Dir(plistPath), 0755)
 		if os.WriteFile(plistPath, []byte(plist), 0644) == nil {
-			cmd := exec.Command("launchctl", "load", "-w", plistPath)
-			cmd.Run()
+			exec.Command("launchctl", "load", "-w", plistPath).Run()
 		}
 	default:
 		dir := filepath.Join(os.Getenv("HOME"), ".config", "autostart")
