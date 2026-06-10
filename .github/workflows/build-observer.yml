@@ -4,6 +4,8 @@ on:
   push:
     paths:
       - 'observer.go'
+      - 'observer_windows.go'
+      - 'observer_unix.go'
     branches:
       - main
   workflow_dispatch:
@@ -20,17 +22,17 @@ jobs:
           - os: ubuntu-latest
             goos: linux
             goarch: amd64
-            output: RealSecCam-Observer-Linux
+            output: RealSecCam-Observer-v1.9-Linux
             ldflags: "-s -w"
           - os: ubuntu-latest
             goos: windows
             goarch: amd64
-            output: RealSecCam-Observer-Windows.exe
+            output: RealSecCam-Observer-v1.9-Windows.exe
             ldflags: "-s -w -H windowsgui"
           - os: macos-latest
             goos: darwin
             goarch: amd64
-            output: RealSecCam-Observer-macOS
+            output: RealSecCam-Observer-v1.9-macOS
             ldflags: "-s -w"
 
     runs-on: ${{ matrix.os }}
@@ -47,7 +49,7 @@ jobs:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: "0"
-        run: go build -ldflags="${{ matrix.ldflags }}" -o ${{ matrix.output }} observer.go
+        run: go build -ldflags="${{ matrix.ldflags }}" -o ${{ matrix.output }} .
 
       - uses: actions/upload-artifact@v4
         with:
@@ -63,7 +65,7 @@ jobs:
           path: dist
           merge-multiple: true
 
-      - name: Delete existing release tag
+      - name: Delete existing observer-latest tag
         continue-on-error: true
         run: |
           gh release delete observer-latest --yes --repo ${{ github.repository }} || true
@@ -74,22 +76,21 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: observer-latest
-          name: "RealSecCam Observer v1.8 — Latest"
+          tag_name: observer-v1.9.0-${{ github.run_number }}
+          name: "RealSecCam Observer v1.9.0 (build ${{ github.run_number }})"
           body: |
-            ## RealSecCam Observer v1.8
+            ## RealSecCam Observer v1.9
             Download and double-click. No installation required.
             | Platform | File |
             |----------|------|
-            | **Windows** | RealSecCam-Observer-Windows.exe |
-            | **macOS** | RealSecCam-Observer-macOS |
-            | **Linux** | RealSecCam-Observer-Linux |
+            | **Windows** | RealSecCam-Observer-v1.9-Windows.exe |
+            | **macOS** | RealSecCam-Observer-v1.9-macOS |
+            | **Linux** | RealSecCam-Observer-v1.9-Linux |
 
-            ### v1.8 Changes
-            - **Fixed cross-platform build** — removed syscall import that broke macOS/Linux compile
-            - **CMD window suppression** via -H windowsgui linker flag (no syscall needed)
-            - **SSID/IP/subnet cached at startup** — no repeated netsh/arp calls
-            - **ARP table only called once per scan cycle**
+            ### v1.9 Changes
+            - **Versioned filenames** — file name now includes version (v1.9)
+            - **Zero CMD flashes** — all child processes use CREATE_NO_WINDOW + HideWindow via Windows build tag
+            - **Notification foreground** — switched to PowerShell MessageBox (comes to front)
           files: dist/*
           make_latest: true
         env:
