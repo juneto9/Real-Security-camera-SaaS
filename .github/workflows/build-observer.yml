@@ -43,6 +43,7 @@ jobs:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
         run: |
+          go mod init realseccam/observer || true
           go build -ldflags="-s -w" -o ${{ matrix.artifact }} observer.go
 
       - name: Upload artifact
