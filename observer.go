@@ -1,9 +1,12 @@
-// RealSecCam Observer v1.4
+// RealSecCam Observer v1.5
 // Zero-touch discovery agent. No external dependencies. Pure Go stdlib.
 //
 // Features:
-// - Named NetworkInterface type (fixes v1.3 compile error)
-// - Scans ALL non-loopback interfaces (not just the first one)
+// - Silent background operation (no console window on Windows)
+// - Windows balloon/toast notification on first install
+// - Expanded OUI table: phones, routers, NVRs, IoT devices
+// - Unknown devices report empty brand (not "IP Camera")
+// - Scans ALL non-loopback interfaces
 // - Auto-registers itself to start on boot
 //   Windows: HKCU Run registry key
 //   macOS:   ~/Library/LaunchAgents plist
@@ -40,7 +43,7 @@ import (
 )
 
 const (
-	Version              = "1.4.0"
+	Version              = "1.5.0"
 	ReportURL            = "https://accelerated-sync-dev-flow.base44.app/functions/agentReport"
 	ScanIntervalSec      = 30
 	HeartbeatIntervalSec = 15
@@ -54,19 +57,55 @@ const (
 var CameraPorts = []int{554, 8554, 8080, 8000, 80, 443, 37777, 34567, 9000}
 
 var OUITable = map[string]string{
+	// ── Hikvision ──
 	"00:23:63": "Hikvision", "bc:ad:28": "Hikvision", "4c:bd:8f": "Hikvision",
 	"8c:e7:48": "Hikvision", "a0:8c:f8": "Hikvision", "c0:56:e3": "Hikvision",
-	"54:c4:15": "Hikvision", "b4:a3:82": "Hikvision",
-	"28:57:be": "Dahua",     "3c:ef:8c": "Dahua",     "e0:50:8b": "Dahua",
-	"90:02:a9": "Dahua",     "bc:32:b2": "Dahua",     "a4:14:37": "Dahua",
-	"c8:d5:fe": "Reolink",   "ec:71:db": "Reolink",   "d4:93:90": "Reolink",
-	"e4:24:6c": "Reolink",   "00:6a:e2": "Reolink",
-	"b0:c5:ca": "Wyze",      "2c:aa:8e": "Wyze",      "4c:ed:fb": "Wyze",
-	"f4:f2:6d": "Amcrest",   "00:62:6e": "Foscam",    "9c:8e:cd": "TP-Link Tapo",
-	"1c:61:b4": "Arlo",      "70:56:81": "Ring",       "b4:e6:2d": "Axis",
-	"b8:a4:4f": "Hanwha",    "b0:be:76": "Eufy",       "5c:aa:fd": "Eufy",
-	"00:80:f0": "Panasonic",  "00:1b:c5": "Bosch",     "00:30:48": "Pelco",
-	"d8:d7:75": "Uniview",   "e8:26:89": "Uniview",    "2c:63:45": "Tiandy",
+	"54:c4:15": "Hikvision", "b4:a3:82": "Hikvision", "44:19:b6": "Hikvision",
+	"d0:27:88": "Hikvision", "78:a2:a0": "Hikvision",
+	// ── Dahua ──
+	"28:57:be": "Dahua", "3c:ef:8c": "Dahua", "e0:50:8b": "Dahua",
+	"90:02:a9": "Dahua", "bc:32:b2": "Dahua", "a4:14:37": "Dahua",
+	"4c:11:bf": "Dahua", "40:b0:76": "Dahua",
+	// ── Reolink ──
+	"c8:d5:fe": "Reolink", "ec:71:db": "Reolink", "d4:93:90": "Reolink",
+	"e4:24:6c": "Reolink", "00:6a:e2": "Reolink", "dc:44:27": "Reolink",
+	// ── Wyze ──
+	"b0:c5:ca": "Wyze", "2c:aa:8e": "Wyze", "4c:ed:fb": "Wyze", "d0:3f:27": "Wyze",
+	// ── Other IP Camera Brands ──
+	"f4:f2:6d": "Amcrest",    "00:62:6e": "Foscam",     "9c:8e:cd": "TP-Link Tapo",
+	"1c:61:b4": "Arlo",       "70:56:81": "Ring",        "b4:e6:2d": "Axis",
+	"b8:a4:4f": "Hanwha",     "b0:be:76": "Eufy",        "5c:aa:fd": "Eufy",
+	"00:80:f0": "Panasonic",  "00:1b:c5": "Bosch",       "00:30:48": "Pelco",
+	"d8:d7:75": "Uniview",    "e8:26:89": "Uniview",     "2c:63:45": "Tiandy",
+	"e8:ad:a6": "Amcrest",    "b4:a2:eb": "Amcrest",     "00:0f:7c": "Axis",
+	"ac:cc:8e": "Axis",       "00:40:8c": "Axis",        "d4:6a:6a": "Hanwha",
+	"00:09:18": "Vivotek",    "00:1a:07": "Vivotek",
+	// ── Apple ──
+	"ac:37:43": "Apple", "00:17:f2": "Apple", "f8:ff:c2": "Apple",
+	"70:ef:00": "Apple", "a8:66:7f": "Apple", "78:fd:94": "Apple",
+	"28:cf:e9": "Apple", "8c:85:90": "Apple", "dc:2b:61": "Apple",
+	"f0:db:f8": "Apple", "3c:d0:f8": "Apple", "b8:e8:56": "Apple",
+	"a4:c3:f0": "Apple", "d8:bb:c1": "Apple", "98:01:a7": "Apple",
+	"60:f8:1d": "Apple", "04:4b:ed": "Apple", "58:40:4e": "Apple",
+	// ── Samsung ──
+	"6c:40:08": "Samsung", "94:35:0a": "Samsung", "b4:3a:28": "Samsung",
+	"f8:d0:ac": "Samsung", "78:f7:be": "Samsung", "8c:c8:cd": "Samsung",
+	"50:01:bb": "Samsung", "24:4b:03": "Samsung", "cc:07:ab": "Samsung",
+	// ── Google / Android ──
+	"8c:77:12": "Google", "48:d6:d5": "Google", "f4:f5:d8": "Google",
+	"54:60:09": "Google", "3c:28:6d": "Google",
+	// ── OnePlus / Xiaomi / Huawei ──
+	"d8:3a:dd": "OnePlus",  "8c:be:be": "OnePlus",
+	"00:9e:c8": "Xiaomi",   "7c:49:eb": "Xiaomi",  "f8:a4:5f": "Xiaomi",
+	"28:6c:07": "Xiaomi",   "64:09:80": "Xiaomi",
+	"04:f9:38": "Huawei",   "70:72:3c": "Huawei",  "34:6b:d3": "Huawei",
+	"a4:99:47": "Huawei",   "28:31:52": "Huawei",
+	// ── Routers (common) ──
+	"00:18:39": "Cisco",    "00:1e:f7": "Cisco",   "e8:b7:48": "Cisco",
+	"18:64:72": "TP-Link",  "54:a7:03": "TP-Link", "f0:9f:c2": "Ubiquiti",
+	"b4:fb:e4": "Ubiquiti", "78:8a:20": "Ubiquiti","80:2a:a8": "Netgear",
+	"a0:40:a0": "Netgear",  "c4:04:15": "Netgear", "20:e5:2a": "Belkin",
+	// ── Raspberry Pi ──
 	"b8:27:eb": "Raspberry Pi", "dc:a6:32": "Raspberry Pi", "e4:5f:01": "Raspberry Pi",
 }
 
@@ -367,11 +406,7 @@ func sweepSubnetBase(base string, arp map[string]string, ssid string) []Discover
 			r.d.MAC = mac
 			r.d.SSID = ssid
 			r.d.Online = true
-			if b := lookupOUI(mac); b != "" {
-				r.d.Brand = b
-			} else {
-				r.d.Brand = "IP Camera"
-			}
+			r.d.Brand = lookupOUI(mac) // empty string if unknown — dashboard handles display
 			devices = append(devices, *r.d)
 		}
 	}
@@ -526,6 +561,30 @@ func registerAutostart() {
 	}
 }
 
+// ─── First-run notification ───────────────────────────────────────────────────
+
+func showInstallNotification() {
+	if runtime.GOOS != "windows" {
+		return
+	}
+	// Use PowerShell to show a Windows balloon/toast — no CGO, no deps
+	script := `
+Add-Type -AssemblyName System.Windows.Forms
+$notify = New-Object System.Windows.Forms.NotifyIcon
+$notify.Icon = [System.Drawing.SystemIcons]::Information
+$notify.BalloonTipIcon = [System.Windows.Forms.ToolTipIcon]::Info
+$notify.BalloonTipTitle = "RealSecCam Observer v1.5"
+$notify.BalloonTipText = "Observer is running in the background.
+Network scanning active. Registered to start on boot."
+$notify.Visible = $true
+$notify.ShowBalloonTip(8000)
+Start-Sleep -Seconds 9
+$notify.Dispose()
+`
+	cmd := exec.Command("powershell", "-WindowStyle", "Hidden", "-NonInteractive", "-Command", script)
+	cmd.Start() // fire and forget — don't wait
+}
+
 // ─── Scanner + Watchdog ───────────────────────────────────────────────────────
 
 func performScan() {
@@ -596,6 +655,7 @@ func main() {
 	logf("Reporting to: %s", ReportURL)
 
 	registerAutostart()
+	showInstallNotification()
 
 	if onceMode {
 		performScan()
