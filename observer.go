@@ -248,7 +248,7 @@ func getSSID() string {
 				return s
 			}
 		}
-		out, _ := exec.Command("sh", "-c", "nmcli -t -f active,ssid dev wifi 2>/dev/null | grep '^yes' | cut -d: -f2").Output()
+		out, _ = exec.Command("sh", "-c", "nmcli -t -f active,ssid dev wifi 2>/dev/null | grep '^yes' | cut -d: -f2").Output()
 		if s := strings.TrimSpace(string(out)); s != "" {
 			return s
 		}
