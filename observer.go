@@ -1,4 +1,4 @@
-// RealSecCam Observer v2.0
+// RealSecCam Observer v2.1
 // Zero-touch background discovery agent. Pure Go stdlib. No CGO. No external deps.
 //
 // Build:
@@ -28,7 +28,7 @@ import (
 )
 
 const (
-	Version              = "2.0.0"
+	Version              = "2.1.0"
 	ReportURL            = "https://accelerated-sync-dev-flow.base44.app/functions/agentReport"
 	ScanIntervalSec      = 30
 	HeartbeatIntervalSec = 15
