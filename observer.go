@@ -1,10 +1,10 @@
-// RealSecCam Observer v1.2 - Native Discovery Agent
+// RealSecCam Observer v1.3 - Native Discovery Agent
 // Single self-contained binary. No dependencies.
 //
-// Build (handled automatically by GitHub Actions):
-//   Windows (no console): GOOS=windows GOARCH=amd64 go build -ldflags="-s -w -H=windowsgui" -o RealSecCam-Observer-Windows.exe observer.go
-//   macOS:  GOOS=darwin  GOARCH=amd64 go build -ldflags="-s -w" -o RealSecCam-Observer-macOS   observer.go
-//   Linux:  GOOS=linux   GOARCH=amd64 go build -ldflags="-s -w" -o RealSecCam-Observer-Linux    observer.go
+// Build:
+//   Windows: GOOS=windows GOARCH=amd64 go build -ldflags="-s -w -H=windowsgui" -o RealSecCam-Observer-Windows.exe observer.go
+//   macOS:   GOOS=darwin  GOARCH=amd64 go build -ldflags="-s -w" -o RealSecCam-Observer-macOS observer.go
+//   Linux:   GOOS=linux   GOARCH=amd64 go build -ldflags="-s -w" -o RealSecCam-Observer-Linux  observer.go
 
 package main
 
@@ -26,7 +26,7 @@ import (
 )
 
 const (
-	Version              = "1.2.0"
+	Version              = "1.3.0"
 	ReportURL            = "https://accelerated-sync-dev-flow.base44.app/functions/agentReport"
 	ScanIntervalSec      = 30
 	HeartbeatIntervalSec = 15
@@ -34,99 +34,138 @@ const (
 	MaxConcurrentProbes  = 40
 )
 
-// CameraPorts: standard IP camera + mobile device discovery ports.
-// 554/8554 = RTSP, 80/8080/8000 = HTTP admin panel,
-// 62078 = iPhone lockdown/sync (Apple), 5353 = mDNS/Bonjour (iPhone/Android/IoT),
-// 5555 = Android ADB debug, 8888 = common IP cam HTTP alt
-var CameraPorts = []int{554, 8554, 8080, 80, 8000, 62078, 5353, 5555, 8888}
+// CameraPorts: common IP camera ports + mobile device ports
+var CameraPorts = []int{554, 8554, 8080, 80, 8000, 8888, 62078, 5555}
 
-// OUITable maps the first 3 octets of a MAC address to manufacturer name.
-// Expanded with common camera, phone, and IoT vendors.
+// OUITable maps MAC OUI prefix -> brand name
 var OUITable = map[string]string{
-	// IP Camera vendors
-	"00:23:63": "Hikvision",    "bc:ad:28": "Hikvision",    "4c:bd:8f": "Hikvision",
-	"8c:e7:48": "Hikvision",    "a0:8c:f8": "Hikvision",    "c0:56:e3": "Hikvision",
-	"28:57:be": "Dahua",        "3c:ef:8c": "Dahua",         "e0:50:8b": "Dahua",
-	"c8:d5:fe": "Reolink",      "ec:71:db": "Reolink",       "d4:93:90": "Reolink",
-	"e4:24:6c": "Reolink",      "b0:c5:ca": "Wyze",          "f4:f2:6d": "Amcrest",
-	"00:62:6e": "Foscam",       "9c:8e:cd": "TP-Link Tapo",  "1c:61:b4": "Arlo",
-	"70:56:81": "Ring",         "b4:e6:2d": "Axis",          "b8:a4:4f": "Hanwha",
-	"b0:be:76": "Eufy",         "5c:aa:fd": "Eufy",          "d0:14:11": "Eufy",
-	"00:0f:df": "FLIR",         "00:40:8c": "Axis",          "ac:cc:8e": "Uniview",
-	"9c:b6:d0": "Uniview",      "3c:cd:57": "Dahua",
-	// Mobile / Apple / Android
-	"00:17:f2": "Apple",        "00:1b:63": "Apple",         "00:1c:b3": "Apple",
-	"00:1d:4f": "Apple",        "00:1e:52": "Apple",         "00:1f:5b": "Apple",
-	"00:21:e9": "Apple",        "00:22:41": "Apple",         "00:23:12": "Apple",
-	"00:23:32": "Apple",        "00:23:6c": "Apple",         "00:24:36": "Apple",
-	"00:25:00": "Apple",        "00:25:4b": "Apple",         "00:25:bc": "Apple",
-	"00:26:08": "Apple",        "00:26:4a": "Apple",         "00:26:b0": "Apple",
-	"00:26:bb": "Apple",        "3c:07:54": "Apple",         "a4:5e:60": "Apple",
-	"a8:86:dd": "Apple",        "ac:29:3a": "Apple",         "b8:e8:56": "Apple",
-	"c8:2a:14": "Apple",        "d8:a2:5e": "Apple",         "e0:f8:47": "Apple",
-	"f0:d1:a9": "Apple",        "f4:f1:5a": "Apple",
-	// Samsung (Android)
-	"00:07:ab": "Samsung",      "00:12:47": "Samsung",       "00:15:b9": "Samsung",
-	"00:17:c9": "Samsung",      "00:1a:8a": "Samsung",       "8c:77:12": "Samsung",
-	"94:35:0a": "Samsung",      "b4:3a:28": "Samsung",       "cc:07:ab": "Samsung",
+	// Hikvision
+	"00:23:63": "Hikvision", "bc:ad:28": "Hikvision", "4c:bd:8f": "Hikvision",
+	"8c:e7:48": "Hikvision", "a0:8c:f8": "Hikvision", "c0:56:e3": "Hikvision",
+	"54:c4:15": "Hikvision", "b4:a3:82": "Hikvision",
+	// Dahua
+	"28:57:be": "Dahua", "3c:ef:8c": "Dahua", "e0:50:8b": "Dahua",
+	"90:02:a9": "Dahua", "bc:32:b2": "Dahua",
+	// Reolink
+	"c8:d5:fe": "Reolink", "ec:71:db": "Reolink", "d4:93:90": "Reolink",
+	"e4:24:6c": "Reolink", "00:6a:e2": "Reolink",
+	// Wyze
+	"b0:c5:ca": "Wyze", "2c:aa:8e": "Wyze", "4c:ed:fb": "Wyze",
+	// Amcrest / Foscam / TP-Link
+	"f4:f2:6d": "Amcrest", "00:62:6e": "Foscam", "9c:8e:cd": "TP-Link Tapo",
+	// Arlo / Ring / Axis / Hanwha / Eufy
+	"1c:61:b4": "Arlo", "70:56:81": "Ring", "b4:e6:2d": "Axis",
+	"b8:a4:4f": "Hanwha", "b0:be:76": "Eufy", "5c:aa:fd": "Eufy",
+	// Apple (iPhone/iPad/Mac)
+	"00:03:93": "Apple", "00:0a:27": "Apple", "00:0a:95": "Apple",
+	"00:11:24": "Apple", "00:16:cb": "Apple", "00:17:f2": "Apple",
+	"00:1b:63": "Apple", "00:1c:b3": "Apple", "00:1d:4f": "Apple",
+	"00:1e:52": "Apple", "00:1e:c2": "Apple", "00:1f:5b": "Apple",
+	"00:1f:f3": "Apple", "00:21:e9": "Apple", "00:22:41": "Apple",
+	"00:23:12": "Apple", "00:23:32": "Apple", "00:23:6c": "Apple",
+	"00:24:36": "Apple", "00:25:00": "Apple", "00:25:4b": "Apple",
+	"00:25:bc": "Apple", "00:26:08": "Apple", "00:26:4a": "Apple",
+	"00:26:b0": "Apple", "00:26:bb": "Apple", "00:30:65": "Apple",
+	"f0:db:f8": "Apple", "f0:d1:a9": "Apple", "f4:5c:89": "Apple",
+	"f4:f1:5a": "Apple", "f8:27:93": "Apple", "f8:1e:df": "Apple",
+	"a8:bb:cf": "Apple", "ac:de:48": "Apple", "a4:c3:f0": "Apple",
+	// Samsung (phones/TVs)
+	"00:12:fb": "Samsung", "00:15:99": "Samsung", "00:16:32": "Samsung",
+	"00:17:c9": "Samsung", "00:1a:8a": "Samsung", "00:1b:98": "Samsung",
+	"00:1d:25": "Samsung", "00:1e:7d": "Samsung", "00:21:19": "Samsung",
+	"8c:71:f8": "Samsung", "8c:77:12": "Samsung", "94:35:0a": "Samsung",
 	// Google / Pixel / Nest
-	"f4:f5:d8": "Google",       "48:d6:d5": "Google",        "3c:5a:b4": "Google",
-	"d4:f5:47": "Google",       "00:1a:11": "Google",
-	// IoT / Smart Home
-	"50:c7:bf": "TP-Link",      "60:32:b1": "TP-Link",       "98:da:c4": "TP-Link",
-	"18:d6:c7": "TP-Link",      "e8:de:27": "TP-Link",
-	"74:da:38": "Edimax",       "00:e0:4c": "Realtek",
-	"dc:a6:32": "Raspberry Pi", "b8:27:eb": "Raspberry Pi",  "e4:5f:01": "Raspberry Pi",
-	"10:62:eb": "Amazon Echo",  "40:b4:cd": "Amazon Echo",   "f0:27:2d": "Amazon Echo",
-}
-
-// NetworkIface is defined at package level so all functions share the same type.
-type NetworkIface struct {
-	Name   string
-	IP     string
-	MAC    string
-	Subnet string
+	"00:1a:11": "Google", "54:60:09": "Google", "f4:f5:e8": "Google",
+	"94:eb:2c": "Google", "48:d6:d5": "Google", "3c:5a:b4": "Google",
+	// Amazon Echo/Fire
+	"00:bb:3a": "Amazon", "40:b4:cd": "Amazon", "74:75:48": "Amazon",
+	"84:d6:d0": "Amazon", "a0:02:dc": "Amazon", "b4:7c:9c": "Amazon",
+	// Raspberry Pi
+	"b8:27:eb": "Raspberry Pi", "dc:a6:32": "Raspberry Pi", "e4:5f:01": "Raspberry Pi",
 }
 
 type DiscoveredDevice struct {
-	IP           string `json:"ip"`
-	MAC          string `json:"mac"`
-	Port         int    `json:"port"`
-	Ports        []int  `json:"ports"`
-	Brand        string `json:"brand"`
-	SSID         string `json:"ssid"`
-	Online       bool   `json:"online"`
-	DeviceType   string `json:"device_type"`
+	IP         string `json:"ip"`
+	MAC        string `json:"mac"`
+	Port       int    `json:"port"`
+	Ports      []int  `json:"ports"`
+	Brand      string `json:"brand"`
+	DeviceType string `json:"device_type"`
+	SSID       string `json:"ssid"`
+	Online     bool   `json:"online"`
 }
+
 type HeartbeatPayload struct {
 	Type string        `json:"type"`
 	Data HeartbeatData `json:"data"`
 }
 type HeartbeatData struct {
-	Agent        string `json:"agent"`
-	Host         string `json:"host"`
-	SSID         string `json:"ssid"`
-	LocalIP      string `json:"local_ip"`
-	LocalSubnet  string `json:"local_subnet"`
-	CamerasFound int    `json:"cameras_found"`
-	Version      string `json:"version"`
-	Status       string `json:"status"`
+	Agent       string `json:"agent"`
+	Host        string `json:"host"`
+	SSID        string `json:"ssid"`
+	LocalIP     string `json:"local_ip"`
+	LocalSubnet string `json:"local_subnet"`
+	CamerasFound int   `json:"cameras_found"`
+	Version     string `json:"version"`
+	Status      string `json:"status"`
 }
+
 type DiscoveryPayload struct {
 	Type string             `json:"type"`
 	Data []DiscoveredDevice `json:"data"`
 }
 
 var (
-	debugMode    bool
-	onceMode     bool
-	lastFound    int
-	excludedIPs  = map[string]bool{} // gateways, DHCP servers, DNS servers
+	debugMode bool
+	onceMode  bool
+	lastFound int
 )
 
-// getNetworkInterfaces returns active non-loopback IPv4 interfaces.
-func getNetworkInterfaces() []NetworkIface {
-	result := []NetworkIface{}
+// buildExcludedIPs reads gateway/DNS/DHCP addresses from the OS so we never
+// misclassify a router or DNS server as a camera.
+func buildExcludedIPs() map[string]bool {
+	excluded := map[string]bool{}
+
+	var out []byte
+	var err error
+
+	if runtime.GOOS == "windows" {
+		out, err = exec.Command("ipconfig", "/all").Output()
+	} else {
+		out, _ = exec.Command("sh", "-c", "ip route 2>/dev/null || netstat -rn 2>/dev/null").Output()
+		dns, _ := exec.Command("sh", "-c", "cat /etc/resolv.conf 2>/dev/null").Output()
+		out = append(out, dns...)
+	}
+
+	if err == nil && len(out) > 0 {
+		for _, line := range strings.Split(string(out), "\n") {
+			l := strings.ToLower(line)
+			if strings.Contains(l, "gateway") || strings.Contains(l, "default") ||
+				strings.Contains(l, "dhcp") || strings.Contains(l, "dns") ||
+				strings.Contains(l, "nameserver") {
+				// Extract any IPv4 address from this line
+				for _, field := range strings.Fields(line) {
+					field = strings.TrimRight(field, ",;")
+					if ip := net.ParseIP(field); ip != nil && ip.To4() != nil {
+						excluded[ip.String()] = true
+					}
+				}
+			}
+		}
+	}
+
+	if debugMode && len(excluded) > 0 {
+		ips := []string{}
+		for k := range excluded { ips = append(ips, k) }
+		fmt.Printf("[DEBUG] Infrastructure IPs excluded from results: %v\n", ips)
+	}
+
+	return excluded
+}
+
+func getNetworkInterfaces() []struct{ Name, IP, MAC, Subnet string } {
+	type iface struct{ Name, IP, MAC, Subnet string }
+	result := []iface{}
 	ifaces, err := net.Interfaces()
 	if err != nil {
 		return result
@@ -167,7 +206,7 @@ func getNetworkInterfaces() []NetworkIface {
 				parts := strings.Split(ip.String(), ".")
 				subnet = fmt.Sprintf("%s.%s.%s.0/%d", parts[0], parts[1], parts[2], ones)
 			}
-			result = append(result, NetworkIface{Name: i.Name, IP: ip.String(), MAC: i.HardwareAddr.String(), Subnet: subnet})
+			result = append(result, iface{Name: i.Name, IP: ip.String(), MAC: i.HardwareAddr.String(), Subnet: subnet})
 		}
 	}
 	return result
@@ -180,6 +219,7 @@ func getLocalIP() string {
 	}
 	return ""
 }
+
 func getLocalSubnet() string {
 	i := getNetworkInterfaces()
 	if len(i) > 0 {
@@ -187,6 +227,7 @@ func getLocalSubnet() string {
 	}
 	return ""
 }
+
 func getSubnetBase() string {
 	ip := getLocalIP()
 	if ip == "" {
@@ -197,80 +238,6 @@ func getSubnetBase() string {
 		return strings.Join(parts[:3], ".")
 	}
 	return ""
-}
-
-// buildExcludedIPs parses routing/network config to identify infrastructure IPs
-// (gateway, DHCP server, DNS servers) that should never be reported as cameras.
-// Verified approach: parse OS routing table output — industry standard for Go
-// since golang.org/x/net/route is BSD-only (confirmed: reddit.com/r/golang/6pfkth).
-func buildExcludedIPs() {
-	excludedIPs = map[string]bool{}
-
-	var lines []string
-	switch runtime.GOOS {
-	case "windows":
-		// ipconfig /all gives gateway, DHCP server, DNS servers per adapter
-		out, err := exec.Command("ipconfig", "/all").Output()
-		if err == nil {
-			lines = strings.Split(string(out), "\n")
-			for _, line := range lines {
-				l := strings.TrimSpace(line)
-				// Match: "Default Gateway . . . : 192.168.0.1"
-				//        "DHCP Server . . . . . : 192.168.0.1"
-				//        "DNS Servers . . . . . : 192.168.0.1"
-				if strings.Contains(l, "Default Gateway") ||
-					strings.Contains(l, "DHCP Server") ||
-					strings.Contains(l, "DNS Servers") {
-					// Value is after the last ":"
-					if idx := strings.LastIndex(l, ":"); idx >= 0 {
-						candidate := strings.TrimSpace(l[idx+1:])
-						// Strip trailing scope id if any (e.g. %16)
-						if pct := strings.Index(candidate, "%"); pct >= 0 {
-							candidate = candidate[:pct]
-						}
-						if net.ParseIP(candidate) != nil && strings.Contains(candidate, ".") {
-							excludedIPs[candidate] = true
-						}
-					}
-				}
-			}
-		}
-	default:
-		// Linux / macOS: use "ip route" first, fall back to "route -n" / "netstat -rn"
-		out, err := exec.Command("sh", "-c", "ip route 2>/dev/null || route -n 2>/dev/null || netstat -rn 2>/dev/null").Output()
-		if err == nil {
-			for _, line := range strings.Split(string(out), "\n") {
-				fields := strings.Fields(line)
-				// "ip route" default line: "default via 192.168.0.1 dev ..."
-				// "route -n" default line: "0.0.0.0  192.168.0.1  ..."
-				for i, f := range fields {
-					if (f == "via" || f == "gateway" || f == "Gateway") && i+1 < len(fields) {
-						candidate := fields[i+1]
-						if net.ParseIP(candidate) != nil && strings.Contains(candidate, ".") {
-							excludedIPs[candidate] = true
-						}
-					}
-				}
-			}
-		}
-		// Also parse /etc/resolv.conf for DNS servers on Linux
-		if data, err := os.ReadFile("/etc/resolv.conf"); err == nil {
-			for _, line := range strings.Split(string(data), "\n") {
-				if strings.HasPrefix(strings.TrimSpace(line), "nameserver") {
-					fields := strings.Fields(line)
-					if len(fields) >= 2 {
-						if net.ParseIP(fields[1]) != nil && strings.Contains(fields[1], ".") {
-							excludedIPs[fields[1]] = true
-						}
-					}
-				}
-			}
-		}
-	}
-
-	if debugMode {
-		fmt.Printf("[INFRA] Excluded infrastructure IPs: %v\n", excludedIPs)
-	}
 }
 
 func getSSID() string {
@@ -320,134 +287,51 @@ func lookupOUI(mac string) string {
 	return ""
 }
 
-// getARPTable reads the system ARP cache.
-// Linux: reads /proc/net/arp directly (no exec, faster, no parse failures).
-// Windows/macOS: runs "arp -a" and parses output.
-// Key insight (confirmed via stackoverflow/13778035 and groups.google.com/golang-nuts):
-// ARP cache is only populated AFTER a connection attempt, so we call this
-// AFTER port probing, not before.
-func getARPTable() map[string]string {
-	m := map[string]string{}
-
-	if runtime.GOOS == "linux" {
-		// /proc/net/arp is more reliable than exec on Linux - no parse ambiguity
-		data, err := os.ReadFile("/proc/net/arp")
-		if err == nil {
-			for i, line := range strings.Split(string(data), "\n") {
-				if i == 0 {
-					continue // skip header
-				}
-				fields := strings.Fields(line)
-				if len(fields) >= 4 {
-					ip := fields[0]
-					mac := strings.ToLower(fields[3])
-					if mac != "00:00:00:00:00:00" && mac != "ff:ff:ff:ff:ff:ff" {
-						m[ip] = mac
-					}
-				}
-			}
-			return m
-		}
-	}
-
-	var cmd *exec.Cmd
-	if runtime.GOOS == "windows" {
-		cmd = exec.Command("arp", "-a")
-	} else {
-		cmd = exec.Command("sh", "-c", "arp -n 2>/dev/null || arp -a 2>/dev/null")
-	}
-	out, err := cmd.Output()
-	if err != nil {
-		return m
-	}
-	for _, line := range strings.Split(string(out), "\n") {
-		var ip, mac string
-		for _, f := range strings.Fields(line) {
-			if net.ParseIP(f) != nil && strings.Contains(f, ".") {
-				ip = f
-			}
-			if (strings.Count(f, ":") == 5 || strings.Count(f, "-") == 5) && len(f) >= 17 {
-				mac = strings.ToLower(strings.ReplaceAll(f, "-", ":"))
-			}
-		}
-		if ip != "" && mac != "" && mac != "ff:ff:ff:ff:ff:ff" {
-			m[ip] = mac
-		}
-	}
-	return m
-}
-
-// getMACForIP forces ARP resolution for a specific IP by pinging it first,
-// then reading the ARP cache for that specific address.
-// This fixes the "blank OUI" problem where the cache was read before the OS
-// resolved the MAC (confirmed: stackoverflow.com/25404485, golang-nuts/Q2ga6XOqzRc).
+// getMACForIP pings the IP to warm the ARP cache, then reads the ARP table.
+// Must be called AFTER a successful port probe so the OS already has the entry.
 func getMACForIP(ip string) string {
-	// Brief ping to populate ARP cache (1 packet, 500ms timeout)
+	// Fire a quick ping to ensure ARP cache entry exists
 	switch runtime.GOOS {
 	case "windows":
-		exec.Command("ping", "-n", "1", "-w", "500", ip).Run()
-		// Query ARP for this specific IP
-		out, err := exec.Command("arp", "-a", ip).Output()
-		if err == nil {
-			for _, line := range strings.Split(string(out), "\n") {
-				for _, f := range strings.Fields(line) {
-					if (strings.Count(f, ":") == 5 || strings.Count(f, "-") == 5) && len(f) >= 17 {
-						mac := strings.ToLower(strings.ReplaceAll(f, "-", ":"))
-						if mac != "ff:ff:ff:ff:ff:ff" {
-							return mac
-						}
-					}
-				}
-			}
-		}
-	case "linux":
+		exec.Command("ping", "-n", "1", "-w", "300", ip).Run()
+	default:
 		exec.Command("ping", "-c", "1", "-W", "1", ip).Run()
-		if data, err := os.ReadFile("/proc/net/arp"); err == nil {
-			for _, line := range strings.Split(string(data), "\n") {
-				fields := strings.Fields(line)
-				if len(fields) >= 4 && fields[0] == ip {
-					mac := strings.ToLower(fields[3])
-					if mac != "00:00:00:00:00:00" && mac != "ff:ff:ff:ff:ff:ff" {
-						return mac
-					}
-				}
-			}
-		}
-	default: // macOS
-		exec.Command("ping", "-c", "1", "-W", "500", ip).Run()
-		out, err := exec.Command("arp", "-n", ip).Output()
-		if err == nil {
-			for _, f := range strings.Fields(string(out)) {
-				if strings.Count(f, ":") == 5 && len(f) >= 17 {
-					return strings.ToLower(f)
-				}
+	}
+
+	// Read ARP table for this specific IP
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		cmd = exec.Command("arp", "-a", ip)
+	} else {
+		cmd = exec.Command("sh", "-c", fmt.Sprintf("arp -n %s 2>/dev/null || arp %s 2>/dev/null", ip, ip))
+	}
+
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+
+	for _, line := range strings.Split(string(out), "\n") {
+		for _, field := range strings.Fields(line) {
+			norm := strings.ToLower(strings.ReplaceAll(field, "-", ":"))
+			if strings.Count(norm, ":") == 5 && len(norm) >= 17 && norm != "ff:ff:ff:ff:ff:ff" {
+				return norm
 			}
 		}
 	}
 	return ""
 }
 
-// classifyDevice infers whether a device is a camera, phone, or generic IoT
-// based on the open ports found and OUI brand name.
+// classifyDevice returns device_type based on open ports and brand
 func classifyDevice(openPorts []int, brand string) string {
-	rtspFound := false
-	mobileFound := false
 	for _, p := range openPorts {
-		if p == 554 || p == 8554 {
-			rtspFound = true
-		}
 		if p == 62078 || p == 5555 {
-			mobileFound = true
+			return "phone"
 		}
 	}
-	if rtspFound {
-		return "ip_camera"
-	}
-	if mobileFound {
-		return "phone"
-	}
-	bl := strings.ToLower(brand)
-	if strings.Contains(bl, "apple") || strings.Contains(bl, "samsung") || strings.Contains(bl, "google") {
+	lower := strings.ToLower(brand)
+	if strings.Contains(lower, "apple") || strings.Contains(lower, "samsung") ||
+		strings.Contains(lower, "google") {
 		return "phone"
 	}
 	return "ip_camera"
@@ -462,8 +346,6 @@ func probePort(ip string, port int) bool {
 	return true
 }
 
-// probeDevice checks all CameraPorts on the target IP concurrently.
-// Returns nil if no ports are open (device is not interesting).
 func probeDevice(ip string) *DiscoveredDevice {
 	type res struct {
 		port int
@@ -479,6 +361,7 @@ func probeDevice(ip string) *DiscoveredDevice {
 		}(i, p)
 	}
 	wg.Wait()
+
 	open := []int{}
 	for _, r := range results {
 		if r.open {
@@ -491,7 +374,7 @@ func probeDevice(ip string) *DiscoveredDevice {
 	return &DiscoveredDevice{IP: ip, Port: open[0], Ports: open}
 }
 
-func sweepSubnet() []DiscoveredDevice {
+func sweepSubnet(excluded map[string]bool) []DiscoveredDevice {
 	base := getSubnetBase()
 	if base == "" {
 		return nil
@@ -524,36 +407,28 @@ func sweepSubnet() []DiscoveredDevice {
 			if r.d == nil {
 				continue
 			}
-
-			// === GATEWAY / INFRASTRUCTURE FILTER ===
-			// Skip routers, DHCP servers, DNS servers — they respond to ports
-			// but are definitively NOT cameras. Built from ipconfig/ip route output.
-			if excludedIPs[r.d.IP] {
+			// Skip infrastructure IPs (gateway, DNS, DHCP)
+			if excluded[r.d.IP] {
 				if debugMode {
-					fmt.Printf("[SKIP] %s is infrastructure (gateway/DHCP/DNS) — excluded\n", r.d.IP)
+					fmt.Printf("[DEBUG] Skipping infrastructure IP: %s\n", r.d.IP)
 				}
 				continue
 			}
 
-			// === POST-PROBE MAC LOOKUP ===
-			// We call getMACForIP AFTER confirming open ports so the OS has already
-			// had TCP connections to this IP, making ARP resolution reliable.
-			// (Pre-probe ARP lookup was the root cause of empty brand labels.)
+			// POST-PROBE: get MAC now that ARP cache is warm from the TCP connection
 			mac := getMACForIP(r.d.IP)
-			if mac == "" {
-				// Fallback: check pre-existing ARP table
-				mac = getARPTable()[r.d.IP]
-			}
 			r.d.MAC = mac
 			r.d.SSID = ssid
 			r.d.Online = true
 
+			// OUI lookup with populated MAC
 			brand := lookupOUI(mac)
 			if brand == "" {
-				brand = "IP Camera"
+				brand = "Unknown"
 			}
 			r.d.Brand = brand
 			r.d.DeviceType = classifyDevice(r.d.Ports, brand)
+
 			devices = append(devices, *r.d)
 		}
 	}
@@ -581,27 +456,34 @@ func postJSON(payload interface{}) string {
 func sendHeartbeat(camerasFound int) {
 	h, _ := os.Hostname()
 	postJSON(HeartbeatPayload{Type: "heartbeat", Data: HeartbeatData{
-		Agent: "discovery", Host: h, SSID: getSSID(),
-		LocalIP: getLocalIP(), LocalSubnet: getLocalSubnet(),
-		CamerasFound: camerasFound, Version: Version, Status: "running",
+		Agent:        "discovery",
+		Host:         h,
+		SSID:         getSSID(),
+		LocalIP:      getLocalIP(),
+		LocalSubnet:  getLocalSubnet(),
+		CamerasFound: camerasFound,
+		Version:      Version,
+		Status:       "running",
 	}})
 	if debugMode {
 		fmt.Printf("[%s] [HB] sent\n", time.Now().Format("15:04:05"))
 	}
 }
 
-func scan() int {
+func scan(excluded map[string]bool) int {
 	ip := getLocalIP()
 	ssid := getSSID()
 	subnet := getLocalSubnet()
 	fmt.Printf("[%s] Scanning %s  SSID=%s  IP=%s\n", time.Now().Format("15:04:05"), subnet, ssid, ip)
-	devices := sweepSubnet()
+	devices := sweepSubnet(excluded)
 	fmt.Printf("[%s] Found %d devices\n", time.Now().Format("15:04:05"), len(devices))
-	if debugMode && len(devices) > 0 {
+
+	if debugMode {
 		for _, d := range devices {
 			fmt.Printf("  -> %s  MAC=%s  Brand=%s  Type=%s  Ports=%v\n", d.IP, d.MAC, d.Brand, d.DeviceType, d.Ports)
 		}
 	}
+
 	if len(devices) > 0 {
 		body, _ := json.Marshal(DiscoveryPayload{Type: "discovery", Data: devices})
 		client := &http.Client{Timeout: 15 * time.Second}
@@ -613,26 +495,23 @@ func scan() int {
 }
 
 func main() {
-	flag.BoolVar(&debugMode, "debug", false, "Verbose output")
+	flag.BoolVar(&debugMode, "debug", false, "Verbose output including per-device brand/MAC")
 	flag.BoolVar(&onceMode, "once", false, "Single scan then exit")
 	flag.Parse()
 
 	h, _ := os.Hostname()
-
-	// Build infrastructure exclusion list FIRST using ipconfig/ip route
-	buildExcludedIPs()
-
 	fmt.Printf("RealSecCam Observer v%s  host=%s  ip=%s  ssid=%s\n", Version, h, getLocalIP(), getSSID())
+
+	// Build excluded list once at startup
+	excluded := buildExcludedIPs()
 	fmt.Printf("Infrastructure IPs excluded from results: %v\n", func() []string {
-		keys := []string{}
-		for k := range excludedIPs {
-			keys = append(keys, k)
-		}
-		return keys
+		ips := []string{}
+		for k := range excluded { ips = append(ips, k) }
+		return ips
 	}())
 
 	sendHeartbeat(0)
-	lastFound = scan()
+	lastFound = scan(excluded)
 	sendHeartbeat(lastFound)
 
 	if onceMode {
@@ -644,10 +523,11 @@ func main() {
 	scanTick := time.NewTicker(ScanIntervalSec * time.Second)
 	hbTick := time.NewTicker(HeartbeatIntervalSec * time.Second)
 	fmt.Printf("Watching... Ctrl+C to stop\n")
+
 	for {
 		select {
 		case <-scanTick.C:
-			lastFound = scan()
+			lastFound = scan(excluded)
 		case <-hbTick.C:
 			sendHeartbeat(lastFound)
 		case <-sig:
