@@ -75,16 +75,16 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: observer-latest
-          name: "RealSecCam Observer v1.4 — Latest"
+          name: "RealSecCam Observer v1.5 — Latest"
           body: |
-            ## RealSecCam Observer v1.4
+            ## RealSecCam Observer v1.5
             Download and double-click. No installation required.
             | Platform | File |
             |----------|------|
             | **Windows** | RealSecCam-Observer-Windows.exe |
             | **macOS** | RealSecCam-Observer-macOS |
             | **Linux** | RealSecCam-Observer-Linux |
-            **Features:** Auto-start on boot, all-interface scan, watchdog, diagnostic log
+            **Features:** Silent background (no CMD window), install notification, expanded OUI brand detection, auto-start, watchdog
           files: dist/*
           make_latest: true
         env:
