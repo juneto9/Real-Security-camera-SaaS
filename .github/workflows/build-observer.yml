@@ -84,11 +84,6 @@ jobs:
             | **Windows** | RealSecCam-Observer-v1.9-Windows.exe |
             | **macOS** | RealSecCam-Observer-v1.9-macOS |
             | **Linux** | RealSecCam-Observer-v1.9-Linux |
-
-            ### v1.9 Changes
-            - **Versioned filenames** — file name now includes version (v1.9)
-            - **Single-file build** — no build tags, pure runtime.GOOS switches, compiles cleanly everywhere
-            - **Clean notifications** — VBScript popup on Windows, silent on macOS/Linux
           files: dist/*
           make_latest: true
         env:
