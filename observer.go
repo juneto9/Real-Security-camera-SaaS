@@ -1,11 +1,11 @@
-// RealSecCam Observer v1.7
+// RealSecCam Observer v1.8
 // Zero-touch background discovery agent. Pure Go stdlib. No CGO. No external deps.
 //
-// v1.7 fixes vs v1.6:
-//   - ALL exec.Command calls on Windows use SysProcAttr{HideWindow:true} — NO CMD flashes ever
+// v1.8 fixes vs v1.7:
+//   - Removed syscall import — was causing macOS/Linux compile failure (HideWindow is Windows-only)
+//   - CMD window suppression handled entirely by -H windowsgui linker flag (already in workflow)
 //   - SSID, local IP, subnet cached at startup — no repeated netsh/arp calls every heartbeat
 //   - ARP table cached per scan cycle, not re-run mid-cycle
-//   - registerAutostart uses hidden window for reg.exe call
 //
 // Build (all platforms, no CGO):
 //   Windows: GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w -H windowsgui" -o RealSecCam-Observer-Windows.exe observer.go
@@ -30,12 +30,11 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
 )
 
 const (
-	Version              = "1.7.0"
+	Version              = "1.8.0"
 	ReportURL            = "https://accelerated-sync-dev-flow.base44.app/functions/agentReport"
 	ScanIntervalSec      = 30
 	HeartbeatIntervalSec = 15
@@ -195,14 +194,12 @@ func logf(format string, args ...interface{}) {
 	fmt.Printf("["+time.Now().Format("15:04:05")+"] "+format+"\n", args...)
 }
 
-// hiddenCommand creates an exec.Cmd that NEVER shows a CMD window on Windows.
-// On other platforms it behaves identically to exec.Command.
+// hiddenCommand creates an exec.Cmd. On Windows the binary is built with
+// -H windowsgui which suppresses ALL console windows for the process,
+// so no additional SysProcAttr is needed. On other platforms this is
+// identical to exec.Command.
 func hiddenCommand(name string, args ...string) *exec.Cmd {
-	cmd := exec.Command(name, args...)
-	if runtime.GOOS == "windows" {
-		cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
-	}
-	return cmd
+	return exec.Command(name, args...)
 }
 
 // initCache populates SSID/IP/subnet once at startup so we never shell out repeatedly.
