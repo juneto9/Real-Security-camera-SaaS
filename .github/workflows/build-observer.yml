@@ -75,9 +75,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: observer-latest
-          name: "RealSecCam Observer v1.7 — Latest"
+          name: "RealSecCam Observer v1.8 — Latest"
           body: |
-            ## RealSecCam Observer v1.7
+            ## RealSecCam Observer v1.8
             Download and double-click. No installation required.
             | Platform | File |
             |----------|------|
@@ -85,11 +85,11 @@ jobs:
             | **macOS** | RealSecCam-Observer-macOS |
             | **Linux** | RealSecCam-Observer-Linux |
 
-            ### v1.7 Changes
-            - **Zero CMD window flashes** — ALL exec.Command calls use SysProcAttr{HideWindow:true}
-            - **SSID/IP/subnet cached at startup** — netsh and arp never called on a timer
-            - **ARP table only called once per scan cycle**, not per heartbeat
-            - **reg.exe autostart** also runs hidden
+            ### v1.8 Changes
+            - **Fixed cross-platform build** — removed syscall import that broke macOS/Linux compile
+            - **CMD window suppression** via -H windowsgui linker flag (no syscall needed)
+            - **SSID/IP/subnet cached at startup** — no repeated netsh/arp calls
+            - **ARP table only called once per scan cycle**
           files: dist/*
           make_latest: true
         env:
