@@ -75,16 +75,23 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: observer-latest
-          name: "RealSecCam Observer v1.5 — Latest"
+          name: "RealSecCam Observer v1.6 — Latest"
           body: |
-            ## RealSecCam Observer v1.5
+            ## RealSecCam Observer v1.6
             Download and double-click. No installation required.
             | Platform | File |
             |----------|------|
             | **Windows** | RealSecCam-Observer-Windows.exe |
             | **macOS** | RealSecCam-Observer-macOS |
             | **Linux** | RealSecCam-Observer-Linux |
-            **Features:** Silent background (no CMD window), install notification, expanded OUI brand detection, auto-start, watchdog
+
+            ### v1.6 Changes
+            - **No CMD/console window** on Windows (fixed for real — windowsgui ldflags enforced)
+            - **Install notification popup** via wscript VBS (100% reliable, no message loop needed)
+            - **Kill switch**: `curl http://localhost:19876/shutdown` stops the observer cleanly
+            - **Status endpoint**: `curl http://localhost:19876/status` shows version/scan count
+            - **PID file** written next to binary (`observer.pid`) for process management
+            - **Expanded OUI table** with more camera, phone, and router vendors
           files: dist/*
           make_latest: true
         env:
