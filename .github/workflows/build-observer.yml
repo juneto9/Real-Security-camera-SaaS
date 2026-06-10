@@ -4,8 +4,6 @@ on:
   push:
     paths:
       - 'observer.go'
-      - 'observer_windows.go'
-      - 'observer_unix.go'
     branches:
       - main
   workflow_dispatch:
@@ -49,7 +47,7 @@ jobs:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: "0"
-        run: go build -ldflags="${{ matrix.ldflags }}" -o ${{ matrix.output }} .
+        run: go build -ldflags="${{ matrix.ldflags }}" -o ${{ matrix.output }} observer.go
 
       - uses: actions/upload-artifact@v4
         with:
@@ -76,8 +74,8 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: observer-v1.9.0-${{ github.run_number }}
-          name: "RealSecCam Observer v1.9.0 (build ${{ github.run_number }})"
+          tag_name: observer-latest
+          name: "RealSecCam Observer v1.9.0"
           body: |
             ## RealSecCam Observer v1.9
             Download and double-click. No installation required.
@@ -89,8 +87,8 @@ jobs:
 
             ### v1.9 Changes
             - **Versioned filenames** — file name now includes version (v1.9)
-            - **Zero CMD flashes** — all child processes use CREATE_NO_WINDOW + HideWindow via Windows build tag
-            - **Notification foreground** — switched to PowerShell MessageBox (comes to front)
+            - **Single-file build** — no build tags, pure runtime.GOOS switches, compiles cleanly everywhere
+            - **Clean notifications** — VBScript popup on Windows, silent on macOS/Linux
           files: dist/*
           make_latest: true
         env:
