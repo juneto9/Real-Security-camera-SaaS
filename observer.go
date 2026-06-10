@@ -1,12 +1,6 @@
 // RealSecCam Observer v1.9
 // Zero-touch background discovery agent. Pure Go stdlib. No CGO. No external deps.
 //
-// v1.9 changes vs v1.8:
-//   - Versioned output filenames: RealSecCam-Observer-v1.9-Windows.exe etc.
-//   - All OS-specific logic uses runtime.GOOS switches (single file, no build tags)
-//   - No syscall dependency — compiles cleanly on all platforms via cross-compilation
-//   - Version bump to 1.9.0
-//
 // Build:
 //   Windows: GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w -H windowsgui" -o RealSecCam-Observer-v1.9-Windows.exe observer.go
 //   macOS:   GOOS=darwin  GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w"               -o RealSecCam-Observer-v1.9-macOS    observer.go
@@ -50,75 +44,26 @@ const (
 var CameraPorts = []int{554, 8554, 8080, 8000, 80, 443, 37777, 34567, 9000}
 
 var OUITable = map[string]string{
-	// ── Hikvision ──
 	"00:23:63": "Hikvision", "bc:ad:28": "Hikvision", "4c:bd:8f": "Hikvision",
 	"8c:e7:48": "Hikvision", "a0:8c:f8": "Hikvision", "c0:56:e3": "Hikvision",
 	"54:c4:15": "Hikvision", "b4:a3:82": "Hikvision", "44:19:b6": "Hikvision",
-	"d0:27:88": "Hikvision", "78:a2:a0": "Hikvision", "30:8b:b2": "Hikvision",
-	"c4:2f:90": "Hikvision", "e8:3a:12": "Hikvision",
-	// ── Dahua ──
 	"28:57:be": "Dahua", "3c:ef:8c": "Dahua", "e0:50:8b": "Dahua",
 	"90:02:a9": "Dahua", "bc:32:b2": "Dahua", "a4:14:37": "Dahua",
-	"4c:11:bf": "Dahua", "40:b0:76": "Dahua", "70:85:c4": "Dahua",
-	"9c:8e:99": "Dahua",
-	// ── Reolink ──
 	"c8:d5:fe": "Reolink", "ec:71:db": "Reolink", "d4:93:90": "Reolink",
 	"e4:24:6c": "Reolink", "00:6a:e2": "Reolink", "dc:44:27": "Reolink",
-	"c4:1c:ff": "Reolink", "48:70:2c": "Reolink",
-	// ── Wyze ──
 	"b0:c5:ca": "Wyze", "2c:aa:8e": "Wyze", "4c:ed:fb": "Wyze", "d0:3f:27": "Wyze",
-	"7c:78:b2": "Wyze",
-	// ── Amcrest ──
-	"f4:f2:6d": "Amcrest", "e8:ad:a6": "Amcrest", "b4:a2:eb": "Amcrest",
-	"9c:8e:80": "Amcrest",
-	// ── Axis ──
-	"b4:e6:2d": "Axis", "00:0f:7c": "Axis", "ac:cc:8e": "Axis", "00:40:8c": "Axis",
-	// ── Other IP Camera Brands ──
-	"00:62:6e": "Foscam",    "9c:8e:cd": "TP-Link Tapo",
-	"1c:61:b4": "Arlo",      "70:56:81": "Ring",
-	"b8:a4:4f": "Hanwha",    "d4:6a:6a": "Hanwha",
-	"b0:be:76": "Eufy",      "5c:aa:fd": "Eufy",      "c0:49:ef": "Eufy",
-	"00:80:f0": "Panasonic", "00:1b:c5": "Bosch",      "00:30:48": "Pelco",
-	"d8:d7:75": "Uniview",   "e8:26:89": "Uniview",
-	"2c:63:45": "Tiandy",
-	"00:09:18": "Vivotek",   "00:1a:07": "Vivotek",
-	"00:03:c5": "Mobotix",
-	"00:1e:c0": "Avigilon",
-	// ── Apple ──
-	"ac:37:43": "Apple", "00:17:f2": "Apple", "f8:ff:c2": "Apple",
-	"70:ef:00": "Apple", "a8:66:7f": "Apple", "78:fd:94": "Apple",
-	"28:cf:e9": "Apple", "8c:85:90": "Apple", "dc:2b:61": "Apple",
-	"f0:db:f8": "Apple", "3c:d0:f8": "Apple", "b8:e8:56": "Apple",
-	"a4:c3:f0": "Apple", "d8:bb:c1": "Apple", "98:01:a7": "Apple",
-	"60:f8:1d": "Apple", "04:4b:ed": "Apple", "58:40:4e": "Apple",
-	"f4:d4:88": "Apple", "ac:de:48": "Apple", "00:cd:fe": "Apple",
-	// ── Samsung ──
-	"6c:40:08": "Samsung", "94:35:0a": "Samsung", "b4:3a:28": "Samsung",
-	"f8:d0:ac": "Samsung", "78:f7:be": "Samsung", "8c:c8:cd": "Samsung",
-	"50:01:bb": "Samsung", "24:4b:03": "Samsung", "cc:07:ab": "Samsung",
-	"00:12:47": "Samsung",
-	// ── Google / Android ──
+	"f4:f2:6d": "Amcrest", "e8:ad:a6": "Amcrest",
+	"b4:e6:2d": "Axis", "00:0f:7c": "Axis", "ac:cc:8e": "Axis",
+	"00:62:6e": "Foscam", "9c:8e:cd": "TP-Link Tapo",
+	"1c:61:b4": "Arlo", "70:56:81": "Ring",
+	"b0:be:76": "Eufy", "5c:aa:fd": "Eufy", "c0:49:ef": "Eufy",
+	"ac:37:43": "Apple", "f8:ff:c2": "Apple", "a8:66:7f": "Apple",
+	"6c:40:08": "Samsung", "94:35:0a": "Samsung", "f8:d0:ac": "Samsung",
 	"8c:77:12": "Google", "48:d6:d5": "Google", "f4:f5:d8": "Google",
-	"54:60:09": "Google", "3c:28:6d": "Google", "20:df:b9": "Google",
-	// ── OnePlus / Xiaomi / Huawei / Oppo ──
-	"d8:3a:dd": "OnePlus",  "8c:be:be": "OnePlus",
-	"00:9e:c8": "Xiaomi",   "7c:49:eb": "Xiaomi",  "f8:a4:5f": "Xiaomi",
-	"28:6c:07": "Xiaomi",   "64:09:80": "Xiaomi",  "ac:f7:f3": "Xiaomi",
-	"04:f9:38": "Huawei",   "70:72:3c": "Huawei",  "34:6b:d3": "Huawei",
-	"a4:99:47": "Huawei",   "28:31:52": "Huawei",  "2c:ab:00": "Huawei",
-	"94:87:e0": "Oppo",
-	// ── Routers ──
-	"00:18:39": "Cisco",    "00:1e:f7": "Cisco",   "e8:b7:48": "Cisco",
-	"18:64:72": "TP-Link",  "54:a7:03": "TP-Link", "30:de:4b": "TP-Link",
-	"f0:9f:c2": "Ubiquiti", "b4:fb:e4": "Ubiquiti","78:8a:20": "Ubiquiti",
-	"80:2a:a8": "Netgear",  "a0:40:a0": "Netgear", "c4:04:15": "Netgear",
-	"20:e5:2a": "Belkin",   "94:10:3e": "Asus",    "50:46:5d": "Asus",
-	"04:d4:c4": "Asus",     "b0:6e:bf": "Linksys",
-	// ── Raspberry Pi ──
-	"b8:27:eb": "Raspberry Pi", "dc:a6:32": "Raspberry Pi", "e4:5f:01": "Raspberry Pi",
+	"b8:27:eb": "Raspberry Pi", "dc:a6:32": "Raspberry Pi",
+	"f0:9f:c2": "Ubiquiti", "b4:fb:e4": "Ubiquiti",
+	"18:64:72": "TP-Link", "54:a7:03": "TP-Link",
 }
-
-// ─── Types ────────────────────────────────────────────────────────────────────
 
 type NetworkInterface struct {
 	Name   string `json:"name"`
@@ -171,8 +116,6 @@ type DiagnosticLog struct {
 	ScanCount   int64              `json:"scan_count"`
 }
 
-// ─── Globals ──────────────────────────────────────────────────────────────────
-
 var (
 	lastFound    atomic.Int64
 	scanCount    atomic.Int64
@@ -182,7 +125,6 @@ var (
 	debugMode    bool
 	onceMode     bool
 	shutdownCh   = make(chan struct{})
-
 	cachedSSID   string
 	cachedIP     string
 	cachedSubnet string
@@ -209,13 +151,9 @@ func getLocalIP() string     { return cachedIP }
 func getLocalSubnet() string { return cachedSubnet }
 func getSSID() string        { return cachedSSID }
 
-// ─── PID file ─────────────────────────────────────────────────────────────────
-
 func exeDir() string {
 	p, err := os.Executable()
-	if err != nil {
-		return "."
-	}
+	if err != nil { return "." }
 	return filepath.Dir(p)
 }
 
@@ -223,11 +161,7 @@ func writePID() {
 	os.WriteFile(filepath.Join(exeDir(), PIDFile), []byte(strconv.Itoa(os.Getpid())), 0644)
 }
 
-func removePID() {
-	os.Remove(filepath.Join(exeDir(), PIDFile))
-}
-
-// ─── Kill-switch server ───────────────────────────────────────────────────────
+func removePID() { os.Remove(filepath.Join(exeDir(), PIDFile)) }
 
 func startKillServer() {
 	mux := http.NewServeMux()
@@ -255,15 +189,11 @@ func startKillServer() {
 	}()
 }
 
-// ─── SSID detection (runtime switch, no syscall) ──────────────────────────────
-
 func detectSSID() string {
 	switch runtime.GOOS {
 	case "windows":
 		out, err := exec.Command("netsh", "wlan", "show", "interfaces").Output()
-		if err != nil {
-			return "(wired)"
-		}
+		if err != nil { return "(wired)" }
 		for _, line := range strings.Split(string(out), "\n") {
 			t := strings.TrimSpace(line)
 			if strings.HasPrefix(t, "SSID") && !strings.HasPrefix(t, "BSSID") {
@@ -287,19 +217,13 @@ func detectSSID() string {
 	default:
 		out, err := exec.Command("iwgetid", "-r").Output()
 		if err == nil {
-			if s := strings.TrimSpace(string(out)); s != "" {
-				return s
-			}
+			if s := strings.TrimSpace(string(out)); s != "" { return s }
 		}
 		out, _ = exec.Command("sh", "-c", "nmcli -t -f active,ssid dev wifi 2>/dev/null | grep '^yes' | cut -d: -f2").Output()
-		if s := strings.TrimSpace(string(out)); s != "" {
-			return s
-		}
+		if s := strings.TrimSpace(string(out)); s != "" { return s }
 	}
 	return "(wired)"
 }
-
-// ─── ARP table (runtime switch) ───────────────────────────────────────────────
 
 func getARPTable() map[string]string {
 	m := map[string]string{}
@@ -310,99 +234,62 @@ func getARPTable() map[string]string {
 	} else {
 		out, err = exec.Command("sh", "-c", "arp -n 2>/dev/null || arp -a 2>/dev/null").Output()
 	}
-	if err != nil {
-		return m
-	}
+	if err != nil { return m }
 	for _, line := range strings.Split(string(out), "\n") {
 		var ip, mac string
 		for _, f := range strings.Fields(line) {
-			if net.ParseIP(f) != nil && strings.Contains(f, ".") {
-				ip = f
-			}
+			if net.ParseIP(f) != nil && strings.Contains(f, ".") { ip = f }
 			if (strings.Count(f, ":") == 5 || strings.Count(f, "-") == 5) && len(f) >= 17 {
 				mac = strings.ToLower(strings.ReplaceAll(f, "-", ":"))
 			}
 		}
-		if ip != "" && mac != "" && mac != "ff:ff:ff:ff:ff:ff" {
-			m[ip] = mac
-		}
+		if ip != "" && mac != "" && mac != "ff:ff:ff:ff:ff:ff" { m[ip] = mac }
 	}
 	return m
 }
 
-// ─── Install notification ─────────────────────────────────────────────────────
-
 func showInstallNotification() {
-	if runtime.GOOS != "windows" {
-		return
-	}
-	vbs := `MsgBox "RealSecCam Observer v1.9 is now running." & vbCrLf & vbCrLf & "Your cameras will appear in the dashboard automatically. You can close this message — the Observer will continue running quietly in the background.", 64, "RealSecCam"`
+	if runtime.GOOS != "windows" { return }
+	vbs := `MsgBox "RealSecCam Observer v1.9 is running." & vbCrLf & vbCrLf & "Cameras will appear in your dashboard automatically.", 64, "RealSecCam"`
 	tmpFile := filepath.Join(os.TempDir(), "realseccam-notify.vbs")
-	if err := os.WriteFile(tmpFile, []byte(vbs), 0644); err != nil {
-		return
-	}
+	if err := os.WriteFile(tmpFile, []byte(vbs), 0644); err != nil { return }
 	cmd := exec.Command("wscript.exe", "//nologo", tmpFile)
 	cmd.Start()
-	go func() {
-		time.Sleep(30 * time.Second)
-		os.Remove(tmpFile)
-	}()
+	go func() { time.Sleep(30 * time.Second); os.Remove(tmpFile) }()
 }
-
-// ─── Network helpers ──────────────────────────────────────────────────────────
 
 func getNetworkInterfacesRaw() []NetworkInterface {
 	result := []NetworkInterface{}
 	ifaces, err := net.Interfaces()
-	if err != nil {
-		return result
-	}
-	skipPat := []string{"lo", "loopback", "virtual", "vmware", "vbox", "docker",
-		"tunnel", "tap", "tun", "bluetooth", "isatap", "teredo", "pseudo"}
+	if err != nil { return result }
+	skipPat := []string{"lo", "loopback", "virtual", "vmware", "vbox", "docker", "tunnel", "tap", "tun", "bluetooth"}
 	for _, iface := range ifaces {
 		name := strings.ToLower(iface.Name)
 		skipped := false
 		for _, p := range skipPat {
-			if strings.Contains(name, p) {
-				skipped = true
-				break
-			}
+			if strings.Contains(name, p) { skipped = true; break }
 		}
-		if skipped || iface.Flags&net.FlagLoopback != 0 {
-			continue
-		}
+		if skipped || iface.Flags&net.FlagLoopback != 0 { continue }
 		addrs, err := iface.Addrs()
-		if err != nil {
-			continue
-		}
+		if err != nil { continue }
 		for _, addr := range addrs {
 			var ip net.IP
 			var mask net.IPMask
 			switch v := addr.(type) {
 			case *net.IPNet:
-				ip = v.IP
-				mask = v.Mask
+				ip = v.IP; mask = v.Mask
 			case *net.IPAddr:
 				ip = v.IP
 			}
-			if ip == nil || ip.IsLoopback() || ip.To4() == nil {
-				continue
-			}
-			if ip.To4()[0] == 169 && ip.To4()[1] == 254 {
-				continue
-			}
+			if ip == nil || ip.IsLoopback() || ip.To4() == nil { continue }
+			if ip.To4()[0] == 169 && ip.To4()[1] == 254 { continue }
 			subnet := ""
 			if mask != nil {
 				ones, _ := mask.Size()
 				parts := strings.Split(ip.String(), ".")
 				subnet = fmt.Sprintf("%s.%s.%s.0/%d", parts[0], parts[1], parts[2], ones)
 			}
-			result = append(result, NetworkInterface{
-				Name:   iface.Name,
-				IP:     ip.String(),
-				MAC:    iface.HardwareAddr.String(),
-				Subnet: subnet,
-			})
+			result = append(result, NetworkInterface{Name: iface.Name, IP: ip.String(), MAC: iface.HardwareAddr.String(), Subnet: subnet})
 		}
 	}
 	return result
@@ -411,35 +298,23 @@ func getNetworkInterfacesRaw() []NetworkInterface {
 func getNetworkInterfaces() []NetworkInterface { return getNetworkInterfacesRaw() }
 
 func lookupOUI(mac string) string {
-	if mac == "" {
-		return ""
-	}
+	if mac == "" { return "" }
 	n := strings.ToLower(strings.ReplaceAll(mac, "-", ":"))
 	if parts := strings.Split(n, ":"); len(parts) >= 3 {
-		if brand, ok := OUITable[strings.Join(parts[:3], ":")]; ok {
-			return brand
-		}
+		if brand, ok := OUITable[strings.Join(parts[:3], ":")]; ok { return brand }
 	}
 	return ""
 }
 
-// ─── Port scanning ────────────────────────────────────────────────────────────
-
 func probePort(ip string, port int) bool {
-	conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", ip, port),
-		time.Duration(PortScanTimeoutMs)*time.Millisecond)
-	if err != nil {
-		return false
-	}
+	conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", ip, port), time.Duration(PortScanTimeoutMs)*time.Millisecond)
+	if err != nil { return false }
 	conn.Close()
 	return true
 }
 
 func probeDevice(ip string) *DiscoveredDevice {
-	type res struct {
-		port int
-		open bool
-	}
+	type res struct { port int; open bool }
 	results := make([]res, len(CameraPorts))
 	var wg sync.WaitGroup
 	for i, p := range CameraPorts {
@@ -452,27 +327,19 @@ func probeDevice(ip string) *DiscoveredDevice {
 	wg.Wait()
 	open := []int{}
 	for _, r := range results {
-		if r.open {
-			open = append(open, r.port)
-		}
+		if r.open { open = append(open, r.port) }
 	}
-	if len(open) == 0 {
-		return nil
-	}
+	if len(open) == 0 { return nil }
 	return &DiscoveredDevice{IP: ip, Port: open[0], Ports: open}
 }
 
 func sweepSubnetBase(base string, arp map[string]string, ssid string) []DiscoveredDevice {
 	ips := make([]string, 254)
-	for i := range ips {
-		ips[i] = fmt.Sprintf("%s.%d", base, i+1)
-	}
+	for i := range ips { ips[i] = fmt.Sprintf("%s.%d", base, i+1) }
 	devices := []DiscoveredDevice{}
 	for i := 0; i < len(ips); i += MaxConcurrentProbes {
 		end := i + MaxConcurrentProbes
-		if end > len(ips) {
-			end = len(ips)
-		}
+		if end > len(ips) { end = len(ips) }
 		type br struct{ d *DiscoveredDevice }
 		batch := make([]br, end-i)
 		var wg sync.WaitGroup
@@ -485,9 +352,7 @@ func sweepSubnetBase(base string, arp map[string]string, ssid string) []Discover
 		}
 		wg.Wait()
 		for _, r := range batch {
-			if r.d == nil {
-				continue
-			}
+			if r.d == nil { continue }
 			mac := arp[r.d.IP]
 			r.d.MAC = mac
 			r.d.SSID = ssid
@@ -501,22 +366,16 @@ func sweepSubnetBase(base string, arp map[string]string, ssid string) []Discover
 
 func sweepAllInterfaces() []DiscoveredDevice {
 	ifaces := getNetworkInterfaces()
-	if len(ifaces) == 0 {
-		return nil
-	}
+	if len(ifaces) == 0 { return nil }
 	arp := getARPTable()
 	ssid := getSSID()
 	seen := map[string]bool{}
 	all := []DiscoveredDevice{}
 	for _, iface := range ifaces {
 		parts := strings.Split(iface.IP, ".")
-		if len(parts) < 3 {
-			continue
-		}
+		if len(parts) < 3 { continue }
 		base := strings.Join(parts[:3], ".")
-		if seen[base] {
-			continue
-		}
+		if seen[base] { continue }
 		seen[base] = true
 		logf("Sweeping %s.0/24 via %s", base, iface.Name)
 		all = append(all, sweepSubnetBase(base, arp, ssid)...)
@@ -524,20 +383,14 @@ func sweepAllInterfaces() []DiscoveredDevice {
 	return all
 }
 
-// ─── Reporting ────────────────────────────────────────────────────────────────
-
 func postJSON(payload interface{}) (string, error) {
 	body, _ := json.Marshal(payload)
 	client := &http.Client{Timeout: 15 * time.Second}
 	req, err := http.NewRequest("POST", ReportURL, bytes.NewReader(body))
-	if err != nil {
-		return "", err
-	}
+	if err != nil { return "", err }
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := client.Do(req)
-	if err != nil {
-		return "", err
-	}
+	if err != nil { return "", err }
 	defer resp.Body.Close()
 	buf := new(bytes.Buffer)
 	buf.ReadFrom(resp.Body)
@@ -547,35 +400,19 @@ func postJSON(payload interface{}) (string, error) {
 func sendHeartbeat(camerasFound int) {
 	h, _ := os.Hostname()
 	_, err := postJSON(HeartbeatPayload{Type: "heartbeat", Data: HeartbeatData{
-		Agent:        "discovery",
-		Host:         h,
-		SSID:         getSSID(),
-		LocalIP:      getLocalIP(),
-		LocalSubnet:  getLocalSubnet(),
-		CamerasFound: camerasFound,
-		Version:      Version,
-		Status:       "running",
+		Agent: "discovery", Host: h, SSID: getSSID(), LocalIP: getLocalIP(),
+		LocalSubnet: getLocalSubnet(), CamerasFound: camerasFound, Version: Version, Status: "running",
 	}})
-	if err != nil {
-		logf("[HB] error: %v", err)
-	} else {
-		logf("[HB] sent cameras=%d", camerasFound)
-	}
+	if err != nil { logf("[HB] error: %v", err) } else { logf("[HB] sent cameras=%d", camerasFound) }
 	diagMu.Lock()
 	diagLog.LastReport = fmt.Sprintf("heartbeat cameras=%d", camerasFound)
 	diagMu.Unlock()
 }
 
 func sendDiscovery(devices []DiscoveredDevice) {
-	if len(devices) == 0 {
-		return
-	}
+	if len(devices) == 0 { return }
 	r, err := postJSON(DiscoveryPayload{Type: "discovery", Data: devices})
-	if err != nil {
-		logf("[Discovery] error: %v", err)
-	} else {
-		logf("[Discovery] reported %d devices resp=%s", len(devices), r)
-	}
+	if err != nil { logf("[Discovery] error: %v", err) } else { logf("[Discovery] reported %d devices resp=%s", len(devices), r) }
 	diagMu.Lock()
 	diagLog.LastReport = fmt.Sprintf("discovery devices=%d", len(devices))
 	diagMu.Unlock()
@@ -599,25 +436,17 @@ func writeDiag(devices []DiscoveredDevice) {
 	os.WriteFile(filepath.Join(exeDir(), DiagLogFile), data, 0644)
 }
 
-// ─── Auto-start ───────────────────────────────────────────────────────────────
-
 func registerAutostart() {
 	exePath, err := os.Executable()
-	if err != nil {
-		return
-	}
+	if err != nil { return }
 	switch runtime.GOOS {
 	case "windows":
-		quotedPath := `"` + exePath + `"`
-		cmd := exec.Command("reg", "add",
-			`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`,
-			"/v", "RealSecCamObserver", "/t", "REG_SZ", "/d", quotedPath, "/f")
+		quotedPath := "\"" + exePath + "\""
+		cmd := exec.Command("reg", "add", `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, "/v", "RealSecCamObserver", "/t", "REG_SZ", "/d", quotedPath, "/f")
 		cmd.Run()
 	case "darwin":
 		plistPath := filepath.Join(os.Getenv("HOME"), "Library", "LaunchAgents", "com.realseccam.observer.plist")
-		if _, err := os.Stat(plistPath); err == nil {
-			return
-		}
+		if _, err := os.Stat(plistPath); err == nil { return }
 		plist := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
@@ -634,24 +463,18 @@ func registerAutostart() {
 		dir := filepath.Join(os.Getenv("HOME"), ".config", "autostart")
 		os.MkdirAll(dir, 0755)
 		desktopPath := filepath.Join(dir, "realseccam-observer.desktop")
-		if _, err := os.Stat(desktopPath); err == nil {
-			return
-		}
+		if _, err := os.Stat(desktopPath); err == nil { return }
 		content := fmt.Sprintf("[Desktop Entry]\nType=Application\nName=RealSecCam Observer\nExec=%s\nHidden=false\nNoDisplay=false\nX-GNOME-Autostart-enabled=true\n", exePath)
 		os.WriteFile(desktopPath, []byte(content), 0644)
 	}
 }
-
-// ─── Scanner + Watchdog ───────────────────────────────────────────────────────
 
 func performScan() {
 	logf("Scanning subnet=%s ssid=%s ip=%s", getLocalSubnet(), getSSID(), getLocalIP())
 	var devices []DiscoveredDevice
 	for attempt := 1; attempt <= MaxScanRetries; attempt++ {
 		devices = sweepAllInterfaces()
-		if len(devices) > 0 || attempt == MaxScanRetries {
-			break
-		}
+		if len(devices) > 0 || attempt == MaxScanRetries { break }
 		logf("Attempt %d found nothing, retrying in 5s...", attempt)
 		time.Sleep(5 * time.Second)
 	}
@@ -703,33 +526,21 @@ func runWatchdog() {
 	}
 }
 
-// ─── Main ─────────────────────────────────────────────────────────────────────
-
 func main() {
 	flag.BoolVar(&debugMode, "debug", false, "Enable verbose output")
 	flag.BoolVar(&onceMode, "once", false, "Run a single scan then exit")
 	flag.Parse()
-
 	initCache()
-
 	h, _ := os.Hostname()
 	logf("RealSecCam Observer v%s  host=%s  ip=%s  ssid=%s", Version, h, getLocalIP(), getSSID())
-
 	writePID()
 	defer removePID()
-
 	registerAutostart()
 	startKillServer()
 	showInstallNotification()
-
-	if onceMode {
-		performScan()
-		return
-	}
-
+	if onceMode { performScan(); return }
 	go runScanner()
 	go runWatchdog()
-
 	<-shutdownCh
 	logf("Observer shutting down.")
 }
