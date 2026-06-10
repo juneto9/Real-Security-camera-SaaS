@@ -14,7 +14,7 @@
 // - Graceful shutdown on Ctrl+C
 //
 // Build:
-//   Windows: GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o RealSecCam-Observer-Windows.exe observer.go
+//   Windows: GOOS=windows GOARCH=amd64 go build -ldflags="-s -w -H windowsgui" -o RealSecCam-Observer-Windows.exe observer.go
 //   macOS:   GOOS=darwin  GOARCH=amd64 go build -ldflags="-s -w" -o RealSecCam-Observer-macOS observer.go
 //   Linux:   GOOS=linux   GOARCH=amd64 go build -ldflags="-s -w" -o RealSecCam-Observer-Linux  observer.go
 
