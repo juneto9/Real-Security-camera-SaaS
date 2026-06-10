@@ -1,11 +1,11 @@
-// RealSecCam Observer v1.6
+// RealSecCam Observer v1.7
 // Zero-touch background discovery agent. Pure Go stdlib. No CGO. No external deps.
 //
-// v1.6 changes vs v1.5:
-//   - NO console/CMD window on Windows (windowsgui build flag + no blocking channel)
-//   - Install notification via .vbs MsgBox (works without a message loop, 100% reliable)
-//   - Graceful shutdown via PID file + local HTTP kill endpoint (localhost:19876/shutdown)
-//   - Expanded & corrected OUI table
+// v1.7 fixes vs v1.6:
+//   - ALL exec.Command calls on Windows use SysProcAttr{HideWindow:true} — NO CMD flashes ever
+//   - SSID, local IP, subnet cached at startup — no repeated netsh/arp calls every heartbeat
+//   - ARP table cached per scan cycle, not re-run mid-cycle
+//   - registerAutostart uses hidden window for reg.exe call
 //
 // Build (all platforms, no CGO):
 //   Windows: GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w -H windowsgui" -o RealSecCam-Observer-Windows.exe observer.go
@@ -30,11 +30,12 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 )
 
 const (
-	Version              = "1.6.0"
+	Version              = "1.7.0"
 	ReportURL            = "https://accelerated-sync-dev-flow.base44.app/functions/agentReport"
 	ScanIntervalSec      = 30
 	HeartbeatIntervalSec = 15
@@ -182,11 +183,44 @@ var (
 	debugMode    bool
 	onceMode     bool
 	shutdownCh   = make(chan struct{})
+
+	// Cached at startup — these don't change while the process is running
+	cachedSSID   string
+	cachedIP     string
+	cachedSubnet string
+	cacheMu      sync.Once
 )
 
 func logf(format string, args ...interface{}) {
 	fmt.Printf("["+time.Now().Format("15:04:05")+"] "+format+"\n", args...)
 }
+
+// hiddenCommand creates an exec.Cmd that NEVER shows a CMD window on Windows.
+// On other platforms it behaves identically to exec.Command.
+func hiddenCommand(name string, args ...string) *exec.Cmd {
+	cmd := exec.Command(name, args...)
+	if runtime.GOOS == "windows" {
+		cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	}
+	return cmd
+}
+
+// initCache populates SSID/IP/subnet once at startup so we never shell out repeatedly.
+func initCache() {
+	cacheMu.Do(func() {
+		ifaces := getNetworkInterfacesRaw()
+		if len(ifaces) > 0 {
+			cachedIP = ifaces[0].IP
+			cachedSubnet = ifaces[0].Subnet
+		}
+		cachedSSID = detectSSID()
+		logf("Cache: ip=%s subnet=%s ssid=%s", cachedIP, cachedSubnet, cachedSSID)
+	})
+}
+
+func getLocalIP() string     { return cachedIP }
+func getLocalSubnet() string { return cachedSubnet }
+func getSSID() string        { return cachedSSID }
 
 // ─── PID file ─────────────────────────────────────────────────────────────────
 
@@ -267,7 +301,8 @@ func showInstallNotification() {
 
 // ─── Network helpers ──────────────────────────────────────────────────────────
 
-func getNetworkInterfaces() []NetworkInterface {
+// getNetworkInterfacesRaw uses pure Go net package — no exec, no CMD window.
+func getNetworkInterfacesRaw() []NetworkInterface {
 	result := []NetworkInterface{}
 	ifaces, err := net.Interfaces()
 	if err != nil {
@@ -324,26 +359,16 @@ func getNetworkInterfaces() []NetworkInterface {
 	return result
 }
 
-func getLocalIP() string {
-	ifaces := getNetworkInterfaces()
-	if len(ifaces) > 0 {
-		return ifaces[0].IP
-	}
-	return ""
+// getNetworkInterfaces returns cached interfaces (called from diag/scan, not in hot loop).
+func getNetworkInterfaces() []NetworkInterface {
+	return getNetworkInterfacesRaw()
 }
 
-func getLocalSubnet() string {
-	ifaces := getNetworkInterfaces()
-	if len(ifaces) > 0 {
-		return ifaces[0].Subnet
-	}
-	return ""
-}
-
-func getSSID() string {
+// detectSSID shells out once at startup only. Uses hiddenCommand so no CMD flash.
+func detectSSID() string {
 	switch runtime.GOOS {
 	case "windows":
-		out, err := exec.Command("netsh", "wlan", "show", "interfaces").Output()
+		out, err := hiddenCommand("netsh", "wlan", "show", "interfaces").Output()
 		if err != nil {
 			return "(wired)"
 		}
@@ -356,7 +381,7 @@ func getSSID() string {
 			}
 		}
 	case "darwin":
-		out, err := exec.Command("/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport", "-I").Output()
+		out, err := hiddenCommand("/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport", "-I").Output()
 		if err == nil {
 			for _, line := range strings.Split(string(out), "\n") {
 				t := strings.TrimSpace(line)
@@ -368,13 +393,13 @@ func getSSID() string {
 			}
 		}
 	default:
-		out, err := exec.Command("iwgetid", "-r").Output()
+		out, err := hiddenCommand("iwgetid", "-r").Output()
 		if err == nil {
 			if s := strings.TrimSpace(string(out)); s != "" {
 				return s
 			}
 		}
-		out, _ = exec.Command("sh", "-c", "nmcli -t -f active,ssid dev wifi 2>/dev/null | grep '^yes' | cut -d: -f2").Output()
+		out, _ = hiddenCommand("sh", "-c", "nmcli -t -f active,ssid dev wifi 2>/dev/null | grep '^yes' | cut -d: -f2").Output()
 		if s := strings.TrimSpace(string(out)); s != "" {
 			return s
 		}
@@ -399,9 +424,9 @@ func getARPTable() map[string]string {
 	m := map[string]string{}
 	var cmd *exec.Cmd
 	if runtime.GOOS == "windows" {
-		cmd = exec.Command("arp", "-a")
+		cmd = hiddenCommand("arp", "-a")
 	} else {
-		cmd = exec.Command("sh", "-c", "arp -n 2>/dev/null || arp -a 2>/dev/null")
+		cmd = hiddenCommand("sh", "-c", "arp -n 2>/dev/null || arp -a 2>/dev/null")
 	}
 	out, err := cmd.Output()
 	if err != nil {
@@ -609,7 +634,7 @@ func registerAutostart() {
 	}
 	switch runtime.GOOS {
 	case "windows":
-		cmd := exec.Command("reg", "add",
+		cmd := hiddenCommand("reg", "add",
 			`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`,
 			"/v", "RealSecCamObserver", "/t", "REG_SZ", "/d", exePath, "/f")
 		if cmd.Run() == nil {
@@ -630,7 +655,7 @@ func registerAutostart() {
 </dict></plist>`, exePath)
 		os.MkdirAll(filepath.Dir(plistPath), 0755)
 		if os.WriteFile(plistPath, []byte(plist), 0644) == nil {
-			exec.Command("launchctl", "load", "-w", plistPath).Run()
+			hiddenCommand("launchctl", "load", "-w", plistPath).Run()
 			logf("[Autostart] Registered macOS LaunchAgent")
 		}
 	default:
@@ -721,6 +746,9 @@ func main() {
 	flag.BoolVar(&debugMode, "debug", false, "Enable verbose output")
 	flag.BoolVar(&onceMode, "once", false, "Run a single scan then exit")
 	flag.Parse()
+
+	// Cache SSID/IP/subnet once at startup — prevents repeated netsh/arp calls
+	initCache()
 
 	h, _ := os.Hostname()
 	logf("RealSecCam Observer v%s  host=%s  ip=%s  ssid=%s", Version, h, getLocalIP(), getSSID())
