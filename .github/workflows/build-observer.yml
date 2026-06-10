@@ -20,14 +20,19 @@ jobs:
             goos: windows
             goarch: amd64
             artifact: RealSecCam-Observer-Windows.exe
+            # -H=windowsgui suppresses the console window on Windows.
+            # Verified: standard Go Win32 subsystem flag, no CGO needed.
+            ldflags: "-s -w -H=windowsgui"
           - os: macos-latest
             goos: darwin
             goarch: amd64
             artifact: RealSecCam-Observer-macOS
+            ldflags: "-s -w"
           - os: ubuntu-latest
             goos: linux
             goarch: amd64
             artifact: RealSecCam-Observer-Linux
+            ldflags: "-s -w"
 
     runs-on: ${{ matrix.os }}
 
@@ -44,7 +49,7 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
         run: |
           go mod init realseccam/observer || true
-          go build -ldflags="-s -w" -o ${{ matrix.artifact }} observer.go
+          go build -ldflags="${{ matrix.ldflags }}" -o ${{ matrix.artifact }} observer.go
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -73,18 +78,26 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: observer-latest
-          name: "RealSecCam Observer - Latest"
+          name: "RealSecCam Observer v1.2 - Latest"
           body: |
-            ## RealSecCam Observer — Network Discovery Agent
+            ## RealSecCam Observer v1.2 — Network Discovery Agent
 
             Download the file for your platform and double-click to run.
             No installation wizard needed — single self-contained executable.
 
             | Platform | File | Notes |
             |----------|------|-------|
-            | **Windows** | RealSecCam-Observer-Windows.exe | Double-click to run |
+            | **Windows** | RealSecCam-Observer-Windows.exe | Runs silently in background — no console window |
             | **macOS** | RealSecCam-Observer-macOS | Run: `chmod +x` then double-click |
             | **Linux** | RealSecCam-Observer-Linux | Run: `chmod +x` then execute |
+
+            ### What's new in v1.2
+            - **Gateway filter**: Reads `ipconfig /all` (Windows) or `ip route` (Linux/macOS) at startup to identify your router, DHCP server, and DNS servers — these are never reported as cameras
+            - **Post-probe MAC lookup**: OUI/manufacturer lookup now happens AFTER port probing, ensuring the ARP cache is populated and brand labels appear correctly
+            - **Mobile device detection**: Added ports 62078 (iPhone), 5353 (mDNS/Bonjour), 5555 (Android ADB) to detect phones and IoT devices on your network
+            - **Expanded OUI table**: Added Apple (30+ MACs), Samsung, Google/Pixel, Raspberry Pi, Amazon Echo, and more vendors
+            - **Silent on Windows**: No more console window — runs cleanly in the background
+            - **Device classification**: Devices are now tagged as `ip_camera` or `phone` based on open ports and OUI brand
 
             Once running, your machine and discovered cameras appear in the dashboard within 15 seconds.
           files: dist/*
