@@ -250,7 +250,7 @@ func getARPTable() map[string]string {
 
 func showInstallNotification() {
 	if runtime.GOOS != "windows" { return }
-	vbs := "MsgBox \"RealSecCam Observer v1.9 is running.\" & vbCrLf & vbCrLf & \"Cameras will appear in your dashboard automatically.\", 64, \"RealSecCam\""
+	vbs := "MsgBox \"RealSecCam Observer v2.1 is running.\" & vbCrLf & vbCrLf & \"Cameras will appear in your dashboard automatically.\", 64, \"RealSecCam\""
 	tmpFile := filepath.Join(os.TempDir(), "realseccam-notify.vbs")
 	if err := os.WriteFile(tmpFile, []byte(vbs), 0644); err != nil { return }
 	cmd := exec.Command("wscript.exe", "//nologo", tmpFile)
