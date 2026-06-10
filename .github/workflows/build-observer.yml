@@ -20,17 +20,17 @@ jobs:
           - os: ubuntu-latest
             goos: linux
             goarch: amd64
-            output: RealSecCam-Observer-v1.9-Linux
+            output: RealSecCam-Observer-v2.0-Linux
             ldflags: "-s -w"
           - os: ubuntu-latest
             goos: windows
             goarch: amd64
-            output: RealSecCam-Observer-v1.9-Windows.exe
+            output: RealSecCam-Observer-v2.0-Windows.exe
             ldflags: "-s -w -H windowsgui"
           - os: macos-latest
             goos: darwin
             goarch: amd64
-            output: RealSecCam-Observer-v1.9-macOS
+            output: RealSecCam-Observer-v2.0-macOS
             ldflags: "-s -w"
 
     runs-on: ${{ matrix.os }}
@@ -75,15 +75,15 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: observer-latest
-          name: "RealSecCam Observer v1.9.0"
+          name: "RealSecCam Observer v2.0.0"
           body: |
-            ## RealSecCam Observer v1.9
-            Download and double-click. No installation required.
+            ## RealSecCam Observer v2.0
+            Download and double-click. No installation required. Runs silently in the background.
             | Platform | File |
             |----------|------|
-            | **Windows** | RealSecCam-Observer-v1.9-Windows.exe |
-            | **macOS** | RealSecCam-Observer-v1.9-macOS |
-            | **Linux** | RealSecCam-Observer-v1.9-Linux |
+            | **Windows** | RealSecCam-Observer-v2.0-Windows.exe |
+            | **macOS** | RealSecCam-Observer-v2.0-macOS |
+            | **Linux** | RealSecCam-Observer-v2.0-Linux |
           files: dist/*
           make_latest: true
         env:
