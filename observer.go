@@ -167,7 +167,7 @@ func startKillServer() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/shutdown", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"ok":true,"message":"Observer shutting down"}`))
+		w.Write([]byte("{\"ok\":true,\"message\":\"Observer shutting down\"}") )
 		go func() {
 			time.Sleep(200 * time.Millisecond)
 			close(shutdownCh)
@@ -176,7 +176,7 @@ func startKillServer() {
 	mux.HandleFunc("/status", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		h, _ := os.Hostname()
-		fmt.Fprintf(w, `{"ok":true,"version":"%s","host":"%s","scans":%d,"devices":%d}`,
+		fmt.Fprintf(w, "{\"ok\":true,\"version\":\"%s\",\"host\":\"%s\",\"scans\":%d,\"devices\":%d}",
 			Version, h, scanCount.Load(), lastFound.Load())
 	})
 	srv := &http.Server{Addr: fmt.Sprintf("127.0.0.1:%d", KillPort), Handler: mux}
@@ -250,7 +250,7 @@ func getARPTable() map[string]string {
 
 func showInstallNotification() {
 	if runtime.GOOS != "windows" { return }
-	vbs := `MsgBox "RealSecCam Observer v1.9 is running." & vbCrLf & vbCrLf & "Cameras will appear in your dashboard automatically.", 64, "RealSecCam"`
+	vbs := "MsgBox \"RealSecCam Observer v1.9 is running.\" & vbCrLf & vbCrLf & \"Cameras will appear in your dashboard automatically.\", 64, \"RealSecCam\""
 	tmpFile := filepath.Join(os.TempDir(), "realseccam-notify.vbs")
 	if err := os.WriteFile(tmpFile, []byte(vbs), 0644); err != nil { return }
 	cmd := exec.Command("wscript.exe", "//nologo", tmpFile)
@@ -442,19 +442,13 @@ func registerAutostart() {
 	switch runtime.GOOS {
 	case "windows":
 		quotedPath := "\"" + exePath + "\""
-		cmd := exec.Command("reg", "add", `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, "/v", "RealSecCamObserver", "/t", "REG_SZ", "/d", quotedPath, "/f")
+		cmd := exec.Command("reg", "add", "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", "/v", "RealSecCamObserver", "/t", "REG_SZ", "/d", quotedPath, "/f")
 		cmd.Run()
 	case "darwin":
 		plistPath := filepath.Join(os.Getenv("HOME"), "Library", "LaunchAgents", "com.realseccam.observer.plist")
 		if _, err := os.Stat(plistPath); err == nil { return }
-		plist := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict>
-  <key>Label</key><string>com.realseccam.observer</string>
-  <key>ProgramArguments</key><array><string>%s</string></array>
-  <key>RunAtLoad</key><true/>
-  <key>KeepAlive</key><true/>
-</dict></plist>`, exePath)
+		plistContent := "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\"><dict>\n  <key>Label</key><string>com.realseccam.observer</string>\n  <key>ProgramArguments</key><array><string>%s</string></array>\n  <key>RunAtLoad</key><true/>\n  <key>KeepAlive</key><true/>\n</dict></plist>"
+		plist := fmt.Sprintf(plistContent, exePath)
 		os.MkdirAll(filepath.Dir(plistPath), 0755)
 		if os.WriteFile(plistPath, []byte(plist), 0644) == nil {
 			exec.Command("launchctl", "load", "-w", plistPath).Run()
