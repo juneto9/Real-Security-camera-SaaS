@@ -1,4 +1,4 @@
-// RealSecCam Observer v1.1 — Native Discovery Agent
+// RealSecCam Observer v1.1 - Native Discovery Agent
 // Single self-contained binary. No dependencies.
 //
 // Build (handled automatically by GitHub Actions):
