@@ -75,9 +75,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: observer-latest
-          name: "RealSecCam Observer v1.6 — Latest"
+          name: "RealSecCam Observer v1.7 — Latest"
           body: |
-            ## RealSecCam Observer v1.6
+            ## RealSecCam Observer v1.7
             Download and double-click. No installation required.
             | Platform | File |
             |----------|------|
@@ -85,13 +85,11 @@ jobs:
             | **macOS** | RealSecCam-Observer-macOS |
             | **Linux** | RealSecCam-Observer-Linux |
 
-            ### v1.6 Changes
-            - **No CMD/console window** on Windows (fixed for real — windowsgui ldflags enforced)
-            - **Install notification popup** via wscript VBS (100% reliable, no message loop needed)
-            - **Kill switch**: `curl http://localhost:19876/shutdown` stops the observer cleanly
-            - **Status endpoint**: `curl http://localhost:19876/status` shows version/scan count
-            - **PID file** written next to binary (`observer.pid`) for process management
-            - **Expanded OUI table** with more camera, phone, and router vendors
+            ### v1.7 Changes
+            - **Zero CMD window flashes** — ALL exec.Command calls use SysProcAttr{HideWindow:true}
+            - **SSID/IP/subnet cached at startup** — netsh and arp never called on a timer
+            - **ARP table only called once per scan cycle**, not per heartbeat
+            - **reg.exe autostart** also runs hidden
           files: dist/*
           make_latest: true
         env:
