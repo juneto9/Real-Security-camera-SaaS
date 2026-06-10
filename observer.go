@@ -47,6 +47,14 @@ var OUITable = map[string]string{
 	"e4:24:6c": "Reolink",
 }
 
+// NetworkIface is defined at package level so all functions share the same type.
+type NetworkIface struct {
+	Name   string
+	IP     string
+	MAC    string
+	Subnet string
+}
+
 type DiscoveredDevice struct {
 	IP     string `json:"ip"`
 	MAC    string `json:"mac"`
@@ -81,9 +89,8 @@ var (
 	lastFound int
 )
 
-func getNetworkInterfaces() []struct{ Name, IP, MAC, Subnet string } {
-	type iface struct{ Name, IP, MAC, Subnet string }
-	result := []iface{}
+func getNetworkInterfaces() []NetworkIface {
+	result := []NetworkIface{}
 	ifaces, err := net.Interfaces()
 	if err != nil { return result }
 	skip := []string{"lo","loopback","virtual","vmware","vbox","docker","tunnel","tap","tun","bluetooth"}
@@ -107,20 +114,20 @@ func getNetworkInterfaces() []struct{ Name, IP, MAC, Subnet string } {
 				parts := strings.Split(ip.String(), ".")
 				subnet = fmt.Sprintf("%s.%s.%s.0/%d", parts[0], parts[1], parts[2], ones)
 			}
-			result = append(result, iface{Name: i.Name, IP: ip.String(), MAC: i.HardwareAddr.String(), Subnet: subnet})
+			result = append(result, NetworkIface{Name: i.Name, IP: ip.String(), MAC: i.HardwareAddr.String(), Subnet: subnet})
 		}
 	}
 	return result
 }
 
 func getLocalIP() string {
-	i := getNetworkInterfaces()
-	if len(i) > 0 { return i[0].IP }
+	ifaces := getNetworkInterfaces()
+	if len(ifaces) > 0 { return ifaces[0].IP }
 	return ""
 }
 func getLocalSubnet() string {
-	i := getNetworkInterfaces()
-	if len(i) > 0 { return i[0].Subnet }
+	ifaces := getNetworkInterfaces()
+	if len(ifaces) > 0 { return ifaces[0].Subnet }
 	return ""
 }
 func getSubnetBase() string {
@@ -137,7 +144,9 @@ func getSSID() string {
 	case "windows":
 		cmd = exec.Command("netsh", "wlan", "show", "interfaces")
 	case "darwin":
-		cmd = exec.Command("/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport", "-I")
+		out, err := exec.Command("sh", "-c", "networksetup -getairportnetwork en0 2>/dev/null | awk -F': ' '{print $2}'").Output()
+		if err == nil { if s := strings.TrimSpace(string(out)); s != "" && s != "You are not associated" { return s } }
+		cmd = exec.Command("sh", "-c", "ipconfig getsummary en0 2>/dev/null | grep SSID | tail -1 | awk '{print $NF}'")
 	default:
 		out, err := exec.Command("iwgetid", "-r").Output()
 		if err == nil { if s := strings.TrimSpace(string(out)); s != "" { return s } }
