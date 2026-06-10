@@ -1,9 +1,10 @@
-name: Build & Release Observer
+name: Build & Release Observer v1.4
 
 on:
   push:
     paths:
       - 'observer.go'
+      - 'observer_icon.png'
     branches:
       - main
   workflow_dispatch:
@@ -12,53 +13,94 @@ permissions:
   contents: write
 
 jobs:
-  build:
-    strategy:
-      matrix:
-        include:
-          - os: windows-latest
-            goos: windows
-            goarch: amd64
-            artifact: RealSecCam-Observer-Windows.exe
-            # -H=windowsgui suppresses the console window on Windows.
-            # Verified: standard Go Win32 subsystem flag, no CGO needed.
-            ldflags: "-s -w -H=windowsgui"
-          - os: macos-latest
-            goos: darwin
-            goarch: amd64
-            artifact: RealSecCam-Observer-macOS
-            ldflags: "-s -w"
-          - os: ubuntu-latest
-            goos: linux
-            goarch: amd64
-            artifact: RealSecCam-Observer-Linux
-            ldflags: "-s -w"
-
-    runs-on: ${{ matrix.os }}
-
+  build-windows:
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-go@v5
         with:
           go-version: '1.22'
 
-      - name: Build binary
-        env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
+      - name: Install dependencies
         run: |
           go mod init realseccam/observer || true
-          go build -ldflags="${{ matrix.ldflags }}" -o ${{ matrix.artifact }} observer.go
+          go get github.com/getlantern/systray@latest
+          go mod tidy
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - name: Build Windows binary
+        env:
+          GOOS: windows
+          GOARCH: amd64
+          CGO_ENABLED: "1"
+        run: |
+          go build -ldflags="-H windowsgui -s -w" -o RealSecCam-Observer-Windows.exe observer.go
+
+      - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
-          path: ${{ matrix.artifact }}
+          name: RealSecCam-Observer-Windows.exe
+          path: RealSecCam-Observer-Windows.exe
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Install dependencies
+        run: |
+          go mod init realseccam/observer || true
+          go get github.com/getlantern/systray@latest
+          go mod tidy
+
+      - name: Build macOS binary
+        env:
+          GOOS: darwin
+          GOARCH: amd64
+          CGO_ENABLED: "1"
+        run: |
+          go build -ldflags="-s -w" -o RealSecCam-Observer-macOS observer.go
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RealSecCam-Observer-macOS
+          path: RealSecCam-Observer-macOS
+
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Install Linux tray dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y libgtk-3-dev libayatana-appindicator3-dev gcc
+
+      - name: Install Go dependencies
+        run: |
+          go mod init realseccam/observer || true
+          go get github.com/getlantern/systray@latest
+          go mod tidy
+
+      - name: Build Linux binary
+        env:
+          GOOS: linux
+          GOARCH: amd64
+          CGO_ENABLED: "1"
+        run: |
+          go build -ldflags="-s -w" -o RealSecCam-Observer-Linux observer.go
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RealSecCam-Observer-Linux
+          path: RealSecCam-Observer-Linux
 
   release:
-    needs: build
+    needs: [build-windows, build-macos, build-linux]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -78,28 +120,31 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: observer-latest
-          name: "RealSecCam Observer v1.2 - Latest"
+          name: "RealSecCam Observer v1.4 — Latest"
           body: |
-            ## RealSecCam Observer v1.2 — Network Discovery Agent
+            ## RealSecCam Observer v1.4 — Network Discovery Agent
 
-            Download the file for your platform and double-click to run.
-            No installation wizard needed — single self-contained executable.
+            **Zero-touch. Download and double-click. That's it.**
 
-            | Platform | File | Notes |
-            |----------|------|-------|
-            | **Windows** | RealSecCam-Observer-Windows.exe | Runs silently in background — no console window |
-            | **macOS** | RealSecCam-Observer-macOS | Run: `chmod +x` then double-click |
-            | **Linux** | RealSecCam-Observer-Linux | Run: `chmod +x` then execute |
+            The Observer runs silently in your system tray and automatically:
+            - Discovers all cameras on your network every 30 seconds
+            - Reports them to your RealSecCam dashboard
+            - Registers itself to start on every boot (no manual setup)
+            - Restarts itself automatically if something goes wrong
 
-            ### What's new in v1.2
-            - **Gateway filter**: Reads `ipconfig /all` (Windows) or `ip route` (Linux/macOS) at startup to identify your router, DHCP server, and DNS servers — these are never reported as cameras
-            - **Post-probe MAC lookup**: OUI/manufacturer lookup now happens AFTER port probing, ensuring the ARP cache is populated and brand labels appear correctly
-            - **Mobile device detection**: Added ports 62078 (iPhone), 5353 (mDNS/Bonjour), 5555 (Android ADB) to detect phones and IoT devices on your network
-            - **Expanded OUI table**: Added Apple (30+ MACs), Samsung, Google/Pixel, Raspberry Pi, Amazon Echo, and more vendors
-            - **Silent on Windows**: No more console window — runs cleanly in the background
-            - **Device classification**: Devices are now tagged as `ip_camera` or `phone` based on open ports and OUI brand
+            ### How to use
+            | Platform | File | Instructions |
+            |----------|------|--------------|
+            | **Windows** | RealSecCam-Observer-Windows.exe | Double-click to run |
+            | **macOS** | RealSecCam-Observer-macOS | Right-click → Open (first time only) |
+            | **Linux** | RealSecCam-Observer-Linux | `chmod +x` then double-click |
 
-            Once running, your machine and discovered cameras appear in the dashboard within 15 seconds.
+            ### Tray Icon Controls
+            - **Left-click** → Show/Hide log window
+            - **Right-click** → Show Logs / Restart Scanner / Quit
+
+            ### Troubleshooting
+            Check `observer-diag.json` (created next to the binary) for diagnostic information.
           files: dist/*
           make_latest: true
         env:
