@@ -1,10 +1,10 @@
-// RealSecCam Observer v2.1
+// RealSecCam Observer v2.2
 // Zero-touch background discovery agent. Pure Go stdlib. No CGO. No external deps.
 //
 // Build:
-//   Windows: GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w -H windowsgui" -o RealSecCam-Observer-v2.0-Windows.exe observer.go
-//   macOS:   GOOS=darwin  GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w"               -o RealSecCam-Observer-v2.0-macOS    observer.go
-//   Linux:   GOOS=linux   GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w"               -o RealSecCam-Observer-v2.0-Linux     observer.go
+//   Windows: GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w -H windowsgui" -o RealSecCam-Observer-v2.2-Windows.exe observer.go
+//   macOS:   GOOS=darwin  GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w"               -o RealSecCam-Observer-v2.2-macOS    observer.go
+//   Linux:   GOOS=linux   GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w"               -o RealSecCam-Observer-v2.2-Linux     observer.go
 
 package main
 
@@ -24,11 +24,12 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 )
 
 const (
-	Version              = "2.1.0"
+	Version              = "2.2.0"
 	ReportURL            = "https://accelerated-sync-dev-flow.base44.app/functions/agentReport"
 	ScanIntervalSec      = 30
 	HeartbeatIntervalSec = 15
@@ -135,6 +136,15 @@ func logf(format string, args ...interface{}) {
 	fmt.Printf("["+time.Now().Format("15:04:05")+"] "+format+"\n", args...)
 }
 
+// hiddenCmd creates an exec.Cmd that will NOT flash a CMD window on Windows.
+func hiddenCmd(name string, args ...string) *exec.Cmd {
+	cmd := exec.Command(name, args...)
+	if runtime.GOOS == "windows" {
+		cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: 0x08000000} // CREATE_NO_WINDOW
+	}
+	return cmd
+}
+
 func initCache() {
 	cacheMu.Do(func() {
 		ifaces := getNetworkInterfacesRaw()
@@ -192,7 +202,7 @@ func startKillServer() {
 func detectSSID() string {
 	switch runtime.GOOS {
 	case "windows":
-		out, err := exec.Command("netsh", "wlan", "show", "interfaces").Output()
+		out, err := hiddenCmd("netsh", "wlan", "show", "interfaces").Output()
 		if err != nil { return "(wired)" }
 		for _, line := range strings.Split(string(out), "\n") {
 			t := strings.TrimSpace(line)
@@ -203,7 +213,7 @@ func detectSSID() string {
 			}
 		}
 	case "darwin":
-		out, err := exec.Command("/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport", "-I").Output()
+		out, err := hiddenCmd("/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport", "-I").Output()
 		if err == nil {
 			for _, line := range strings.Split(string(out), "\n") {
 				t := strings.TrimSpace(line)
@@ -215,11 +225,11 @@ func detectSSID() string {
 			}
 		}
 	default:
-		out, err := exec.Command("iwgetid", "-r").Output()
+		out, err := hiddenCmd("iwgetid", "-r").Output()
 		if err == nil {
 			if s := strings.TrimSpace(string(out)); s != "" { return s }
 		}
-		out, _ = exec.Command("sh", "-c", "nmcli -t -f active,ssid dev wifi 2>/dev/null | grep '^yes' | cut -d: -f2").Output()
+		out, _ = hiddenCmd("sh", "-c", "nmcli -t -f active,ssid dev wifi 2>/dev/null | grep '^yes' | cut -d: -f2").Output()
 		if s := strings.TrimSpace(string(out)); s != "" { return s }
 	}
 	return "(wired)"
@@ -230,9 +240,9 @@ func getARPTable() map[string]string {
 	var out []byte
 	var err error
 	if runtime.GOOS == "windows" {
-		out, err = exec.Command("arp", "-a").Output()
+		out, err = hiddenCmd("arp", "-a").Output()
 	} else {
-		out, err = exec.Command("sh", "-c", "arp -n 2>/dev/null || arp -a 2>/dev/null").Output()
+		out, err = hiddenCmd("sh", "-c", "arp -n 2>/dev/null || arp -a 2>/dev/null").Output()
 	}
 	if err != nil { return m }
 	for _, line := range strings.Split(string(out), "\n") {
@@ -250,10 +260,10 @@ func getARPTable() map[string]string {
 
 func showInstallNotification() {
 	if runtime.GOOS != "windows" { return }
-	vbs := "MsgBox \"RealSecCam Observer v2.1 is running.\" & vbCrLf & vbCrLf & \"Cameras will appear in your dashboard automatically.\", 64, \"RealSecCam\""
+	vbs := "MsgBox \"RealSecCam Observer v2.2 is running.\" & vbCrLf & vbCrLf & \"Cameras will appear in your dashboard automatically.\", 64, \"RealSecCam\""
 	tmpFile := filepath.Join(os.TempDir(), "realseccam-notify.vbs")
 	if err := os.WriteFile(tmpFile, []byte(vbs), 0644); err != nil { return }
-	cmd := exec.Command("wscript.exe", "//nologo", tmpFile)
+	cmd := hiddenCmd("wscript.exe", "//nologo", tmpFile)
 	cmd.Start()
 	go func() { time.Sleep(30 * time.Second); os.Remove(tmpFile) }()
 }
@@ -442,7 +452,7 @@ func registerAutostart() {
 	switch runtime.GOOS {
 	case "windows":
 		quotedPath := "\"" + exePath + "\""
-		cmd := exec.Command("reg", "add", "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", "/v", "RealSecCamObserver", "/t", "REG_SZ", "/d", quotedPath, "/f")
+		cmd := hiddenCmd("reg", "add", "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", "/v", "RealSecCamObserver", "/t", "REG_SZ", "/d", quotedPath, "/f")
 		cmd.Run()
 	case "darwin":
 		plistPath := filepath.Join(os.Getenv("HOME"), "Library", "LaunchAgents", "com.realseccam.observer.plist")
