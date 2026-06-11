@@ -447,7 +447,7 @@ func registerAutostart() {
 	if err != nil { return }
 	switch runtime.GOOS {
 	case "windows":
-		registerAutostartWindows(exePath)
+		platformRegisterAutostart(exePath)
 	case "darwin":
 		plistPath := filepath.Join(os.Getenv("HOME"), "Library", "LaunchAgents", "com.realseccam.observer.plist")
 		if _, err := os.Stat(plistPath); err == nil { return }
