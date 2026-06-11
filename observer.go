@@ -1,13 +1,12 @@
-// RealSecCam Observer v2.7.0
+// RealSecCam Observer v2.8.0
 // Zero-touch background discovery agent. Pure Go stdlib. No CGO. No external deps.
-// v2.7.0: ARP-first universal discovery — ALL hosts reported regardless of open ports.
-//         Hostname (DNS PTR + nbtstat) is primary identity. Broader port list.
-//         Privacy/unknown MACs typed as phone, not dropped.
+// v2.8.0: All streams routed via Cloud Relay (HLS). Removed local browser-open and WebRTC logic.
+//         Observer role: scan LAN, report devices + heartbeats to dashboard. Relay handles streaming.
 //
 // Build:
-//   Windows: GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w -H windowsgui" -o RealSecCam-Observer-v2.7.0-Windows.exe .
-//   macOS:   GOOS=darwin  GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w"               -o RealSecCam-Observer-v2.7.0-macOS .
-//   Linux:   GOOS=linux   GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w"               -o RealSecCam-Observer-v2.7.0-Linux .
+//   Windows: GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w -H windowsgui" -o RealSecCam-Observer-v2.8.0-Windows.exe .
+//   macOS:   GOOS=darwin  GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w"               -o RealSecCam-Observer-v2.8.0-macOS .
+//   Linux:   GOOS=linux   GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w"               -o RealSecCam-Observer-v2.8.0-Linux .
 
 package main
 
@@ -31,7 +30,7 @@ import (
 )
 
 const (
-	Version              = "2.7.0"
+	Version              = "2.8.0"
 	ReportURL            = "https://accelerated-sync-dev-flow.base44.app/functions/agentReport"
 	ScanIntervalSec      = 30
 	HeartbeatIntervalSec = 15
@@ -68,6 +67,18 @@ var OUITable = map[string]string{
 	"b8:27:eb": "Raspberry Pi", "dc:a6:32": "Raspberry Pi",
 	"f0:9f:c2": "Ubiquiti", "b4:fb:e4": "Ubiquiti",
 	"18:64:72": "TP-Link", "54:a7:03": "TP-Link",
+	// HP laptops — Chongqing Fugui Electronics OUI prefixes map to specific HP product lines
+	"5c:fb:3a": "HP ProBook", "70:5a:0f": "HP ProBook", "f4:30:b9": "HP ProBook",
+	"b4:b6:86": "HP ProBook", "fc:f8:ae": "HP ProBook", "98:4f:ee": "HP ProBook",
+	"c4:34:6b": "HP ProBook", "1c:98:ec": "HP ProBook", "78:48:59": "HP ProBook",
+	// Lenovo ThinkPad / IdeaPad
+	"00:23:ae": "Lenovo ThinkPad", "e8:6a:64": "Lenovo ThinkPad", "54:13:79": "Lenovo ThinkPad",
+	"28:d2:44": "Lenovo IdeaPad", "8c:8d:28": "Lenovo ThinkPad", "f8:16:54": "Lenovo IdeaPad",
+	"04:7b:cb": "Lenovo ThinkPad", "38:f9:d3": "Lenovo ThinkPad",
+	// Dell laptops
+	"18:66:da": "Dell XPS", "b8:ca:3a": "Dell Latitude", "f0:1f:af": "Dell Latitude",
+	"14:18:77": "Dell Inspiron", "b8:ac:6f": "Dell XPS", "00:14:22": "Dell OptiPlex",
+	"00:1a:a0": "Dell Latitude", "00:1c:23": "Dell Inspiron",
 }
 
 type NetworkInterface struct {
@@ -396,7 +407,7 @@ func inferDeviceType(brand string, ports []int) string {
 	for _, pb := range phoneBrands {
 		if strings.Contains(b, pb) { return "phone" }
 	}
-	pcBrands := []string{"intel","realtek","broadcom","lenovo","dell","hewlett","hp","asus","acer","msi","toshiba","ralink","qualcomm","chongqing fugui"}
+	pcBrands := []string{"intel","realtek","broadcom","lenovo","dell","hewlett","hp inc","hp","asus","acer","msi","toshiba","ralink","qualcomm","chongqing fugui"}
 	for _, pb := range pcBrands {
 		if strings.Contains(b, pb) { return "laptop" }
 	}
