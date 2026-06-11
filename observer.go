@@ -1,12 +1,12 @@
-// RealSecCam Observer v2.9.1
+// RealSecCam Observer v2.9.2
 // Zero-touch background discovery agent. Pure Go stdlib. No CGO. No external deps.
-// v2.9.1: Verified binary filenames match Go source version.
+// v2.9.2: Kills any stale older Observer processes on startup so only one version runs.
 //         Observer role: scan LAN, report devices + heartbeats to dashboard. Relay handles streaming.
 //
 // Build:
-//   Windows: GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w -H windowsgui" -o RealSecCam-Observer-v2.9.1-Windows.exe .
-//   macOS:   GOOS=darwin  GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w"               -o RealSecCam-Observer-v2.9.1-macOS .
-//   Linux:   GOOS=linux   GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w"               -o RealSecCam-Observer-v2.9.1-Linux .
+//   Windows: GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w -H windowsgui" -o RealSecCam-Observer-v2.9.2-Windows.exe .
+//   macOS:   GOOS=darwin  GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w"               -o RealSecCam-Observer-v2.9.2-macOS .
+//   Linux:   GOOS=linux   GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w"               -o RealSecCam-Observer-v2.9.2-Linux .
 
 package main
 
@@ -30,7 +30,7 @@ import (
 )
 
 const (
-	Version              = "2.9.1"
+	Version              = "2.9.2"
 	ReportURL            = "https://accelerated-sync-dev-flow.base44.app/functions/agentReport"
 	ScanIntervalSec      = 30
 	HeartbeatIntervalSec = 15
@@ -589,6 +589,41 @@ func registerAutostart() {
 	}
 }
 
+// killStaleObservers terminates any other RealSecCam-Observer processes that are NOT this process.
+// This ensures only one version runs at a time — old auto-started copies are cleaned up transparently.
+func killStaleObservers() {
+	myPID := os.Getpid()
+	myExe, _ := os.Executable()
+	myName := strings.ToLower(filepath.Base(myExe))
+	switch runtime.GOOS {
+	case "windows":
+		// Use WMIC to list all RealSecCam-Observer processes, kill any that are not us
+		out, err := hiddenCmd("wmic", "process", "where",
+			`name like "RealSecCam-Observer%"`,
+			"get", "ProcessId,Name", "/format:csv").Output()
+		if err != nil { return }
+		for _, line := range strings.Split(string(out), "\n") {
+			fields := strings.Split(strings.TrimSpace(line), ",")
+			if len(fields) < 3 { continue }
+			pidStr := strings.TrimSpace(fields[2])
+			pid, err := strconv.Atoi(pidStr)
+			if err != nil || pid == myPID || pid == 0 { continue }
+			logf("[Cleanup] Killing stale Observer PID=%d", pid)
+			hiddenCmd("taskkill", "/F", "/PID", pidStr).Run()
+		}
+	case "darwin", "linux":
+		out, err := exec.Command("pgrep", "-f", "RealSecCam-Observer").Output()
+		if err != nil { return }
+		for _, pidStr := range strings.Fields(string(out)) {
+			pid, err := strconv.Atoi(strings.TrimSpace(pidStr))
+			if err != nil || pid == myPID { continue }
+			logf("[Cleanup] Killing stale Observer PID=%d", pid)
+			exec.Command("kill", "-9", pidStr).Run()
+		}
+	}
+	_ = myName
+}
+
 func performScan() {
 	logf("Scanning subnet=%s ssid=%s ip=%s", getLocalSubnet(), getSSID(), getLocalIP())
 	var devices []DiscoveredDevice
@@ -650,6 +685,10 @@ func main() {
 	flag.BoolVar(&debugMode, "debug", false, "Enable verbose output")
 	flag.BoolVar(&onceMode, "once", false, "Run a single scan then exit")
 	flag.Parse()
+	// Kill any stale older Observer versions before doing anything else.
+	// This is transparent to the user — only the newest version runs.
+	killStaleObservers()
+	time.Sleep(500 * time.Millisecond) // let killed processes fully exit
 	initCache()
 	h, _ := os.Hostname()
 	logf("RealSecCam Observer v%s  host=%s  ip=%s  ssid=%s", Version, h, getLocalIP(), getSSID())
