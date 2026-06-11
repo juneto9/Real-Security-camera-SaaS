@@ -1,33 +1,25 @@
 name: Build & Release Observer
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
--
- 
-o
-s
-:
- 
-u
-b
-u
-n
-t
-u
--
-l
-a
-t
-e
-s
-t
+
+on:
+  push:
+    paths:
+      - 'observer.go'
+      - 'observer_windows.go'
+      - 'observer_unix.go'
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
             goos: linux
             goarch: amd64
             output: RealSecCam-Observer-v2.4.3-Linux
