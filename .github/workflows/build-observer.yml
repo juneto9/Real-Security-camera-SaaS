@@ -1,5 +1,5 @@
 name: Build & Release Observer
-run-name: "RealSecCam Observer v2.8.0 — ${{ github.event_name }}"
+run-name: "RealSecCam Observer v2.9.0 — ${{ github.event_name }}"
 
 on:
   push:
@@ -23,17 +23,17 @@ jobs:
           - os: ubuntu-latest
             goos: linux
             goarch: amd64
-            output: RealSecCam-Observer-v2.8.0-Linux
+            output: RealSecCam-Observer-v2.9.0-Linux
             ldflags: '-s -w'
           - os: ubuntu-latest
             goos: windows
             goarch: amd64
-            output: RealSecCam-Observer-v2.8.0-Windows.exe
+            output: RealSecCam-Observer-v2.9.0-Windows.exe
             ldflags: '-s -w -H windowsgui'
           - os: macos-latest
             goos: darwin
             goarch: amd64
-            output: RealSecCam-Observer-v2.8.0-macOS
+            output: RealSecCam-Observer-v2.9.0-macOS
             ldflags: "-s -w"
 
     runs-on: ${{ matrix.os }}
@@ -75,16 +75,16 @@ jobs:
       - name: Create Versioned Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: observer-v2.8.0
-          name: "RealSecCam Observer v2.8.0"
+          tag_name: observer-v2.9.0
+          name: "RealSecCam Observer v2.9.0"
           body: |
-            ## RealSecCam Observer v2.8.0
+            ## RealSecCam Observer v2.9.0
             Download and double-click. No installation required. Runs silently in the background.
             | Platform | File |
             |----------|------|
-            | **Windows** | RealSecCam-Observer-v2.8.0-Windows.exe |
-            | **macOS** | RealSecCam-Observer-v2.8.0-macOS |
-            | **Linux** | RealSecCam-Observer-v2.8.0-Linux |
+            | **Windows** | RealSecCam-Observer-v2.9.0-Windows.exe |
+            | **macOS** | RealSecCam-Observer-v2.9.0-macOS |
+            | **Linux** | RealSecCam-Observer-v2.9.0-Linux |
           files: dist/*
           make_latest: true
         env:
