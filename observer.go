@@ -29,7 +29,7 @@ import (
 )
 
 const (
-	Version              = "2.3.0"
+	Version              = "2.4.1"
 	ReportURL            = "https://accelerated-sync-dev-flow.base44.app/functions/agentReport"
 	ScanIntervalSec      = 30
 	HeartbeatIntervalSec = 15
