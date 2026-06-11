@@ -20,17 +20,17 @@ jobs:
           - os: ubuntu-latest
             goos: linux
             goarch: amd64
-            output: RealSecCam-Observer-Linux
+            output: RealSecCam-Observer-v2.2-Linux
             ldflags: "-s -w"
           - os: ubuntu-latest
             goos: windows
             goarch: amd64
-            output: RealSecCam-Observer-Windows.exe
+            output: RealSecCam-Observer-v2.2-Windows.exe
             ldflags: "-s -w -H windowsgui"
           - os: macos-latest
             goos: darwin
             goarch: amd64
-            output: RealSecCam-Observer-macOS
+            output: RealSecCam-Observer-v2.2-macOS
             ldflags: "-s -w"
 
     runs-on: ${{ matrix.os }}
@@ -69,27 +69,19 @@ jobs:
           pattern: artifact-*
           merge-multiple: true
 
-      - name: Delete existing observer-latest tag
-        continue-on-error: true
-        run: |
-          gh release delete observer-latest --yes --repo ${{ github.repository }} || true
-          git push origin :refs/tags/observer-latest || true
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Create Release
+      - name: Create Versioned Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: observer-latest
-          name: "RealSecCam Observer v2.1"
+          tag_name: observer-v2.2.0
+          name: "RealSecCam Observer v2.2.0"
           body: |
-            ## RealSecCam Observer v2.1
+            ## RealSecCam Observer v2.2.0
             Download and double-click. No installation required. Runs silently in the background.
             | Platform | File |
             |----------|------|
-            | **Windows** | RealSecCam-Observer-Windows.exe |
-            | **macOS** | RealSecCam-Observer-macOS |
-            | **Linux** | RealSecCam-Observer-Linux |
+            | **Windows** | RealSecCam-Observer-v2.2-Windows.exe |
+            | **macOS** | RealSecCam-Observer-v2.2-macOS |
+            | **Linux** | RealSecCam-Observer-v2.2-Linux |
           files: dist/*
           make_latest: true
         env:
