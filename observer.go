@@ -1,11 +1,11 @@
-// RealSecCam Observer v2.5
+// RealSecCam Observer v2.6.0
 // Zero-touch background discovery agent. Pure Go stdlib. No CGO. No external deps.
-// NO VBScript, NO PowerShell, NO .bat, NO Python, NO wscript, NO reg.exe.
+// v2.6.0: Hostname resolution (DNS reverse + NetBIOS) for human-readable device names.
 //
 // Build:
-//   Windows: GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w -H windowsgui" -o RealSecCam-Observer-v2.4-Windows.exe .
-//   macOS:   GOOS=darwin  GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w"               -o RealSecCam-Observer-v2.4-macOS    .
-//   Linux:   GOOS=linux   GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w"               -o RealSecCam-Observer-v2.4-Linux     .
+//   Windows: GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w -H windowsgui" -o RealSecCam-Observer-v2.6.0-Windows.exe .
+//   macOS:   GOOS=darwin  GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w"               -o RealSecCam-Observer-v2.6.0-macOS .
+//   Linux:   GOOS=linux   GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w"               -o RealSecCam-Observer-v2.6.0-Linux .
 
 package main
 
@@ -29,7 +29,7 @@ import (
 )
 
 const (
-	Version              = "2.5.0"
+	Version              = "2.6.0"
 	ReportURL            = "https://accelerated-sync-dev-flow.base44.app/functions/agentReport"
 	ScanIntervalSec      = 30
 	HeartbeatIntervalSec = 15
@@ -79,6 +79,7 @@ type DiscoveredDevice struct {
 	Port       int    `json:"port"`
 	Ports      []int  `json:"ports"`
 	Brand      string `json:"brand"`
+	Hostname   string `json:"hostname"`
 	SSID       string `json:"ssid"`
 	Online     bool   `json:"online"`
 	DeviceType string `json:"device_type"`
@@ -311,6 +312,40 @@ func lookupOUI(mac string) string {
 	return ""
 }
 
+// resolveHostname tries DNS reverse lookup then NetBIOS/nbtstat to get the device's real name.
+// Priority: DNS PTR → NetBIOS → ""
+func resolveHostname(ip string) string {
+	ctx, cancel := context.WithTimeout(context.Background(), 800*time.Millisecond)
+	defer cancel()
+	names, err := net.DefaultResolver.LookupAddr(ctx, ip)
+	if err == nil && len(names) > 0 {
+		h := strings.TrimSuffix(strings.TrimSuffix(names[0], "."), ".local")
+		if h != "" && h != ip { return h }
+	}
+	if runtime.GOOS == "windows" {
+		out, err := hiddenCmd("nbtstat", "-A", ip).Output()
+		if err == nil {
+			for _, line := range strings.Split(string(out), "\n") {
+				line = strings.TrimSpace(line)
+				if strings.Contains(line, "<00>") && strings.Contains(line, "UNIQUE") {
+					if parts := strings.Fields(line); len(parts) > 0 { return strings.TrimSpace(parts[0]) }
+				}
+			}
+		}
+	} else {
+		out, err := exec.Command("nmblookup", "-A", ip).Output()
+		if err == nil {
+			for _, line := range strings.Split(string(out), "\n") {
+				line = strings.TrimSpace(line)
+				if strings.Contains(line, "<00>") && !strings.Contains(line, "GROUP") {
+					if parts := strings.Fields(line); len(parts) > 0 && parts[0] != ip { return strings.TrimSpace(parts[0]) }
+				}
+			}
+		}
+	}
+	return ""
+}
+
 func probePort(ip string, port int) bool {
 	conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", ip, port), time.Duration(PortScanTimeoutMs)*time.Millisecond)
 	if err != nil { return false }
@@ -385,12 +420,13 @@ func sweepSubnetBase(base string, arp map[string]string, ssid string) []Discover
 		dt := inferDeviceType(brand, ports)
 		p := 0
 		if len(ports) > 0 { p = ports[0] }
+		hn := resolveHostname(ip)
 		devices = append(devices, DiscoveredDevice{
 			IP: ip, MAC: mac, Port: p, Ports: ports,
-			Brand: brand, SSID: ssid, Online: true, DeviceType: dt,
+			Brand: brand, Hostname: hn, SSID: ssid, Online: true, DeviceType: dt,
 		})
 		arpReported[ip] = true
-		logf("ARP hit: %s mac=%s brand=%s type=%s ports=%v", ip, mac, brand, dt, ports)
+		logf("ARP hit: %s mac=%s brand=%s hostname=%s type=%s ports=%v", ip, mac, brand, hn, dt, ports)
 	}
 
 	// Second pass: port-scan the full /24 for camera ports, catch devices not in ARP
@@ -414,9 +450,10 @@ func sweepSubnetBase(base string, arp map[string]string, ssid string) []Discover
 			mac := arp[r.ip]
 			brand := lookupOUI(mac)
 			dt := inferDeviceType(brand, r.ports)
+			hn := resolveHostname(r.ip)
 			devices = append(devices, DiscoveredDevice{
 				IP: r.ip, MAC: mac, Port: r.ports[0], Ports: r.ports,
-				Brand: brand, SSID: ssid, Online: true, DeviceType: dt,
+				Brand: brand, Hostname: hn, SSID: ssid, Online: true, DeviceType: dt,
 			})
 		}
 	}
