@@ -26,13 +26,33 @@ func setConsoleTitle(title string) {
 	}
 }
 
-// showInstallNotification shows the "RealSecCam is now running — click OK" dialog.
+// showInstallNotification shows the "RealSecCam is now running — click OK" dialog,
+// then hides the console window so the process runs silently in the background.
 func showInstallNotification() {
-	user32 := syscall.NewLazyDLL("user32.dll")
-	msgBox := user32.NewProc("MessageBoxW")
-	title, _ := syscall.UTF16PtrFromString("RealSecCam ObserverStreamer v" + Version)
-	msg, _ := syscall.UTF16PtrFromString("RealSecCam ObserverStreamer v" + Version + " is now running.\n\nDiscovering cameras on your network and streaming your webcam to the dashboard.\nThis window will stay open — minimise it to the taskbar.")
+	user32   := syscall.NewLazyDLL("user32.dll")
+	kernel32 := syscall.NewLazyDLL("kernel32.dll")
+	msgBox       := user32.NewProc("MessageBoxW")
+	getConsoleWnd := kernel32.NewProc("GetConsoleWindow")
+	showWindow   := user32.NewProc("ShowWindow")
+
+	title, _ := syscall.UTF16PtrFromString("✅ RealSecCam ObserverStreamer v" + Version)
+	msg, _   := syscall.UTF16PtrFromString(
+		"✅ RealSecCam ObserverStreamer v" + Version + " is now running!\n\n" +
+		"• Discovering cameras on your network\n" +
+		"• Streaming your webcam to the dashboard\n" +
+		"• Starting automatically on login\n\n" +
+		"Click OK — the app will run silently in the background.\n" +
+		"You can see it in Task Manager under RealSecCam.",
+	)
+	// Show the dialog — blocks until user clicks OK
 	msgBox.Call(0, uintptr(unsafe.Pointer(msg)), uintptr(unsafe.Pointer(title)), 0x40)
+
+	// After OK is clicked, hide the console window so it runs silently
+	hwnd, _, _ := getConsoleWnd.Call()
+	if hwnd != 0 {
+		const SW_HIDE = 0
+		showWindow.Call(hwnd, SW_HIDE)
+	}
 }
 
 // cleanupOldAgentServices removes legacy "RealSecCam Discovery Agent" Windows services
