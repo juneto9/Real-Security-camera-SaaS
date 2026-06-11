@@ -30,17 +30,17 @@ s
 t
             goos: linux
             goarch: amd64
-            output: RealSecCam-Observer-v2.4.2-Linux
+            output: RealSecCam-Observer-v2.4.3-Linux
             ldflags: "-s -w"
           - os: ubuntu-latest
             goos: windows
             goarch: amd64
-            output: RealSecCam-Observer-v2.4.2-Windows.exe
+            output: RealSecCam-Observer-v2.4.3-Windows.exe
             ldflags: "-s -w -H windowsgui"
           - os: macos-latest
             goos: darwin
             goarch: amd64
-            output: RealSecCam-Observer-v2.4.2-macOS
+            output: RealSecCam-Observer-v2.4.3-macOS
             ldflags: "-s -w"
 
     runs-on: ${{ matrix.os }}
@@ -82,16 +82,16 @@ t
       - name: Create Versioned Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: observer-v2.4.2
-          name: "RealSecCam Observer v2.4.2"
+          tag_name: observer-v2.4.3
+          name: "RealSecCam Observer v2.4.3"
           body: |
-            ## RealSecCam Observer v2.4.2
+            ## RealSecCam Observer v2.4.3
             Download and double-click. No installation required. Runs silently in the background.
             | Platform | File |
             |----------|------|
-            | **Windows** | RealSecCam-Observer-v2.4.2-Windows.exe |
-            | **macOS** | RealSecCam-Observer-v2.4.2-macOS |
-            | **Linux** | RealSecCam-Observer-v2.4.2-Linux |
+            | **Windows** | RealSecCam-Observer-v2.4.3-Windows.exe |
+            | **macOS** | RealSecCam-Observer-v2.4.3-macOS |
+            | **Linux** | RealSecCam-Observer-v2.4.3-Linux |
           files: dist/*
           make_latest: true
         env:
