@@ -1,12 +1,12 @@
-// RealSecCam Observer v2.9.0
+// RealSecCam Observer v2.9.1
 // Zero-touch background discovery agent. Pure Go stdlib. No CGO. No external deps.
-// v2.9.0: All streams routed via Cloud Relay (HLS). Correct binary filenames in release.
+// v2.9.1: Verified binary filenames match Go source version.
 //         Observer role: scan LAN, report devices + heartbeats to dashboard. Relay handles streaming.
 //
 // Build:
-//   Windows: GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w -H windowsgui" -o RealSecCam-Observer-v2.9.0-Windows.exe .
-//   macOS:   GOOS=darwin  GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w"               -o RealSecCam-Observer-v2.9.0-macOS .
-//   Linux:   GOOS=linux   GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w"               -o RealSecCam-Observer-v2.9.0-Linux .
+//   Windows: GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w -H windowsgui" -o RealSecCam-Observer-v2.9.1-Windows.exe .
+//   macOS:   GOOS=darwin  GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w"               -o RealSecCam-Observer-v2.9.1-macOS .
+//   Linux:   GOOS=linux   GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w"               -o RealSecCam-Observer-v2.9.1-Linux .
 
 package main
 
@@ -30,7 +30,7 @@ import (
 )
 
 const (
-	Version              = "2.9.0"
+	Version              = "2.9.1"
 	ReportURL            = "https://accelerated-sync-dev-flow.base44.app/functions/agentReport"
 	ScanIntervalSec      = 30
 	HeartbeatIntervalSec = 15
