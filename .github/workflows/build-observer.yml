@@ -1,36 +1,46 @@
 name: Build & Release Observer
-
-on:
-  push:
-    paths:
-      - 'observer.go'
-    branches:
-      - main
-  workflow_dispatch:
-
-permissions:
-  contents: write
-
-jobs:
-  build:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+-
+ 
+o
+s
+:
+ 
+u
+b
+u
+n
+t
+u
+-
+l
+a
+t
+e
+s
+t
             goos: linux
             goarch: amd64
-            output: RealSecCam-Observer-v${vShort}-Linux
+            output: RealSecCam-Observer-v2.4.2-Linux
             ldflags: "-s -w"
           - os: ubuntu-latest
             goos: windows
             goarch: amd64
-            output: RealSecCam-Observer-v${vShort}-Windows.exe
+            output: RealSecCam-Observer-v2.4.2-Windows.exe
             ldflags: "-s -w -H windowsgui"
           - os: macos-latest
             goos: darwin
             goarch: amd64
-            output: RealSecCam-Observer-v${vShort}-macOS
+            output: RealSecCam-Observer-v2.4.2-macOS
             ldflags: "-s -w"
 
     runs-on: ${{ matrix.os }}
@@ -79,9 +89,9 @@ jobs:
             Download and double-click. No installation required. Runs silently in the background.
             | Platform | File |
             |----------|------|
-            | **Windows** | RealSecCam-Observer-v${vShort}-Windows.exe |
-            | **macOS** | RealSecCam-Observer-v${vShort}-macOS |
-            | **Linux** | RealSecCam-Observer-v${vShort}-Linux |
+            | **Windows** | RealSecCam-Observer-v2.4.2-Windows.exe |
+            | **macOS** | RealSecCam-Observer-v2.4.2-macOS |
+            | **Linux** | RealSecCam-Observer-v2.4.2-Linux |
           files: dist/*
           make_latest: true
         env:
