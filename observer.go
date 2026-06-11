@@ -132,9 +132,11 @@ type StreamUpdatePayload struct {
 }
 
 type StreamUpdateData struct {
-	IP        string `json:"ip"`
-	HlsURL    string `json:"hls_url"`
-	RelayHost string `json:"relay_host"`
+	IP         string `json:"ip"`
+	MAC        string `json:"mac"`
+	HlsURL     string `json:"hls_url"`
+	RelayHost  string `json:"relay_host"`
+	DeviceName string `json:"device_name"`
 }
 
 type DiagnosticLog struct {
@@ -198,6 +200,12 @@ func initCache() {
 func getLocalIP() string     { return cachedIP }
 func getLocalSubnet() string { return cachedSubnet }
 func getSSID() string        { return cachedSSID }
+
+func getLocalMAC() string {
+	ifaces := getNetworkInterfacesRaw()
+	if len(ifaces) > 0 { return ifaces[0].MAC }
+	return ""
+}
 
 func writePID() {
 	os.WriteFile(filepath.Join(exeDir(), PIDFile), []byte(strconv.Itoa(os.Getpid())), 0644)
@@ -788,14 +796,18 @@ func runStreamer() {
 
 	logf("[Streamer] Will push to %s → HLS: %s", rtspURL, hlsURL)
 
-	// Report HLS URL to dashboard immediately so the camera record gets updated
-	reportStream := func() {
+	// Report HLS URL + webcam device name to dashboard so the camera record is named properly
+	reportStream := func(deviceName string) {
+		// Build a friendly display name from the actual webcam device name
+		// e.g. "HP Wide Vision HD Camera" → used as the camera name in the dashboard
 		_, err := postJSON(StreamUpdatePayload{
 			Type: "stream_update",
 			Data: StreamUpdateData{
-				IP:        getLocalIP(),
-				HlsURL:    hlsURL,
-				RelayHost: RelayHost,
+				IP:         getLocalIP(),
+				MAC:        getLocalMAC(),
+				HlsURL:     hlsURL,
+				RelayHost:  RelayHost,
+				DeviceName: deviceName,
 			},
 		})
 		if err != nil { logf("[Streamer] stream_update error: %v", err) }
@@ -813,6 +825,11 @@ func runStreamer() {
 			logf("[Streamer] Webcam not found: %v — retrying in 30s", err)
 			time.Sleep(30 * time.Second)
 			continue
+		}
+		// Extract friendly name from "video=HP Wide Vision HD Camera" → "HP Wide Vision HD Camera"
+		webcamDisplayName := inputDevice
+		if strings.HasPrefix(inputDevice, "video=") {
+			webcamDisplayName = strings.TrimPrefix(inputDevice, "video=")
 		}
 		logf("[Streamer] Capturing %s/%s → %s", inputFormat, inputDevice, rtspURL)
 
@@ -877,7 +894,7 @@ func runStreamer() {
 		}
 
 		// Report stream to dashboard once FFmpeg starts
-		reportStream()
+		reportStream(webcamDisplayName)
 		sendHeartbeat("streamer", 0)
 
 		// Periodic heartbeat + stream re-report while FFmpeg runs
@@ -894,7 +911,7 @@ func runStreamer() {
 					time.Sleep(5 * time.Second)
 					break outer
 				case <-ticker.C:
-					reportStream()
+					reportStream(webcamDisplayName)
 					sendHeartbeat("streamer", 0)
 				case <-shutdownCh:
 					ticker.Stop()
