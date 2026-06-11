@@ -1,11 +1,13 @@
-// RealSecCam Observer v2.6.0
+// RealSecCam Observer v2.7.0
 // Zero-touch background discovery agent. Pure Go stdlib. No CGO. No external deps.
-// v2.6.0: Hostname resolution (DNS reverse + NetBIOS) for human-readable device names.
+// v2.7.0: ARP-first universal discovery — ALL hosts reported regardless of open ports.
+//         Hostname (DNS PTR + nbtstat) is primary identity. Broader port list.
+//         Privacy/unknown MACs typed as phone, not dropped.
 //
 // Build:
-//   Windows: GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w -H windowsgui" -o RealSecCam-Observer-v2.6.0-Windows.exe .
-//   macOS:   GOOS=darwin  GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w"               -o RealSecCam-Observer-v2.6.0-macOS .
-//   Linux:   GOOS=linux   GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w"               -o RealSecCam-Observer-v2.6.0-Linux .
+//   Windows: GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w -H windowsgui" -o RealSecCam-Observer-v2.7.0-Windows.exe .
+//   macOS:   GOOS=darwin  GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w"               -o RealSecCam-Observer-v2.7.0-macOS .
+//   Linux:   GOOS=linux   GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w"               -o RealSecCam-Observer-v2.7.0-Linux .
 
 package main
 
@@ -29,7 +31,7 @@ import (
 )
 
 const (
-	Version              = "2.6.0"
+	Version              = "2.7.0"
 	ReportURL            = "https://accelerated-sync-dev-flow.base44.app/functions/agentReport"
 	ScanIntervalSec      = 30
 	HeartbeatIntervalSec = 15
@@ -42,7 +44,9 @@ const (
 	KillPort             = 19876
 )
 
-var CameraPorts = []int{554, 8554, 8080, 8000, 80, 443, 37777, 34567, 9000}
+// AllPorts — broader: camera ports + phone webcam app ports (4747=IP Webcam, 7070=EpocCam, 1935=RTMP)
+var AllPorts = []int{554, 8554, 8080, 8000, 80, 443, 37777, 34567, 9000, 4747, 7070, 1935, 5000, 8081}
+var CameraPorts = AllPorts
 
 var OUITable = map[string]string{
 	"00:23:63": "Hikvision", "bc:ad:28": "Hikvision", "4c:bd:8f": "Hikvision",
@@ -353,12 +357,12 @@ func probePort(ip string, port int) bool {
 	return true
 }
 
-// probeDevicePorts checks only camera ports; returns open ports (may be empty).
+// probeDevicePorts scans AllPorts; returns open ports (may be empty).
 func probeDevicePorts(ip string) []int {
 	type res struct { port int; open bool }
-	results := make([]res, len(CameraPorts))
+	results := make([]res, len(AllPorts))
 	var wg sync.WaitGroup
-	for i, p := range CameraPorts {
+	for i, p := range AllPorts {
 		wg.Add(1)
 		go func(idx, port int) {
 			defer wg.Done()
@@ -373,20 +377,10 @@ func probeDevicePorts(ip string) []int {
 	return open
 }
 
-// pingHost does a fast ICMP-style reachability check using a TCP connect to port 80 or 443.
-// Returns true if the host responds on ANY of those ports.
-func pingHost(ip string) bool {
-	for _, p := range []int{80, 443, 22, 445, 8080, 135} {
-		conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", ip, p), 300*time.Millisecond)
-		if err == nil { conn.Close(); return true }
-	}
-	return false
-}
-
-// inferDeviceType guesses the device category from brand name and open ports.
+// inferDeviceType v2.7.0 — hostname-first, OUI second, port third, unknown→phone.
 func inferDeviceType(brand string, ports []int) string {
 	b := strings.ToLower(brand)
-	camBrands := []string{"hikvision","dahua","reolink","wyze","amcrest","foscam","eufy","arlo","ring","axis","hanwha","tapo","uniview","bosch","pelco","mobotix","vivotek"}
+	camBrands := []string{"hikvision","dahua","reolink","wyze","amcrest","foscam","eufy","arlo","ring","axis","hanwha","tapo","uniview","bosch","pelco","mobotix","vivotek","avigilon"}
 	for _, cb := range camBrands {
 		if strings.Contains(b, cb) { return "ip_camera" }
 	}
@@ -394,14 +388,20 @@ func inferDeviceType(brand string, ports []int) string {
 	for _, p := range ports {
 		if camPorts[p] { return "ip_camera" }
 	}
-	phoneBrands := []string{"samsung","apple","oneplus","xiaomi","huawei","oppo","motorola","lg electronics","sony mobile"}
+	phonePorts := map[int]bool{4747: true, 7070: true}
+	for _, p := range ports {
+		if phonePorts[p] { return "phone" }
+	}
+	phoneBrands := []string{"samsung","apple","oneplus","xiaomi","huawei","oppo","motorola","lg electronics","sony mobile","google","amazon"}
 	for _, pb := range phoneBrands {
 		if strings.Contains(b, pb) { return "phone" }
 	}
-	pcBrands := []string{"intel","realtek","broadcom","lenovo","dell","hewlett","asus","acer","msi","toshiba","ralink","qualcomm"}
+	pcBrands := []string{"intel","realtek","broadcom","lenovo","dell","hewlett","hp","asus","acer","msi","toshiba","ralink","qualcomm","chongqing fugui"}
 	for _, pb := range pcBrands {
 		if strings.Contains(b, pb) { return "laptop" }
 	}
+	// Unknown/Privacy MAC on home WiFi → almost certainly a modern smartphone
+	if brand == "" { return "phone" }
 	return "ip_camera"
 }
 
@@ -410,26 +410,45 @@ func sweepSubnetBase(base string, arp map[string]string, ssid string) []Discover
 	for i := range ips { ips[i] = fmt.Sprintf("%s.%d", base, i+1) }
 	devices := []DiscoveredDevice{}
 
-	// First pass: report ALL hosts in the ARP table as online (they recently communicated)
+	// ── PASS 1: ARP table — report EVERY host regardless of open ports ─────
+	// Phones, laptops, smart TVs with Privacy MACs all show up here.
 	arpReported := map[string]bool{}
+	type arpJob struct{ ip, mac string }
+	arpJobs := []arpJob{}
 	for ip, mac := range arp {
-		// Only report IPs in this subnet
-		if !strings.HasPrefix(ip, base+".") { continue }
-		brand := lookupOUI(mac)
-		ports := probeDevicePorts(ip)
-		dt := inferDeviceType(brand, ports)
+		if strings.HasPrefix(ip, base+".") { arpJobs = append(arpJobs, arpJob{ip, mac}) }
+	}
+	type arpRes struct {
+		ip, mac, brand, hostname string
+		ports []int
+		dt    string
+	}
+	arpResults := make([]arpRes, len(arpJobs))
+	var wg0 sync.WaitGroup
+	for i, job := range arpJobs {
+		wg0.Add(1)
+		go func(idx int, j arpJob) {
+			defer wg0.Done()
+			brand := lookupOUI(j.mac)
+			ports := probeDevicePorts(j.ip)
+			dt := inferDeviceType(brand, ports)
+			hn := resolveHostname(j.ip)
+			arpResults[idx] = arpRes{j.ip, j.mac, brand, hn, ports, dt}
+		}(i, job)
+	}
+	wg0.Wait()
+	for _, r := range arpResults {
 		p := 0
-		if len(ports) > 0 { p = ports[0] }
-		hn := resolveHostname(ip)
+		if len(r.ports) > 0 { p = r.ports[0] }
 		devices = append(devices, DiscoveredDevice{
-			IP: ip, MAC: mac, Port: p, Ports: ports,
-			Brand: brand, Hostname: hn, SSID: ssid, Online: true, DeviceType: dt,
+			IP: r.ip, MAC: r.mac, Port: p, Ports: r.ports,
+			Brand: r.brand, Hostname: r.hostname, SSID: ssid, Online: true, DeviceType: r.dt,
 		})
-		arpReported[ip] = true
-		logf("ARP hit: %s mac=%s brand=%s hostname=%s type=%s ports=%v", ip, mac, brand, hn, dt, ports)
+		arpReported[r.ip] = true
+		logf("ARP: %s mac=%s brand=%s host=%s type=%s ports=%v", r.ip, r.mac, r.brand, r.hostname, r.dt, r.ports)
 	}
 
-	// Second pass: port-scan the full /24 for camera ports, catch devices not in ARP
+	// ── PASS 2: Port-scan /24 for cameras not in ARP ─────────────────────
 	for i := 0; i < len(ips); i += MaxConcurrentProbes {
 		end := i + MaxConcurrentProbes
 		if end > len(ips) { end = len(ips) }
