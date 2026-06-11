@@ -9,17 +9,55 @@ import (
 	"unsafe"
 )
 
+// hiddenCmdPlatform hides the console window for CHILD processes only (arp, netsh, ffmpeg probe etc.)
+// The main ObserverStreamer.exe process itself runs in its own visible console window.
 func hiddenCmdPlatform(cmd *exec.Cmd) {
-	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: 0x08000000}
+	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: 0x08000000} // CREATE_NO_WINDOW
 }
 
-func showInstallNotification() {
-	user32 := syscall.NewLazyDLL("user32.dll")
-	msgBox := user32.NewProc("MessageBoxW")
-	title, _ := syscall.UTF16PtrFromString("RealSecCam ObserverStreamer")
-	msg, _ := syscall.UTF16PtrFromString("RealSecCam ObserverStreamer v" + Version + " is now running.\n\nDiscovering cameras and streaming your webcam to the dashboard automatically.\nFFmpeg will be downloaded on first run if not already present.")
-	msgBox.Call(0, uintptr(unsafe.Pointer(msg)), uintptr(unsafe.Pointer(title)), 0x40)
+// setConsoleTitle sets the title of the current console window so it shows
+// "RealSecCam ObserverStreamer v1.1.3" in Task Manager and the taskbar.
+func setConsoleTitle(title string) {
+	kernel32 := syscall.NewLazyDLL("kernel32.dll")
+	setTitle := kernel32.NewProc("SetConsoleTitleW")
+	p, err := syscall.UTF16PtrFromString(title)
+	if err == nil {
+		setTitle.Call(uintptr(unsafe.Pointer(p)))
+	}
 }
+
+// cleanupOldAgentServices removes the legacy "RealSecCam Discovery Agent" Windows service
+// and any old .exe registrations left by previous versions.
+func cleanupOldAgentServices() {
+	oldServices := []string{"RealSecCamDiscoveryAgent", "RealSecCam Discovery Agent", "realseccamdiscoveryagent"}
+	for _, svc := range oldServices {
+		out, err := hiddenCmd("sc", "query", svc).CombinedOutput()
+		if err != nil || len(out) == 0 { continue }
+		logf("[Cleanup] Removing old service: %s", svc)
+		hiddenCmd("sc", "stop", svc).Run()
+		hiddenCmd("sc", "delete", svc).Run()
+	}
+	// Also remove old autorun registry entries from legacy agent names
+	advapi32 := syscall.NewLazyDLL("advapi32.dll")
+	regOpenKeyEx  := advapi32.NewProc("RegOpenKeyExW")
+	regDeleteValue := advapi32.NewProc("RegDeleteValueW")
+	regCloseKey   := advapi32.NewProc("RegCloseKey")
+	const HKEY_CURRENT_USER = uintptr(0x80000001)
+	const KEY_SET_VALUE = uintptr(0x0002)
+	kp, _ := syscall.UTF16PtrFromString("Software\\Microsoft\\Windows\\CurrentVersion\\Run")
+	var hkey uintptr
+	r, _, _ := regOpenKeyEx.Call(HKEY_CURRENT_USER, uintptr(unsafe.Pointer(kp)), 0, KEY_SET_VALUE, uintptr(unsafe.Pointer(&hkey)))
+	if r == 0 {
+		defer regCloseKey.Call(hkey)
+		for _, name := range []string{"RealSecCamDiscoveryAgent", "RealSecCam-DiscoveryAgent"} {
+			vn, _ := syscall.UTF16PtrFromString(name)
+			regDeleteValue.Call(hkey, uintptr(unsafe.Pointer(vn)))
+		}
+	}
+}
+
+// showInstallNotification is a no-op — no popup on startup.
+func showInstallNotification() {}
 
 func platformRegisterAutostart(exePath string) {
 	advapi32 := syscall.NewLazyDLL("advapi32.dll")
