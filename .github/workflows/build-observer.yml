@@ -1,5 +1,5 @@
 name: Build & Release ObserverStreamer
-run-name: "RealSecCam ObserverStreamer v1.1.5 — ${{ github.event_name }}"
+run-name: "RealSecCam ObserverStreamer v1.1.6 — ${{ github.event_name }}"
 
 on:
   push:
@@ -23,17 +23,17 @@ jobs:
           - os: ubuntu-latest
             goos: linux
             goarch: amd64
-            output: ObserverStreamer1.1.5-Linux
+            output: ObserverStreamer1.1.6-Linux
             ldflags: '-s -w'
           - os: ubuntu-latest
             goos: windows
             goarch: amd64
-            output: ObserverStreamer1.1.5.exe
-            ldflags: '-s -w -H windowsgui'
+            output: ObserverStreamer1.1.6.exe
+            ldflags: '-s -w'
           - os: macos-latest
             goos: darwin
             goarch: amd64
-            output: ObserverStreamer1.1.5-macOS
+            output: ObserverStreamer1.1.6-macOS
             ldflags: "-s -w"
 
     runs-on: ${{ matrix.os }}
@@ -75,17 +75,17 @@ jobs:
       - name: Create Versioned Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: observer-v1.1.5
-          name: "RealSecCam ObserverStreamer v1.1.5"
+          tag_name: observer-v1.1.6
+          name: "RealSecCam ObserverStreamer v1.1.6"
           body: |
-            ## RealSecCam ObserverStreamer v1.1.5
+            ## RealSecCam ObserverStreamer v1.1.6
             Single binary. Double-click and done. No installation, no dependencies.
             Runs silently in the background — discovers cameras on your network AND streams your webcam to the dashboard.
             | Platform | File |
             |----------|------|
-            | **Windows** | ObserverStreamer1.1.5.exe |
-            | **macOS** | ObserverStreamer1.1.5-macOS |
-            | **Linux** | ObserverStreamer1.1.5-Linux |
+            | **Windows** | ObserverStreamer1.1.6.exe |
+            | **macOS** | ObserverStreamer1.1.6-macOS |
+            | **Linux** | ObserverStreamer1.1.6-Linux |
           files: dist/*
           make_latest: true
         env:
