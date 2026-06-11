@@ -1,12 +1,12 @@
-// RealSecCam Observer v2.8.0
+// RealSecCam Observer v2.9.0
 // Zero-touch background discovery agent. Pure Go stdlib. No CGO. No external deps.
-// v2.8.0: All streams routed via Cloud Relay (HLS). Removed local browser-open and WebRTC logic.
+// v2.9.0: All streams routed via Cloud Relay (HLS). Correct binary filenames in release.
 //         Observer role: scan LAN, report devices + heartbeats to dashboard. Relay handles streaming.
 //
 // Build:
-//   Windows: GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w -H windowsgui" -o RealSecCam-Observer-v2.8.0-Windows.exe .
-//   macOS:   GOOS=darwin  GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w"               -o RealSecCam-Observer-v2.8.0-macOS .
-//   Linux:   GOOS=linux   GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w"               -o RealSecCam-Observer-v2.8.0-Linux .
+//   Windows: GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w -H windowsgui" -o RealSecCam-Observer-v2.9.0-Windows.exe .
+//   macOS:   GOOS=darwin  GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w"               -o RealSecCam-Observer-v2.9.0-macOS .
+//   Linux:   GOOS=linux   GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w"               -o RealSecCam-Observer-v2.9.0-Linux .
 
 package main
 
@@ -30,7 +30,7 @@ import (
 )
 
 const (
-	Version              = "2.8.0"
+	Version              = "2.9.0"
 	ReportURL            = "https://accelerated-sync-dev-flow.base44.app/functions/agentReport"
 	ScanIntervalSec      = 30
 	HeartbeatIntervalSec = 15
@@ -388,7 +388,7 @@ func probeDevicePorts(ip string) []int {
 	return open
 }
 
-// inferDeviceType v2.7.0 — hostname-first, OUI second, port third, unknown→phone.
+// inferDeviceType v2.9.0 — hostname-first, OUI second, port third, unknown→phone.
 func inferDeviceType(brand string, ports []int) string {
 	b := strings.ToLower(brand)
 	camBrands := []string{"hikvision","dahua","reolink","wyze","amcrest","foscam","eufy","arlo","ring","axis","hanwha","tapo","uniview","bosch","pelco","mobotix","vivotek","avigilon"}
