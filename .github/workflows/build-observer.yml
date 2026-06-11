@@ -72,10 +72,10 @@ jobs:
       - name: Create Versioned Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: observer-v2.4.1
-          name: "RealSecCam Observer v2.4.1"
+          tag_name: observer-v2.4.2
+          name: "RealSecCam Observer v2.4.2"
           body: |
-            ## RealSecCam Observer v2.4.1
+            ## RealSecCam Observer v2.4.2
             Download and double-click. No installation required. Runs silently in the background.
             | Platform | File |
             |----------|------|
