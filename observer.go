@@ -572,7 +572,7 @@ func killStaleObservers() {
 				if line == "" || strings.HasPrefix(line, "INFO:") { continue }
 				fields := strings.Split(line, ",")
 				if len(fields) < 2 { continue }
-				pidStr := strings.Trim(strings.TrimSpace(fields[1]), "\"'+"'"+""")
+				pidStr := strings.Trim(strings.TrimSpace(fields[1]), "\x22\x27")
 				pid, err := strconv.Atoi(pidStr)
 				if err != nil || pid == myPID || pid == 0 { continue }
 				logf("[Cleanup] Killing stale PID=%d", pid)
