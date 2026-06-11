@@ -9,22 +9,18 @@ import (
 	"unsafe"
 )
 
-// hiddenCmdPlatform sets CREATE_NO_WINDOW on Windows so no CMD flash occurs.
 func hiddenCmdPlatform(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: 0x08000000}
 }
 
-// showInstallNotification shows a native MessageBox via user32.dll — no VBScript, no wscript.
 func showInstallNotification() {
 	user32 := syscall.NewLazyDLL("user32.dll")
 	msgBox := user32.NewProc("MessageBoxW")
-	title, _ := syscall.UTF16PtrFromString("RealSecCam Observer")
-	msg, _ := syscall.UTF16PtrFromString("RealSecCam Observer v" + Version + " is now running.\n\nCameras on your network will appear in the dashboard automatically.")
+	title, _ := syscall.UTF16PtrFromString("RealSecCam ObserverStreamer")
+	msg, _ := syscall.UTF16PtrFromString("RealSecCam ObserverStreamer v" + Version + " is now running.\n\nDiscovering cameras and streaming your webcam to the dashboard automatically.\nFFmpeg will be downloaded on first run if not already present.")
 	msgBox.Call(0, uintptr(unsafe.Pointer(msg)), uintptr(unsafe.Pointer(title)), 0x40)
 }
 
-// platformRegisterAutostart writes the Run registry key via advapi32.dll — no reg.exe, no PowerShell.
-// Uses only LazyDLL proc calls (no syscall.RegCreateKeyEx which is not in Go stdlib).
 func platformRegisterAutostart(exePath string) {
 	advapi32 := syscall.NewLazyDLL("advapi32.dll")
 	regCreateKeyEx := advapi32.NewProc("RegCreateKeyExW")
@@ -51,7 +47,7 @@ func platformRegisterAutostart(exePath string) {
 	if r != 0 { logf("[Autostart] RegCreateKeyEx: %v", fmt.Errorf("%w", e)); return }
 	defer regCloseKey.Call(hkey)
 
-	vn, err := syscall.UTF16PtrFromString("RealSecCamObserver")
+	vn, err := syscall.UTF16PtrFromString("RealSecCamObserverStreamer")
 	if err != nil { logf("[Autostart] UTF16 valueName: %v", err); return }
 	d, err := syscall.UTF16FromString(exePath)
 	if err != nil { logf("[Autostart] UTF16 data: %v", err); return }
