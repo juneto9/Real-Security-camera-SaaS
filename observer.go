@@ -720,27 +720,32 @@ func ensureFFmpeg() (string, error) {
 func detectWebcamIndex(ffmpeg string) (string, string, error) {
 	switch runtime.GOOS {
 	case "windows":
-		// Try dshow devices: probe indices 0..2
-		for i := 0; i < 3; i++ {
-			name := fmt.Sprintf("video=%d", i)
-			cmd := hiddenCmd(ffmpeg, "-f", "dshow", "-i", name, "-t", "1", "-f", "null", "-")
-			if err := cmd.Run(); err == nil {
-				return "dshow", name, nil
-			}
-		}
-		// Fallback: list devices and pick first video
+		// List dshow devices and pick first video device by name (index syntax doesn't work in dshow)
 		out, _ := hiddenCmd(ffmpeg, "-list_devices", "true", "-f", "dshow", "-i", "dummy").CombinedOutput()
-		for _, line := range strings.Split(string(out), "\n") {
-			if strings.Contains(line, "video") && strings.Contains(line, "]") {
-				start := strings.Index(line, "]")
-				if start >= 0 {
-					name := strings.TrimSpace(line[start+1:])
-					name = strings.Trim(name, "\"")
-					if name != "" { return "dshow", "video=" + name, nil }
+		lines := strings.Split(string(out), "\n")
+		inVideoSection := false
+		for _, line := range lines {
+			if strings.Contains(line, "DirectShow video devices") || strings.Contains(line, "video devices") {
+				inVideoSection = true
+				continue
+			}
+			if strings.Contains(line, "DirectShow audio devices") || strings.Contains(line, "audio devices") {
+				break
+			}
+			if !inVideoSection { continue }
+			// Lines look like: [dshow @ ...] "HP Wide Vision HD Camera"
+			if idx := strings.Index(line, "\""); idx >= 0 {
+				rest := line[idx+1:]
+				if end := strings.Index(rest, "\""); end >= 0 {
+					devName := rest[:end]
+					if devName != "" {
+						logf("[Streamer] Found dshow device: %s", devName)
+						return "dshow", "video=" + devName, nil
+					}
 				}
 			}
 		}
-		return "", "", fmt.Errorf("no webcam found via dshow")
+		return "", "", fmt.Errorf("no webcam found via dshow — ensure a camera is connected and not in use")
 
 	case "darwin":
 		out, _ := hiddenCmd(ffmpeg, "-f", "avfoundation", "-list_devices", "true", "-i", "").CombinedOutput()
