@@ -1,13 +1,13 @@
-// ObserverStreamer v1.1.1
+// ObserverStreamer v1.1.2
 // Single binary: LAN discovery + webcam streaming via FFmpeg → MediaMTX.
 // Pure Go stdlib. No CGO. No external Go deps.
 // Windows: downloads FFmpeg automatically on first run.
 // macOS/Linux: uses system ffmpeg (brew/apt).
 //
 // Build:
-//   Windows: GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w -H windowsgui" -o ObserverStreamer1.0.0.exe .
-//   macOS:   GOOS=darwin  GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w"               -o ObserverStreamer1.0.0-macOS .
-//   Linux:   GOOS=linux   GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w"               -o ObserverStreamer1.0.0-Linux .
+//   Windows: GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o ObserverStreamer1.1.2.exe .
+//   macOS:   GOOS=darwin  GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o ObserverStreamer1.1.2-macOS .
+//   Linux:   GOOS=linux   GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o ObserverStreamer1.1.2-Linux .
 
 package main
 
@@ -33,7 +33,7 @@ import (
 )
 
 const (
-	Version              = "1.1.1"
+	Version              = "1.1.2"
 	ReportURL            = "https://accelerated-sync-dev-flow.base44.app/functions/agentReport"
 	RelayHost            = "137.184.65.114"
 	RelayRTSPPort        = 8554
@@ -137,6 +137,26 @@ type StreamUpdateData struct {
 	HlsURL     string `json:"hls_url"`
 	RelayHost  string `json:"relay_host"`
 	DeviceName string `json:"device_name"`
+}
+
+type ErrorReportPayload struct {
+	Type string          `json:"type"`
+	Data ErrorReportData `json:"data"`
+}
+
+type ErrorReportData struct {
+	Host    string `json:"host"`
+	Version string `json:"version"`
+	Error   string `json:"error"`
+	Stage   string `json:"stage"`
+}
+
+func reportError(stage, errMsg string) {
+	h, _ := os.Hostname()
+	postJSON(ErrorReportPayload{Type: "error_report", Data: ErrorReportData{
+		Host: h, Version: Version, Error: errMsg, Stage: stage,
+	}})
+	logf("[ERROR] stage=%s err=%s", stage, errMsg)
 }
 
 type DiagnosticLog struct {
@@ -784,7 +804,7 @@ func detectWebcamIndex(ffmpeg string) (string, string, error) {
 func runStreamer() {
 	ffmpeg, err := ensureFFmpeg()
 	if err != nil {
-		logf("[Streamer] %v — webcam streaming disabled", err)
+		reportError("ffmpeg_setup", err.Error())
 		return
 	}
 
@@ -822,7 +842,7 @@ func runStreamer() {
 
 		inputFormat, inputDevice, err := detectWebcamIndex(ffmpeg)
 		if err != nil {
-			logf("[Streamer] Webcam not found: %v — retrying in 30s", err)
+			reportError("webcam_detect", err.Error())
 			time.Sleep(30 * time.Second)
 			continue
 		}
