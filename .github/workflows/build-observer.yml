@@ -47,7 +47,7 @@ jobs:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: "0"
-        run: go build -ldflags="${{ matrix.ldflags }}" -o "${{ matrix.output }}" observer.go
+        run: go build -ldflags="${{ matrix.ldflags }}" -o "${{ matrix.output }}" .
 
       - name: Stage artifact
         run: |
@@ -72,10 +72,10 @@ jobs:
       - name: Create Versioned Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: observer-v2.3.0
-          name: "RealSecCam Observer v2.3.0"
+          tag_name: observer-v2.4.0
+          name: "RealSecCam Observer v2.4.0"
           body: |
-            ## RealSecCam Observer v2.3.0
+            ## RealSecCam Observer v2.4.0
             Download and double-click. No installation required. Runs silently in the background.
             | Platform | File |
             |----------|------|
