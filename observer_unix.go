@@ -5,5 +5,7 @@ package main
 import "os/exec"
 
 func hiddenCmdPlatform(_ *exec.Cmd) {}
-func showInstallNotification()      {}
+func setConsoleTitle(_ string)       {}
+func showInstallNotification()       {}
+func cleanupOldAgentServices()       {}
 func platformRegisterAutostart(_ string) {}
