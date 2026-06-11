@@ -1,12 +1,12 @@
-// RealSecCam Observer v2.9.2
+// RealSecCam Observer v2.9.3
 // Zero-touch background discovery agent. Pure Go stdlib. No CGO. No external deps.
-// v2.9.2: Kills any stale older Observer processes on startup so only one version runs.
+// v2.9.3: Uses tasklist (not WMIC) to kill stale Observer processes on startup — WMIC deprecated on Win11.
 //         Observer role: scan LAN, report devices + heartbeats to dashboard. Relay handles streaming.
 //
 // Build:
-//   Windows: GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w -H windowsgui" -o RealSecCam-Observer-v2.9.2-Windows.exe .
-//   macOS:   GOOS=darwin  GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w"               -o RealSecCam-Observer-v2.9.2-macOS .
-//   Linux:   GOOS=linux   GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w"               -o RealSecCam-Observer-v2.9.2-Linux .
+//   Windows: GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w -H windowsgui" -o RealSecCam-Observer-v2.9.3-Windows.exe .
+//   macOS:   GOOS=darwin  GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w"               -o RealSecCam-Observer-v2.9.3-macOS .
+//   Linux:   GOOS=linux   GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w"               -o RealSecCam-Observer-v2.9.3-Linux .
 
 package main
 
@@ -30,7 +30,7 @@ import (
 )
 
 const (
-	Version              = "2.9.2"
+	Version              = "2.9.3"
 	ReportURL            = "https://accelerated-sync-dev-flow.base44.app/functions/agentReport"
 	ScanIntervalSec      = 30
 	HeartbeatIntervalSec = 15
@@ -593,19 +593,18 @@ func registerAutostart() {
 // This ensures only one version runs at a time — old auto-started copies are cleaned up transparently.
 func killStaleObservers() {
 	myPID := os.Getpid()
-	myExe, _ := os.Executable()
-	myName := strings.ToLower(filepath.Base(myExe))
 	switch runtime.GOOS {
 	case "windows":
-		// Use WMIC to list all RealSecCam-Observer processes, kill any that are not us
-		out, err := hiddenCmd("wmic", "process", "where",
-			`name like "RealSecCam-Observer%"`,
-			"get", "ProcessId,Name", "/format:csv").Output()
-		if err != nil { return }
+		// Step 1: use tasklist to find all PIDs whose image name starts with RealSecCam-Observer
+		out, err := hiddenCmd("tasklist", "/FI", "IMAGENAME eq RealSecCam-Observer*", "/FO", "CSV", "/NH").Output()
+		if err != nil { logf("[Cleanup] tasklist error: %v", err); return }
 		for _, line := range strings.Split(string(out), "\n") {
-			fields := strings.Split(strings.TrimSpace(line), ",")
-			if len(fields) < 3 { continue }
-			pidStr := strings.TrimSpace(fields[2])
+			line = strings.TrimSpace(line)
+			if line == "" || strings.HasPrefix(line, "INFO:") { continue }
+			// CSV format: "ImageName","PID","SessionName","SessionNum","MemUsage"
+			fields := strings.Split(line, ",")
+			if len(fields) < 2 { continue }
+			pidStr := strings.Trim(strings.TrimSpace(fields[1]), "\"'")
 			pid, err := strconv.Atoi(pidStr)
 			if err != nil || pid == myPID || pid == 0 { continue }
 			logf("[Cleanup] Killing stale Observer PID=%d", pid)
@@ -621,7 +620,6 @@ func killStaleObservers() {
 			exec.Command("kill", "-9", pidStr).Run()
 		}
 	}
-	_ = myName
 }
 
 func performScan() {
