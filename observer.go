@@ -1,4 +1,4 @@
-// ObserverStreamer v1.1.3
+// ObserverStreamer v1.1.4
 // Single binary: LAN discovery + webcam streaming via FFmpeg → MediaMTX.
 // Pure Go stdlib. No CGO. No external Go deps.
 // Windows: downloads FFmpeg automatically on first run.
@@ -33,7 +33,7 @@ import (
 )
 
 const (
-	Version              = "1.1.3"
+	Version              = "1.1.4"
 	ReportURL            = "https://accelerated-sync-dev-flow.base44.app/functions/agentReport"
 	RelayHost            = "137.184.65.114"
 	RelayRTSPPort        = 8554
@@ -424,8 +424,8 @@ func inferDeviceType(brand string, ports []int) string {
 	for _, pb := range pcBrands {
 		if strings.Contains(b, pb) { return "laptop" }
 	}
-	if brand == "" { return "phone" }
-	return "ip_camera"
+	if brand == "" { return "unknown" }
+	return "unknown"
 }
 
 func sweepSubnetBase(base string, arp map[string]string, ssid string) []DiscoveredDevice {
@@ -947,8 +947,8 @@ func main() {
 	flag.BoolVar(&onceMode, "once", false, "Run a single scan then exit")
 	flag.Parse()
 	setConsoleTitle("RealSecCam ObserverStreamer v" + Version)
-	killStaleObservers()
 	cleanupOldAgentServices()
+	killStaleObservers()
 	time.Sleep(500 * time.Millisecond)
 	initCache()
 	h, _ := os.Hostname()
@@ -957,6 +957,7 @@ func main() {
 	defer removePID()
 	registerAutostart()
 	startKillServer()
+	showInstallNotification()
 	if onceMode { performScan(); return }
 	go runScanner()
 	go runWatchdog()
