@@ -1,10 +1,11 @@
-// RealSecCam Observer v2.2
+// RealSecCam Observer v2.3
 // Zero-touch background discovery agent. Pure Go stdlib. No CGO. No external deps.
+// NO VBScript, NO PowerShell, NO .bat, NO Python, NO wscript, NO reg.exe.
 //
 // Build:
-//   Windows: GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w -H windowsgui" -o RealSecCam-Observer-v2.2-Windows.exe observer.go
-//   macOS:   GOOS=darwin  GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w"               -o RealSecCam-Observer-v2.2-macOS    observer.go
-//   Linux:   GOOS=linux   GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w"               -o RealSecCam-Observer-v2.2-Linux     observer.go
+//   Windows: GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w -H windowsgui" -o RealSecCam-Observer-v2.3-Windows.exe observer.go
+//   macOS:   GOOS=darwin  GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w"               -o RealSecCam-Observer-v2.3-macOS    observer.go
+//   Linux:   GOOS=linux   GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w"               -o RealSecCam-Observer-v2.3-Linux     observer.go
 
 package main
 
@@ -26,10 +27,11 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+	"unsafe"
 )
 
 const (
-	Version              = "2.2.0"
+	Version              = "2.3.0"
 	ReportURL            = "https://accelerated-sync-dev-flow.base44.app/functions/agentReport"
 	ScanIntervalSec      = 30
 	HeartbeatIntervalSec = 15
@@ -258,14 +260,14 @@ func getARPTable() map[string]string {
 	return m
 }
 
+// showInstallNotification shows a native Windows MessageBox via syscall — no VBScript, no wscript.
 func showInstallNotification() {
 	if runtime.GOOS != "windows" { return }
-	vbs := "MsgBox \"RealSecCam Observer v2.2 is running.\" & vbCrLf & vbCrLf & \"Cameras will appear in your dashboard automatically.\", 64, \"RealSecCam\""
-	tmpFile := filepath.Join(os.TempDir(), "realseccam-notify.vbs")
-	if err := os.WriteFile(tmpFile, []byte(vbs), 0644); err != nil { return }
-	cmd := hiddenCmd("wscript.exe", "//nologo", tmpFile)
-	cmd.Start()
-	go func() { time.Sleep(30 * time.Second); os.Remove(tmpFile) }()
+	user32 := syscall.NewLazyDLL("user32.dll")
+	msgBox := user32.NewProc("MessageBoxW")
+	title, _ := syscall.UTF16PtrFromString("RealSecCam Observer")
+	msg, _ := syscall.UTF16PtrFromString("RealSecCam Observer v" + Version + " is now running.\n\nCameras on your network will appear in the dashboard automatically.")
+	msgBox.Call(0, uintptr(unsafe.Pointer(msg)), uintptr(unsafe.Pointer(title)), 0x40)
 }
 
 func getNetworkInterfacesRaw() []NetworkInterface {
@@ -446,14 +448,49 @@ func writeDiag(devices []DiscoveredDevice) {
 	os.WriteFile(filepath.Join(exeDir(), DiagLogFile), data, 0644)
 }
 
+// registrySetString writes a REG_SZ value using only syscall — stdlib only, no external process.
+func registrySetString(root syscall.Handle, keyPath, valueName, data string) error {
+	kp, err := syscall.UTF16PtrFromString(keyPath)
+	if err != nil { return err }
+	var hkey syscall.Handle
+	var disp uint32
+	if err := syscall.RegCreateKeyEx(root, kp, 0, nil, 0, syscall.KEY_SET_VALUE, nil, &hkey, &disp); err != nil { return err }
+	defer syscall.RegCloseKey(hkey)
+	vn, err := syscall.UTF16PtrFromString(valueName)
+	if err != nil { return err }
+	d, err := syscall.UTF16FromString(data)
+	if err != nil { return err }
+	dataBytes := (*[1 << 20]byte)(unsafe.Pointer(&d[0]))[: len(d)*2 : len(d)*2]
+	regSetValueEx := syscall.NewLazyDLL("advapi32.dll").NewProc("RegSetValueExW")
+	r, _, e := regSetValueEx.Call(
+		uintptr(hkey),
+		uintptr(unsafe.Pointer(vn)),
+		0,
+		1, // REG_SZ
+		uintptr(unsafe.Pointer(&dataBytes[0])),
+		uintptr(len(dataBytes)),
+	)
+	if r != 0 { return e }
+	return nil
+}
+
+// registerAutostart — pure Go on all platforms. NO reg.exe, NO PowerShell, NO scripts.
 func registerAutostart() {
 	exePath, err := os.Executable()
 	if err != nil { return }
 	switch runtime.GOOS {
 	case "windows":
-		quotedPath := "\"" + exePath + "\""
-		cmd := hiddenCmd("reg", "add", "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", "/v", "RealSecCamObserver", "/t", "REG_SZ", "/d", quotedPath, "/f")
-		cmd.Run()
+		// Write registry key using only syscall (stdlib) — no reg.exe, no PowerShell, no scripts.
+		if err := registrySetString(
+			syscall.HKEY_CURRENT_USER,
+			"Software\\Microsoft\\Windows\\CurrentVersion\\Run",
+			"RealSecCamObserver",
+			exePath,
+		); err != nil {
+			logf("[Autostart] registry write failed: %v", err)
+		} else {
+			logf("[Autostart] registry key written")
+		}
 	case "darwin":
 		plistPath := filepath.Join(os.Getenv("HOME"), "Library", "LaunchAgents", "com.realseccam.observer.plist")
 		if _, err := os.Stat(plistPath); err == nil { return }
@@ -461,7 +498,7 @@ func registerAutostart() {
 		plist := fmt.Sprintf(plistContent, exePath)
 		os.MkdirAll(filepath.Dir(plistPath), 0755)
 		if os.WriteFile(plistPath, []byte(plist), 0644) == nil {
-			exec.Command("launchctl", "load", "-w", plistPath).Run()
+			hiddenCmd("launchctl", "load", "-w", plistPath).Run()
 		}
 	default:
 		dir := filepath.Join(os.Getenv("HOME"), ".config", "autostart")
