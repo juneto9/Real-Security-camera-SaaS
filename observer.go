@@ -34,7 +34,7 @@ import (
 )
 
 const (
-	Version              = "1.3.4"
+	Version              = "1.3.5"
 	ReportURL            = "https://accelerated-sync-dev-flow.base44.app/functions/agentReport"
 	RelayHost            = "137.184.65.114"
 	RelayRTSPPort        = 8554
@@ -255,19 +255,20 @@ func installDir() string {
 }
 
 // ensureInstalled copies the running binary into the canonical install directory
-// if it is not already running from there. It then re-launches from the install
-// path and exits the current process, so all subsequent work happens from the
-// proper location. Returns true if a re-launch was triggered (caller should exit).
+// if it is not already running from there. Shows the install notification popup
+// HERE in the launcher (before re-launching the background worker) so the popup
+// is guaranteed to fire and stay up until the user clicks OK — regardless of
+// what the re-launched process does.
+// Returns true if a re-launch was triggered (caller should os.Exit(0)).
 func ensureInstalled() bool {
 	targetDir := installDir()
-	// Determine the installed binary name (always versioned so old copies stay alongside)
 	myExe, err := os.Executable()
 	if err != nil { return false }
 	myExeAbs, err := filepath.Abs(myExe)
 	if err != nil { return false }
 	targetExe := filepath.Join(targetDir, filepath.Base(myExeAbs))
 
-	// Already running from install dir — nothing to do
+	// Already running from install dir — background worker, no popup needed
 	if strings.EqualFold(filepath.Dir(myExeAbs), targetDir) { return false }
 
 	// Create install dir
@@ -291,7 +292,16 @@ func ensureInstalled() bool {
 	dst.Close()
 	logf("[Install] Installed to %s", targetExe)
 
-	// Re-launch from install dir
+	// ── SHOW POPUP IN LAUNCHER THREAD ──────────────────────────────────────────
+	// The notification fires here, blocking until the user clicks OK.
+	// This guarantees the popup is always visible because:
+	//   1. We are still the launcher (running from the download folder, not APPDATA)
+	//   2. killStaleObservers() in the re-launched background process will NOT kill
+	//      us — we are about to os.Exit(0) immediately after the user clicks OK.
+	//   3. The mutex hasn't been acquired yet by anyone, so no collision.
+	showInstallNotification()
+
+	// Now launch the background worker silently
 	cmd := exec.Command(targetExe, os.Args[1:]...)
 	hiddenCmdPlatform(cmd)
 	if err := cmd.Start(); err != nil {
@@ -1265,7 +1275,7 @@ func main() {
 
 	setConsoleTitle("RealSecCam ObserverStreamer v" + Version)
 	cleanupOldAgentServices()
-	killStaleObservers()
+	killStaleObservers() // skips our own PID and our own exe name
 	killAllFFmpeg()
 
 	// ── Single-instance mutex: only ONE ObserverStreamer (any version) may run ──
@@ -1299,7 +1309,8 @@ func main() {
 	defer removePID()
 	registerAutostart()
 	startKillServer()
-	showInstallNotification()
+	// NOTE: showInstallNotification() is called in ensureInstalled() (the launcher thread),
+	// not here — so the popup fires before the background worker starts and cannot be killed.
 	if onceMode { performScan(); return }
 	go runScanner()
 	go runWatchdog()
