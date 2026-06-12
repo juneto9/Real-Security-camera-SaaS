@@ -18,6 +18,34 @@ func hiddenCmdPlatform(cmd *exec.Cmd) {
 // setConsoleTitle is a no-op on Windows GUI subsystem builds.
 func setConsoleTitle(_ string) {}
 
+// acquireSingleInstanceMutex creates a named Windows mutex so only ONE
+// ObserverStreamer process (any version) can run at a time.
+// Returns true if this process won the mutex (should continue running).
+// Returns false if another instance already holds it — caller should kill
+// the old instance and retry, or exit.
+//
+// The mutex name is intentionally version-agnostic so ObserverStreamer1.2.5
+// and ObserverStreamer1.3.1 cannot both hold it simultaneously.
+func acquireSingleInstanceMutex() (bool, uintptr) {
+	kernel32 := syscall.NewLazyDLL("kernel32.dll")
+	createMutex := kernel32.NewProc("CreateMutexW")
+
+	name, _ := syscall.UTF16PtrFromString("Global\\RealSecCam.ObserverStreamer")
+	handle, _, err := createMutex.Call(0, 1, uintptr(unsafe.Pointer(name)))
+	if handle == 0 {
+		logf("[SingleInstance] CreateMutex failed: %v", err)
+		return false, 0
+	}
+	// ERROR_ALREADY_EXISTS = 183
+	const ERROR_ALREADY_EXISTS = 183
+	if err.(syscall.Errno) == ERROR_ALREADY_EXISTS {
+		logf("[SingleInstance] Another ObserverStreamer is holding the mutex — killing it")
+		return false, handle
+	}
+	logf("[SingleInstance] Acquired single-instance mutex")
+	return true, handle
+}
+
 // showInstallNotification shows a MessageBox modal dialog the user must click OK to dismiss.
 // This is reliable on all Windows versions including Windows 11 (unlike tray balloons which
 // are suppressed by Focus Assist / notification settings).
