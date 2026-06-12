@@ -1,4 +1,4 @@
-// ObserverStreamer v1.2.4
+// ObserverStreamer v1.2.6
 // Single binary: LAN discovery + webcam streaming via FFmpeg → MediaMTX.
 // Pure Go stdlib. No CGO. No external Go deps.
 // Windows: installs to C:\Program Files\RealSecCam\ObserverStreamer\
@@ -34,9 +34,9 @@ import (
 )
 
 const (
-	Version              = "1.2.5"
+	Version              = "1.2.6"
 	ReportURL            = "https://accelerated-sync-dev-flow.base44.app/functions/agentReport"
-	RelayHost            = "137.184.65.114"
+	RelayHost            = "relay.realsecuritycamera.com"
 	RelayRTSPPort        = 8554
 	ScanIntervalSec      = 30
 	HeartbeatIntervalSec = 15
@@ -230,15 +230,16 @@ func exeDir() string {
 }
 
 // installDir returns the canonical install location for the current OS.
-// Windows: C:\Program Files\RealSecCam\ObserverStreamer
+// Windows: %APPDATA%\RealSecCam\ObserverStreamer  (no admin rights needed)
 // macOS:   /Applications/RealSecCam
 // Linux:   /opt/realseccam
 func installDir() string {
 	switch runtime.GOOS {
 	case "windows":
-		pf := os.Getenv("ProgramFiles")
-		if pf == "" { pf = "C:\\Program Files" }
-		return filepath.Join(pf, "RealSecCam", "ObserverStreamer")
+		// Use APPDATA so no admin rights are needed for installation
+		appData := os.Getenv("APPDATA")
+		if appData == "" { appData = filepath.Join(os.Getenv("USERPROFILE"), "AppData", "Roaming") }
+		return filepath.Join(appData, "RealSecCam", "ObserverStreamer")
 	case "darwin":
 		return "/Applications/RealSecCam"
 	default:
@@ -1051,7 +1052,7 @@ func runStreamer() {
 	rtspURL  := fmt.Sprintf("rtsp://%s:%d/%s", RelayHost, RelayRTSPPort, rtspPath)
 	// Always use HTTPS for HLS — browsers block mixed HTTP content on HTTPS dashboards.
 	// MediaMTX on the relay must have TLS configured on port 8888 (or nginx proxying it).
-	hlsURL   := fmt.Sprintf("https://%s:8888/%s/index.m3u8", RelayHost, rtspPath)
+	hlsURL   := fmt.Sprintf("https://%s/%s/index.m3u8", RelayHost, rtspPath)
 
 	logf("[Streamer] Will push to %s → HLS: %s", rtspURL, hlsURL)
 
