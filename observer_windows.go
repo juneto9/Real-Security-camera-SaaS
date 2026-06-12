@@ -25,8 +25,9 @@ func showInstallNotification() {
 	user32 := syscall.NewLazyDLL("user32.dll")
 	messageBox := user32.NewProc("MessageBoxW")
 
+	installPath := installDir()
 	title, _ := syscall.UTF16PtrFromString("RealSecCam ObserverStreamer v" + Version)
-	text, _   := syscall.UTF16PtrFromString("ObserverStreamer v" + Version + " installed successfully!\n\nRunning silently in the background.\nIt will auto-start on every login.\n\nClick OK to continue.")
+	text, _   := syscall.UTF16PtrFromString("ObserverStreamer v" + Version + " installed successfully!\n\nInstalled to:\n" + installPath + "\n\nRunning silently in the background.\nLogs, FFmpeg, and diagnostics are stored in the install folder.\nAuto-starts on every login.\n\nClick OK to continue.")
 
 	// MB_OK | MB_ICONINFORMATION | MB_SYSTEMMODAL = 0x00000040 | 0x00000040 | 0x00001000
 	const MB_OK             = 0x00000000
