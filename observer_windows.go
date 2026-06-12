@@ -65,6 +65,74 @@ func showInstallNotification() {
 	messageBox.Call(0, uintptr(unsafe.Pointer(text)), uintptr(unsafe.Pointer(title)), MB_OK|MB_ICONINFORMATION)
 }
 
+// killStaleObserversWindows uses OpenProcess+TerminateProcess directly via syscall.
+// This is guaranteed to work — it bypasses taskkill entirely, which can fail silently.
+func killStaleObserversWindows(myPID int) {
+	myExe := strings.ToLower(filepath.Base(os.Args[0]))
+	legacyPrefixes := []string{
+		"observerstreamer",
+		"realseccam-observer",
+		"realseccam-discovery-agent",
+		"realseccam-agent",
+		"realseccamagent",
+		"discovery-agent",
+	}
+
+	kernel32        := syscall.NewLazyDLL("kernel32.dll")
+	openProcess      := kernel32.NewProc("OpenProcess")
+	terminateProcess := kernel32.NewProc("TerminateProcess")
+	closeHandle      := kernel32.NewProc("CloseHandle")
+	const PROCESS_TERMINATE uintptr = 0x0001
+
+	terminateByPID := func(pid int) {
+		handle, _, _ := openProcess.Call(PROCESS_TERMINATE, 0, uintptr(pid))
+		if handle == 0 { return }
+		defer closeHandle.Call(handle)
+		r, _, _ := terminateProcess.Call(handle, 1)
+		logf("[Cleanup] TerminateProcess PID=%d result=%d", pid, r)
+	}
+
+	// Returns true if any matching process was found (still need to kill)
+	killPass := func() bool {
+		out, err := hiddenCmd("tasklist", "/FO", "CSV", "/NH").Output()
+		if err != nil { return false }
+		found := false
+		for _, line := range strings.Split(string(out), "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" { continue }
+			fields := strings.Split(line, ",")
+			if len(fields) < 2 { continue }
+			exeName := strings.ToLower(strings.Trim(strings.TrimSpace(fields[0]), "\""))
+			pidStr  := strings.Trim(strings.TrimSpace(fields[1]), "\"")
+			pid, err := strconv.Atoi(pidStr)
+			if err != nil || pid == myPID || pid == 0 { continue }
+			if exeName == myExe { continue }
+			for _, prefix := range legacyPrefixes {
+				if strings.HasPrefix(exeName, prefix) {
+					logf("[Cleanup] Terminating stale observer PID=%d name=%s", pid, exeName)
+					terminateByPID(pid)
+					// Also taskkill as belt-and-suspenders
+					hiddenCmd("taskkill", "/F", "/PID", pidStr).Run()
+					found = true
+					break
+				}
+			}
+		}
+		return found
+	}
+
+	// Kill pass, then poll until confirmed dead (up to 5 seconds)
+	killPass()
+	for i := 0; i < 10; i++ {
+		time.Sleep(500 * time.Millisecond)
+		if !killPass() {
+			logf("[Cleanup] All stale observers terminated after %dms", (i+1)*500)
+			return
+		}
+	}
+	logf("[Cleanup] Warning: some stale observers may still be running after 5s")
+}
+
 // cleanupOldAgentServices removes legacy "RealSecCam Discovery Agent" Windows services
 // and old autorun registry entries left by previous versions.
 func cleanupOldAgentServices() {
