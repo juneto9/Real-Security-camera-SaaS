@@ -1,13 +1,13 @@
-// ObserverStreamer v1.1.9
+// ObserverStreamer v1.2.0
 // Single binary: LAN discovery + webcam streaming via FFmpeg → MediaMTX.
 // Pure Go stdlib. No CGO. No external Go deps.
 // Windows: downloads FFmpeg automatically on first run.
 // macOS/Linux: uses system ffmpeg (brew/apt).
 //
 // Build:
-//   Windows: GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o ObserverStreamer1.1.9.exe .
-//   macOS:   GOOS=darwin  GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o ObserverStreamer1.1.9-macOS .
-//   Linux:   GOOS=linux   GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o ObserverStreamer1.1.9-Linux .
+//   Windows: GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w -H windowsgui" -o ObserverStreamer1.2.0.exe .
+//   macOS:   GOOS=darwin  GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o ObserverStreamer1.2.0-macOS .
+//   Linux:   GOOS=linux   GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o ObserverStreamer1.2.0-Linux .
 
 package main
 
@@ -33,7 +33,7 @@ import (
 )
 
 const (
-	Version              = "1.1.9"
+	Version              = "1.2.0"
 	ReportURL            = "https://accelerated-sync-dev-flow.base44.app/functions/agentReport"
 	RelayHost            = "137.184.65.114"
 	RelayRTSPPort        = 8554
@@ -189,8 +189,22 @@ var (
 	ffmpegMu     sync.Mutex
 )
 
+// logFile is the rolling log written to disk (no console in -H windowsgui builds).
+var (
+	logFileMu sync.Mutex
+	logFileHandle *os.File
+)
+
+func initLogFile() {
+	f, err := os.OpenFile(filepath.Join(exeDir(), "observer.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	if err == nil { logFileHandle = f }
+}
+
 func logf(format string, args ...interface{}) {
-	fmt.Printf("["+time.Now().Format("15:04:05")+"] "+format+"\n", args...)
+	line := fmt.Sprintf("["+time.Now().Format("15:04:05")+"] "+format+"\n", args...)
+	logFileMu.Lock()
+	if logFileHandle != nil { logFileHandle.WriteString(line) }
+	logFileMu.Unlock()
 }
 
 func hiddenCmd(name string, args ...string) *exec.Cmd {
@@ -531,6 +545,11 @@ func sweepAllInterfaces() []DiscoveredDevice {
 	ssid := getSSID()
 	seen := map[string]bool{}
 	all := []DiscoveredDevice{}
+
+	// Collect our own IPs so we can include ourselves in the report
+	ownIPs := map[string]bool{}
+	for _, iface := range ifaces { ownIPs[iface.IP] = true }
+
 	for _, iface := range ifaces {
 		parts := strings.Split(iface.IP, ".")
 		if len(parts) < 3 { continue }
@@ -540,6 +559,28 @@ func sweepAllInterfaces() []DiscoveredDevice {
 		logf("Sweeping %s.0/24 via %s", base, iface.Name)
 		all = append(all, sweepSubnetBase(base, arp, ssid)...)
 	}
+
+	// Add self — the machine running the observer is always "on the network"
+	// It won't appear in ARP (you can't ARP yourself) so we inject it manually.
+	h, _ := os.Hostname()
+	for _, iface := range ifaces {
+		if iface.IP == "" || iface.MAC == "" { continue }
+		// Skip if already discovered via port scan (unlikely but possible)
+		alreadyFound := false
+		for _, d := range all {
+			if d.IP == iface.IP { alreadyFound = true; break }
+		}
+		if alreadyFound { continue }
+		dt := inferDeviceType(lookupOUI(iface.MAC), []int{})
+		if dt == "unknown" { dt = "laptop" }
+		all = append(all, DiscoveredDevice{
+			IP: iface.IP, MAC: iface.MAC, Port: 0, Ports: []int{},
+			Brand: lookupOUI(iface.MAC), Hostname: h,
+			SSID: ssid, Online: true, DeviceType: dt,
+		})
+		logf("Self: %s mac=%s hostname=%s", iface.IP, iface.MAC, h)
+	}
+
 	return all
 }
 
@@ -1011,6 +1052,7 @@ func main() {
 	flag.BoolVar(&debugMode, "debug", false, "Enable verbose output")
 	flag.BoolVar(&onceMode, "once", false, "Run a single scan then exit")
 	flag.Parse()
+	initLogFile()
 	setConsoleTitle("RealSecCam ObserverStreamer v" + Version)
 	cleanupOldAgentServices()
 	killStaleObservers()
