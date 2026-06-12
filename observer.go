@@ -1,4 +1,4 @@
-// ObserverStreamer v1.2.1
+// ObserverStreamer v1.2.2
 // Single binary: LAN discovery + webcam streaming via FFmpeg → MediaMTX.
 // Pure Go stdlib. No CGO. No external Go deps.
 // Windows: downloads FFmpeg automatically on first run.
@@ -33,7 +33,7 @@ import (
 )
 
 const (
-	Version              = "1.2.1"
+	Version              = "1.2.2"
 	ReportURL            = "https://accelerated-sync-dev-flow.base44.app/functions/agentReport"
 	RelayHost            = "137.184.65.114"
 	RelayRTSPPort        = 8554
@@ -671,20 +671,10 @@ func killStaleObservers() {
 	myPID := os.Getpid()
 	switch runtime.GOOS {
 	case "windows":
-		// tasklist /FI does NOT support wildcards — use exact exe names only.
-		// We read all processes once via "tasklist /FO CSV /NH" and match by prefix in Go.
+		// Read all processes once via "tasklist /FO CSV /NH" and match in Go.
 		out, err := hiddenCmd("tasklist", "/FO", "CSV", "/NH").Output()
 		if err != nil { break }
-		// Legacy name prefixes to kill (exact or prefix match on the exe basename)
-		legacyPrefixes := []string{
-			"realseccam-observer",
-			"realseccam-discovery-agent",
-			"realseccam-agent",
-			"realseccamagent",
-			"discovery-agent",
-			"agent.exe",
-		}
-		// Current binary name — skip it entirely to avoid self-kill
+		// Current binary name — NEVER kill ourselves
 		myExe := strings.ToLower(filepath.Base(os.Args[0]))
 		for _, line := range strings.Split(string(out), "\n") {
 			line = strings.TrimSpace(line)
@@ -695,9 +685,16 @@ func killStaleObservers() {
 			pidStr := strings.Trim(strings.TrimSpace(fields[1]), "\"")
 			pid, err := strconv.Atoi(pidStr)
 			if err != nil || pid == myPID || pid == 0 { continue }
-			// Never kill ourselves
-			if exeName == myExe { continue }
-			// Kill if it matches a known legacy prefix
+			if exeName == myExe { continue } // never self-kill
+			// Kill any ObserverStreamer*.exe that isn't us, plus all legacy names
+			legacyPrefixes := []string{
+				"observerstreamer",         // catches ObserverStreamer1.2.0.exe, 1.1.x, etc.
+				"realseccam-observer",
+				"realseccam-discovery-agent",
+				"realseccam-agent",
+				"realseccamagent",
+				"discovery-agent",
+			}
 			matched := false
 			for _, prefix := range legacyPrefixes {
 				if strings.HasPrefix(exeName, prefix) { matched = true; break }
