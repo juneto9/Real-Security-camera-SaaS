@@ -1,13 +1,13 @@
-// ObserverStreamer v1.1.7
+// ObserverStreamer v1.1.8
 // Single binary: LAN discovery + webcam streaming via FFmpeg → MediaMTX.
 // Pure Go stdlib. No CGO. No external Go deps.
 // Windows: downloads FFmpeg automatically on first run.
 // macOS/Linux: uses system ffmpeg (brew/apt).
 //
 // Build:
-//   Windows: GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o ObserverStreamer1.1.2.exe .
-//   macOS:   GOOS=darwin  GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o ObserverStreamer1.1.2-macOS .
-//   Linux:   GOOS=linux   GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o ObserverStreamer1.1.2-Linux .
+//   Windows: GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o ObserverStreamer1.1.8.exe .
+//   macOS:   GOOS=darwin  GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o ObserverStreamer1.1.8-macOS .
+//   Linux:   GOOS=linux   GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o ObserverStreamer1.1.8-Linux .
 
 package main
 
@@ -33,7 +33,7 @@ import (
 )
 
 const (
-	Version              = "1.1.7"
+	Version              = "1.1.8"
 	ReportURL            = "https://accelerated-sync-dev-flow.base44.app/functions/agentReport"
 	RelayHost            = "137.184.65.114"
 	RelayRTSPPort        = 8554
@@ -619,33 +619,42 @@ func killStaleObservers() {
 	myPID := os.Getpid()
 	switch runtime.GOOS {
 	case "windows":
-		// Kill ALL known legacy agent EXE names + current binary names
-		legacyExes := []string{
-			"RealSecCam-Observer*",
-			"ObserverStreamer*",
-			"RealSecCam-Discovery-Agent*",
-			"realseccam-agent*",
+		// tasklist /FI does NOT support wildcards — use exact exe names only.
+		// We read all processes once via "tasklist /FO CSV /NH" and match by prefix in Go.
+		out, err := hiddenCmd("tasklist", "/FO", "CSV", "/NH").Output()
+		if err != nil { break }
+		// Legacy name prefixes to kill (exact or prefix match on the exe basename)
+		legacyPrefixes := []string{
+			"realseccam-observer",
+			"realseccam-discovery-agent",
+			"realseccam-agent",
+			"realseccamagent",
+			"discovery-agent",
 			"agent.exe",
-			"discovery-agent*",
-			"RealSecCamAgent*",
 		}
-		for _, pattern := range legacyExes {
-			out, err := hiddenCmd("tasklist", "/FI", "IMAGENAME eq "+pattern, "/FO", "CSV", "/NH").Output()
-			if err != nil { continue }
-			for _, line := range strings.Split(string(out), "\n") {
-				line = strings.TrimSpace(line)
-				if line == "" || strings.HasPrefix(line, "INFO:") { continue }
-				fields := strings.Split(line, ",")
-				if len(fields) < 2 { continue }
-				pidStr := strings.Trim(strings.TrimSpace(fields[1]), "\x22\x27")
-				pid, err := strconv.Atoi(pidStr)
-				if err != nil || pid == myPID || pid == 0 { continue }
-				logf("[Cleanup] Killing stale PID=%d name=%s", pid, strings.Trim(strings.TrimSpace(fields[0]), "\x22\x27"))
+		// Current binary name — skip it entirely to avoid self-kill
+		myExe := strings.ToLower(filepath.Base(os.Args[0]))
+		for _, line := range strings.Split(string(out), "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" { continue }
+			fields := strings.Split(line, ",")
+			if len(fields) < 2 { continue }
+			exeName := strings.ToLower(strings.Trim(strings.TrimSpace(fields[0]), "\""))
+			pidStr := strings.Trim(strings.TrimSpace(fields[1]), "\"")
+			pid, err := strconv.Atoi(pidStr)
+			if err != nil || pid == myPID || pid == 0 { continue }
+			// Never kill ourselves
+			if exeName == myExe { continue }
+			// Kill if it matches a known legacy prefix
+			matched := false
+			for _, prefix := range legacyPrefixes {
+				if strings.HasPrefix(exeName, prefix) { matched = true; break }
+			}
+			if matched {
+				logf("[Cleanup] Killing stale PID=%d name=%s", pid, exeName)
 				hiddenCmd("taskkill", "/F", "/PID", pidStr).Run()
 			}
 		}
-		// Also kill by window title for any lingering console windows
-		hiddenCmd("taskkill", "/F", "/FI", "WINDOWTITLE eq RealSecCam*").Run()
 	case "darwin", "linux":
 		for _, pattern := range []string{"RealSecCam-Observer", "ObserverStreamer", "RealSecCam-Discovery", "realseccam-agent"} {
 			out, err := exec.Command("pgrep", "-f", pattern).Output()
