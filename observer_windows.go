@@ -29,16 +29,18 @@ func setConsoleTitle(_ string) {}
 func acquireSingleInstanceMutex() (bool, uintptr) {
 	kernel32 := syscall.NewLazyDLL("kernel32.dll")
 	createMutex := kernel32.NewProc("CreateMutexW")
+	getLastError := kernel32.NewProc("GetLastError")
 
 	name, _ := syscall.UTF16PtrFromString("Global\\RealSecCam.ObserverStreamer")
-	handle, _, err := createMutex.Call(0, 1, uintptr(unsafe.Pointer(name)))
+	handle, _, _ := createMutex.Call(0, 1, uintptr(unsafe.Pointer(name)))
 	if handle == 0 {
-		logf("[SingleInstance] CreateMutex failed: %v", err)
+		logf("[SingleInstance] CreateMutex failed")
 		return false, 0
 	}
-	// ERROR_ALREADY_EXISTS = 183
+	// Check GetLastError directly — avoids unsafe type assertion on nil errno
 	const ERROR_ALREADY_EXISTS = 183
-	if err.(syscall.Errno) == ERROR_ALREADY_EXISTS {
+	lastErr, _, _ := getLastError.Call()
+	if lastErr == ERROR_ALREADY_EXISTS {
 		logf("[SingleInstance] Another ObserverStreamer is holding the mutex — killing it")
 		return false, handle
 	}
