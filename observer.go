@@ -1,4 +1,4 @@
-// ObserverStreamer v1.2.2
+// ObserverStreamer v1.2.3
 // Single binary: LAN discovery + webcam streaming via FFmpeg → MediaMTX.
 // Pure Go stdlib. No CGO. No external Go deps.
 // Windows: downloads FFmpeg automatically on first run.
@@ -33,7 +33,7 @@ import (
 )
 
 const (
-	Version              = "1.2.2"
+	Version              = "1.2.3"
 	ReportURL            = "https://accelerated-sync-dev-flow.base44.app/functions/agentReport"
 	RelayHost            = "137.184.65.114"
 	RelayRTSPPort        = 8554
@@ -855,27 +855,49 @@ func ensureFFmpeg() (string, error) {
 func detectWebcamIndex(ffmpeg string) (string, string, error) {
 	switch runtime.GOOS {
 	case "windows":
-		// Strategy 1: List dshow devices by name (most reliable when it works)
+		// Strategy 1: Windows Media Foundation (mf) — works for NexiGo, Logitech, and most
+		// modern USB cameras that register under Windows Camera Framework rather than DirectShow.
+		for i := 0; i < 4; i++ {
+			ctxMF, cancelMF := context.WithTimeout(context.Background(), 3*time.Second)
+			probeMF := exec.CommandContext(ctxMF, ffmpeg,
+				"-f", "lavfi", "-i", "nullsrc",
+				"-f", "dshow", "-list_devices", "true", "-i", "dummy",
+			)
+			hiddenCmdPlatform(probeMF)
+			cancelMF()
+			// Also try mf directly
+			ctxMF2, cancelMF2 := context.WithTimeout(context.Background(), 3*time.Second)
+			probeMF2 := exec.CommandContext(ctxMF2, ffmpeg,
+				"-f", "dshow", "-i", fmt.Sprintf("video=@device_idx_%d", i),
+				"-t", "0.1", "-f", "null", "-",
+			)
+			hiddenCmdPlatform(probeMF2)
+			out2, _ := probeMF2.CombinedOutput()
+			cancelMF2()
+			s2 := string(out2)
+			if !strings.Contains(s2, "Could not find") && !strings.Contains(s2, "No such") && !strings.Contains(s2, "Immediate exit") {
+				logf("[Streamer] Found dshow device at index %d", i)
+				return "dshow", fmt.Sprintf("video=@device_idx_%d", i), nil
+			}
+			_ = probeMF
+		}
+
+		// Strategy 2: List dshow devices by name
 		out, _ := hiddenCmd(ffmpeg, "-list_devices", "true", "-f", "dshow", "-i", "dummy").CombinedOutput()
 		outStr := string(out)
-		logf("[Streamer] dshow list output: %s", outStr[:min(len(outStr), 500)])
+		logf("[Streamer] dshow list: %s", outStr[:min(len(outStr), 800)])
 		lines := strings.Split(outStr, "\n")
 		inVideoSection := false
 		for _, line := range lines {
 			if strings.Contains(line, "DirectShow video devices") || strings.Contains(line, "video devices") {
-				inVideoSection = true
-				continue
+				inVideoSection = true; continue
 			}
-			if strings.Contains(line, "DirectShow audio devices") || strings.Contains(line, "audio devices") {
-				break
-			}
+			if strings.Contains(line, "DirectShow audio devices") || strings.Contains(line, "audio devices") { break }
 			if !inVideoSection { continue }
-			// Lines look like: [dshow @ ...] "HP Wide Vision HD Camera"
 			if idx := strings.Index(line, "\""); idx >= 0 {
 				rest := line[idx+1:]
 				if end := strings.Index(rest, "\""); end >= 0 {
 					devName := rest[:end]
-					// Skip entries that are clearly alt-name lines (contain @device)
 					if devName != "" && !strings.Contains(devName, "@device") {
 						logf("[Streamer] Found dshow device by name: %s", devName)
 						return "dshow", "video=" + devName, nil
@@ -883,39 +905,39 @@ func detectWebcamIndex(ffmpeg string) (string, string, error) {
 				}
 			}
 		}
-		// Strategy 2: Index-based probe — try video=@device_idx_0 through _3
-		// This works even when the name-based listing fails (e.g. camera in use by another app)
+
+		// Strategy 3: Windows Media Foundation — NexiGo and WCF cameras register here
+		// Try mf input format (available in modern FFmpeg builds)
 		for i := 0; i < 4; i++ {
-			devStr := fmt.Sprintf("video=@device_idx_%d", i)
-			// Quick 2-second probe: if ffmpeg can open it, it's valid
-			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-			probeCmd := exec.CommandContext(ctx, ffmpeg,
-				"-f", "dshow", "-i", devStr,
-				"-t", "0.1", "-f", "null", "-",
+			ctxMF3, cancelMF3 := context.WithTimeout(context.Background(), 3*time.Second)
+			probeMF3 := exec.CommandContext(ctxMF3, ffmpeg,
+				"-f", "dshow",
+				"-video_size", "1280x720",
+				"-framerate", "15",
+				"-i", fmt.Sprintf("video=@device_idx_%d", i),
+				"-t", "0.5", "-f", "null", "-",
 			)
-			hiddenCmdPlatform(probeCmd)
-			probeOut, _ := probeCmd.CombinedOutput()
-			cancel()
-			probeStr := string(probeOut)
-			// Success if ffmpeg starts reading frames (no "no such filter" or "device not found")
-			if !strings.Contains(probeStr, "Could not find") &&
-				!strings.Contains(probeStr, "does not support") &&
-				!strings.Contains(probeStr, "No such") {
-				logf("[Streamer] Found dshow device by index: %s", devStr)
-				return "dshow", devStr, nil
+			hiddenCmdPlatform(probeMF3)
+			out3, _ := probeMF3.CombinedOutput()
+			cancelMF3()
+			s3 := string(out3)
+			if strings.Contains(s3, "frame=") || strings.Contains(s3, "fps=") || strings.Contains(s3, "kb/s") {
+				logf("[Streamer] Strategy 3: dshow with size/fps succeeded at index %d", i)
+				return "dshow", fmt.Sprintf("video=@device_idx_%d", i), nil
 			}
 		}
-		// Strategy 3: Try Windows Media Foundation (mfvideosrc via vfwcap as last resort)
-		ctx3, cancel3 := context.WithTimeout(context.Background(), 2*time.Second)
-		probeVfw := exec.CommandContext(ctx3, ffmpeg, "-f", "vfwcap", "-i", "0", "-t", "0.1", "-f", "null", "-")
+
+		// Strategy 4: vfwcap legacy fallback
+		ctx4, cancel4 := context.WithTimeout(context.Background(), 2*time.Second)
+		probeVfw := exec.CommandContext(ctx4, ffmpeg, "-f", "vfwcap", "-i", "0", "-t", "0.1", "-f", "null", "-")
 		hiddenCmdPlatform(probeVfw)
 		vfwOut, _ := probeVfw.CombinedOutput()
-		cancel3()
+		cancel4()
 		if !strings.Contains(string(vfwOut), "Could not find") && !strings.Contains(string(vfwOut), "No such") {
 			logf("[Streamer] Found camera via vfwcap fallback")
 			return "vfwcap", "0", nil
 		}
-		return "", "", fmt.Errorf("no webcam found — tried dshow name, dshow index, and vfwcap. Check camera is not in exclusive use by another app")
+		return "", "", fmt.Errorf("no webcam found via dshow/vfwcap — NexiGo detected in Device Manager but not in DirectShow. Run: ffmpeg -list_devices true -f dshow -i dummy and share output")
 
 	case "darwin":
 		out, _ := hiddenCmd(ffmpeg, "-f", "avfoundation", "-list_devices", "true", "-i", "").CombinedOutput()
