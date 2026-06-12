@@ -34,7 +34,7 @@ import (
 )
 
 const (
-	Version              = "1.2.9"
+	Version              = "1.3.0"
 	ReportURL            = "https://accelerated-sync-dev-flow.base44.app/functions/agentReport"
 	RelayHost            = "137.184.65.114"
 	RelayRTSPPort        = 8554
@@ -201,6 +201,9 @@ var (
 	// starting a new one and avoid the pile-up seen in Task Manager.
 	activeFFmpegMu sync.Mutex
 	activeFFmpeg   *os.Process
+	// ffmpegProbeMu serialises all FFmpeg probe/diag calls so they never overlap
+	// with each other or with the live stream process.
+	ffmpegProbeMu sync.Mutex
 )
 
 // logFile is the rolling log written to disk (no console in -H windowsgui builds).
@@ -943,7 +946,10 @@ func ensureFFmpeg() (string, error) {
 // On Windows: tries name-based dshow listing first, then falls back to index probing.
 // On macOS we use avfoundation device list.
 // On Linux we check /dev/video* devices.
+// Serialised by ffmpegProbeMu so probes never overlap with the live stream.
 func detectWebcamIndex(ffmpeg string) (string, string, error) {
+	ffmpegProbeMu.Lock()
+	defer ffmpegProbeMu.Unlock()
 	switch runtime.GOOS {
 	case "windows":
 		// Strategy 1: Windows Media Foundation (mf) — works for NexiGo, Logitech, and most
@@ -1056,7 +1062,10 @@ func detectWebcamIndex(ffmpeg string) (string, string, error) {
 
 // sendWebcamDiag posts the raw FFmpeg device list (or an error) to the dashboard
 // so operators can see what the streamer sees — without needing shell access.
+// Serialised by ffmpegProbeMu so it never overlaps with detectWebcamIndex or the live stream.
 func sendWebcamDiag(ffmpeg string, diagErr string) {
+	ffmpegProbeMu.Lock()
+	defer ffmpegProbeMu.Unlock()
 	h, _ := os.Hostname()
 	var devicesRaw string
 	if ffmpeg != "" && diagErr == "" {
@@ -1208,7 +1217,8 @@ func runStreamer() {
 			logf("[Streamer] RTSP port %d reachable on %s ✓", RelayRTSPPort, RelayHost)
 		}
 
-		// Kill any previously tracked FFmpeg before starting a new one
+		// Kill any previously tracked FFmpeg before starting a new one,
+		// then nuke any remaining ffmpeg.exe orphans (probes, diag calls, etc.)
 		activeFFmpegMu.Lock()
 		if activeFFmpeg != nil {
 			logf("[Streamer] Killing previous FFmpeg PID=%d before restart", activeFFmpeg.Pid)
@@ -1216,6 +1226,7 @@ func runStreamer() {
 			activeFFmpeg = nil
 		}
 		activeFFmpegMu.Unlock()
+		killAllFFmpeg() // wipe any probe/diag orphans too
 
 		// Pipe stderr to a buffer so errors appear in observer.log
 		var stderrBuf bytes.Buffer
