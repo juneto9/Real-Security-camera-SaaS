@@ -1030,6 +1030,32 @@ func detectWebcamIndex(ffmpeg string) (string, string, error) {
 	}
 }
 
+// sendWebcamDiag posts the raw FFmpeg device list (or an error) to the dashboard
+// so operators can see what the streamer sees — without needing shell access.
+func sendWebcamDiag(ffmpeg string, diagErr string) {
+	h, _ := os.Hostname()
+	var devicesRaw string
+	if ffmpeg != "" && diagErr == "" {
+		out, _ := hiddenCmd(ffmpeg, "-list_devices", "true", "-f", "dshow", "-i", "dummy").CombinedOutput()
+		devicesRaw = string(out)
+	}
+	type WebcamDiagPayload struct {
+		Type string         `json:"type"`
+		Data map[string]string `json:"data"`
+	}
+	postJSON(WebcamDiagPayload{
+		Type: "webcam_diag",
+		Data: map[string]string{
+			"host":        h,
+			"version":     Version,
+			"devices_raw": devicesRaw,
+			"error":       diagErr,
+			"stage":       "startup",
+		},
+	})
+	logf("[Streamer] Sent webcam diag to dashboard (error=%s devicesLen=%d)", diagErr, len(devicesRaw))
+}
+
 // streamWebcam captures the local webcam and pushes to MediaMTX via RTSP.
 // Restarts FFmpeg automatically on crash. Reports HLS URL to dashboard.
 func runStreamer() {
@@ -1042,9 +1068,12 @@ func runStreamer() {
 	ffmpeg, err := ensureFFmpeg()
 	if err != nil {
 		logf("[Streamer] FFmpeg unavailable: %v — running in discovery-only mode", err)
+		sendWebcamDiag("", "FFmpeg not found: "+err.Error())
 		// Don't crash the process — discovery keeps running fine without webcam streaming
 		return
 	}
+	// Send device list to dashboard so operators can see what FFmpeg sees
+	sendWebcamDiag(ffmpeg, "")
 
 	h, _ := os.Hostname()
 	// Use machine hostname as the RTSP path so each machine gets a unique stream
@@ -1083,6 +1112,7 @@ func runStreamer() {
 		inputFormat, inputDevice, err := detectWebcamIndex(ffmpeg)
 		if err != nil {
 			reportError("webcam_detect", err.Error())
+			sendWebcamDiag(ffmpeg, "No webcam found: "+err.Error())
 			time.Sleep(30 * time.Second)
 			continue
 		}
