@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os/exec"
 	"syscall"
+	"time"
 	"unsafe"
 )
 
@@ -26,28 +27,14 @@ func setConsoleTitle(title string) {
 	}
 }
 
-// showInstallNotification shows the "RealSecCam is now running — click OK" dialog,
-// then hides the console window so the process runs silently in the background.
+// showInstallNotification hides the console window after a brief visible startup log.
+// No dialog box — the console shows startup info for 2 seconds then disappears silently.
 func showInstallNotification() {
-	user32   := syscall.NewLazyDLL("user32.dll")
+	time.Sleep(2 * time.Second)
 	kernel32 := syscall.NewLazyDLL("kernel32.dll")
-	msgBox       := user32.NewProc("MessageBoxW")
+	user32   := syscall.NewLazyDLL("user32.dll")
 	getConsoleWnd := kernel32.NewProc("GetConsoleWindow")
-	showWindow   := user32.NewProc("ShowWindow")
-
-	title, _ := syscall.UTF16PtrFromString("✅ RealSecCam ObserverStreamer v" + Version)
-	msg, _   := syscall.UTF16PtrFromString(
-		"✅ RealSecCam ObserverStreamer v" + Version + " is now running!\n\n" +
-		"• Discovering cameras on your network\n" +
-		"• Streaming your webcam to the dashboard\n" +
-		"• Starting automatically on login\n\n" +
-		"Click OK — the app will run silently in the background.\n" +
-		"You can see it in Task Manager under RealSecCam.",
-	)
-	// Show the dialog — blocks until user clicks OK
-	msgBox.Call(0, uintptr(unsafe.Pointer(msg)), uintptr(unsafe.Pointer(title)), 0x40)
-
-	// After OK is clicked, hide the console window so it runs silently
+	showWindow    := user32.NewProc("ShowWindow")
 	hwnd, _, _ := getConsoleWnd.Call()
 	if hwnd != 0 {
 		const SW_HIDE = 0
@@ -78,7 +65,11 @@ func cleanupOldAgentServices() {
 	r3, _, _ := regOpenKeyEx.Call(HKCU, uintptr(unsafe.Pointer(kp2)), 0, KEY_SET_VALUE, uintptr(unsafe.Pointer(&hkey2)))
 	if r3 == 0 {
 		defer regCloseKey2.Call(hkey2)
-		for _, name := range []string{"RealSecCamDiscoveryAgent", "RealSecCam-DiscoveryAgent"} {
+		for _, name := range []string{
+			"RealSecCamDiscoveryAgent", "RealSecCam-DiscoveryAgent",
+			"RealSecCamObserverStreamer", "RealSecCam-ObserverStreamer",
+			"RealSecCamAgent", "RealSecCam-Agent",
+		} {
 			vn, _ := syscall.UTF16PtrFromString(name)
 			regDeleteValue.Call(hkey2, uintptr(unsafe.Pointer(vn)))
 		}
