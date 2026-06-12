@@ -34,7 +34,7 @@ import (
 )
 
 const (
-	Version              = "1.3.3"
+	Version              = "1.3.4"
 	ReportURL            = "https://accelerated-sync-dev-flow.base44.app/functions/agentReport"
 	RelayHost            = "137.184.65.114"
 	RelayRTSPPort        = 8554
@@ -765,79 +765,7 @@ func killStaleObservers() {
 	myPID := os.Getpid()
 	switch runtime.GOOS {
 	case "windows":
-		// Step 1: Kill by IMAGE NAME pattern — works even without knowing PIDs.
-		// This is the most reliable method: taskkill /IM ObserverStreamer* /F
-		// We do this FIRST before the per-PID loop.
-		myExeBase := filepath.Base(os.Args[0])
-		legacyImages := []string{
-			"ObserverStreamer*.exe",
-			"RealSecCam-Observer*.exe",
-			"discovery-agent*.exe",
-			"realseccam-agent*.exe",
-			"realseccamagent*.exe",
-		}
-		for _, img := range legacyImages {
-			// /IM supports wildcards on Windows. /F = force. /FI filters out our own PID.
-			out, _ := hiddenCmd("taskkill", "/F", "/IM", img,
-				"/FI", fmt.Sprintf("PID ne %d", myPID)).CombinedOutput()
-			if s := strings.TrimSpace(string(out)); s != "" && !strings.Contains(strings.ToLower(s), "not found") {
-				logf("[Cleanup] taskkill /IM %s: %s", img, s)
-			}
-		}
-		_ = myExeBase
-
-		// Step 2: Per-PID sweep as belt-and-suspenders
-		out, err := hiddenCmd("tasklist", "/FO", "CSV", "/NH").Output()
-		if err != nil { break }
-		myExe := strings.ToLower(filepath.Base(os.Args[0]))
-		for _, line := range strings.Split(string(out), "\n") {
-			line = strings.TrimSpace(line)
-			if line == "" { continue }
-			fields := strings.Split(line, ",")
-			if len(fields) < 2 { continue }
-			exeName := strings.ToLower(strings.Trim(strings.TrimSpace(fields[0]), "\""))
-			pidStr := strings.Trim(strings.TrimSpace(fields[1]), "\"")
-			pid, err := strconv.Atoi(pidStr)
-			if err != nil || pid == myPID || pid == 0 { continue }
-			if exeName == myExe { continue } // never self-kill
-			legacyPrefixes := []string{
-				"observerstreamer",
-				"realseccam-observer",
-				"realseccam-discovery-agent",
-				"realseccam-agent",
-				"realseccamagent",
-				"discovery-agent",
-			}
-			for _, prefix := range legacyPrefixes {
-				if strings.HasPrefix(exeName, prefix) {
-					logf("[Cleanup] Killing stale PID=%d name=%s", pid, exeName)
-					hiddenCmd("taskkill", "/F", "/PID", pidStr).Run()
-					break
-				}
-			}
-		}
-
-		// Step 3: Wait up to 3s for all stale observers to actually die
-		for wait := 0; wait < 6; wait++ {
-			time.Sleep(500 * time.Millisecond)
-			stillRunning := false
-			checkOut, _ := hiddenCmd("tasklist", "/FO", "CSV", "/NH").Output()
-			for _, line := range strings.Split(string(checkOut), "\n") {
-				fields := strings.Split(strings.TrimSpace(line), ",")
-				if len(fields) < 2 { continue }
-				exeName := strings.ToLower(strings.Trim(strings.TrimSpace(fields[0]), "\""))
-				pidStr := strings.Trim(strings.TrimSpace(fields[1]), "\"")
-				pid, _ := strconv.Atoi(pidStr)
-				if pid == myPID { continue }
-				if strings.HasPrefix(exeName, "observerstreamer") && exeName != strings.ToLower(myExe) {
-					stillRunning = true
-					logf("[Cleanup] Still alive PID=%d name=%s — force killing", pid, exeName)
-					hiddenCmd("taskkill", "/F", "/PID", pidStr).Run()
-				}
-			}
-			if !stillRunning { break }
-		}
-
+		killStaleObserversWindows(myPID)
 	case "darwin", "linux":
 		for _, pattern := range []string{"RealSecCam-Observer", "ObserverStreamer", "RealSecCam-Discovery", "realseccam-agent"} {
 			out, err := exec.Command("pgrep", "-f", pattern).Output()
