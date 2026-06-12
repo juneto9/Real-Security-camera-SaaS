@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os/exec"
 	"syscall"
-	"time"
 	"unsafe"
 )
 
@@ -19,72 +18,20 @@ func hiddenCmdPlatform(cmd *exec.Cmd) {
 // setConsoleTitle is a no-op on Windows GUI subsystem builds.
 func setConsoleTitle(_ string) {}
 
-// showInstallNotification shows a Windows system tray balloon tooltip.
-// Because we build with -H windowsgui there is NO console window ever —
-// this balloon is the only UI the user sees on first run.
+// showInstallNotification shows a MessageBox modal dialog the user must click OK to dismiss.
+// This is reliable on all Windows versions including Windows 11 (unlike tray balloons which
+// are suppressed by Focus Assist / notification settings).
 func showInstallNotification() {
-	// We use Shell_NotifyIconW to pop a balloon from the system tray area.
-	// This is a native Win32 call — no dependencies, no console needed.
-	shell32 := syscall.NewLazyDLL("shell32.dll")
-	user32  := syscall.NewLazyDLL("user32.dll")
-	shellNotifyIcon := shell32.NewProc("Shell_NotifyIconW")
-	loadIcon        := user32.NewProc("LoadIconW")
+	user32 := syscall.NewLazyDLL("user32.dll")
+	messageBox := user32.NewProc("MessageBoxW")
 
-	// NIM_ADD=0, NIM_MODIFY=1, NIM_DELETE=2
-	// NIIF_INFO=1 (blue info balloon)
-	const (
-		NIM_ADD    = 0
-		NIM_MODIFY = 1
-		NIM_DELETE = 2
-		NIF_MESSAGE  = 0x1
-		NIF_ICON     = 0x2
-		NIF_TIP      = 0x4
-		NIF_INFO     = 0x10
-		NIIF_INFO    = 0x1
-		WM_APP       = 0x8000
-	)
+	title, _ := syscall.UTF16PtrFromString("RealSecCam ObserverStreamer v" + Version)
+	text, _   := syscall.UTF16PtrFromString("ObserverStreamer v" + Version + " installed successfully!\n\nRunning silently in the background.\nIt will auto-start on every login.\n\nClick OK to continue.")
 
-	// NOTIFYICONDATA structure (trimmed to what we need — uID=1, minimal fields)
-	// We use a fixed-size struct that matches the Win32 layout for unicode.
-	type NOTIFYICONDATA struct {
-		cbSize           uint32
-		hWnd             uintptr
-		uID              uint32
-		uFlags           uint32
-		uCallbackMessage uint32
-		hIcon            uintptr
-		szTip           [128]uint16
-		dwState         uint32
-		dwStateMask     uint32
-		szInfo          [256]uint16
-		uVersion        uint32
-		szInfoTitle     [64]uint16
-		dwInfoFlags     uint32
-	}
-
-	// Load default application icon (IDI_APPLICATION = 32512)
-	hIcon, _, _ := loadIcon.Call(0, 32512)
-
-	nid := NOTIFYICONDATA{}
-	nid.cbSize = uint32(unsafe.Sizeof(nid))
-	nid.uID    = 1
-	nid.uFlags = NIF_ICON | NIF_TIP | NIF_INFO
-	nid.hIcon  = hIcon
-
-	copyWStr := func(dst []uint16, s string) {
-		p, _ := syscall.UTF16FromString(s)
-		copy(dst, p)
-	}
-	copyWStr(nid.szTip[:],       "RealSecCam ObserverStreamer")
-	copyWStr(nid.szInfo[:],      "ObserverStreamer installed successfully. Running silently in the background.")
-	copyWStr(nid.szInfoTitle[:], "RealSecCam")
-	nid.dwInfoFlags = NIIF_INFO
-
-	shellNotifyIcon.Call(NIM_ADD, uintptr(unsafe.Pointer(&nid)))
-
-	// Keep the icon alive long enough for the balloon to display (~5s), then remove
-	time.Sleep(6 * time.Second)
-	shellNotifyIcon.Call(NIM_DELETE, uintptr(unsafe.Pointer(&nid)))
+	// MB_OK | MB_ICONINFORMATION | MB_SYSTEMMODAL = 0x00000040 | 0x00000040 | 0x00001000
+	const MB_OK             = 0x00000000
+	const MB_ICONINFORMATION = 0x00000040
+	messageBox.Call(0, uintptr(unsafe.Pointer(text)), uintptr(unsafe.Pointer(title)), MB_OK|MB_ICONINFORMATION)
 }
 
 // cleanupOldAgentServices removes legacy "RealSecCam Discovery Agent" Windows services
