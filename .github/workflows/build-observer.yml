@@ -1,5 +1,5 @@
 name: Build & Release ObserverStreamer
-run-name: "RealSecCam ObserverStreamer v1.3.2 — ${{ github.event_name }}"
+run-name: "RealSecCam ObserverStreamer v1.3.3 — ${{ github.event_name }}"
 
 on:
   push:
@@ -23,17 +23,17 @@ jobs:
           - os: ubuntu-latest
             goos: linux
             goarch: amd64
-            output: ObserverStreamer1.3.2-Linux
+            output: ObserverStreamer1.3.3-Linux
             ldflags: '-s -w'
           - os: ubuntu-latest
             goos: windows
             goarch: amd64
-            output: ObserverStreamer1.3.2.exe
+            output: ObserverStreamer1.3.3.exe
             ldflags: '-s -w -H windowsgui'
           - os: macos-latest
             goos: darwin
             goarch: amd64
-            output: ObserverStreamer1.3.2-macOS
+            output: ObserverStreamer1.3.3-macOS
             ldflags: "-s -w"
 
     runs-on: ${{ matrix.os }}
@@ -75,17 +75,17 @@ jobs:
       - name: Create Versioned Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: observer-v1.3.2
-          name: "RealSecCam ObserverStreamer v1.3.2"
+          tag_name: observer-v1.3.3
+          name: "RealSecCam ObserverStreamer v1.3.3"
           body: |
-            ## RealSecCam ObserverStreamer v1.3.2
+            ## RealSecCam ObserverStreamer v1.3.3
             Single binary. Double-click and done. No installation, no dependencies.
             Runs silently in the background — discovers cameras on your network AND streams your webcam to the dashboard.
             | Platform | File |
             |----------|------|
-            | **Windows** | ObserverStreamer1.3.2.exe |
-            | **macOS** | ObserverStreamer1.3.2-macOS |
-            | **Linux** | ObserverStreamer1.3.2-Linux |
+            | **Windows** | ObserverStreamer1.3.3.exe |
+            | **macOS** | ObserverStreamer1.3.3-macOS |
+            | **Linux** | ObserverStreamer1.3.3-Linux |
           files: dist/*
           make_latest: true
         env:
