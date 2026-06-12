@@ -73,6 +73,8 @@ func showInstallNotification() {
 // killStaleObserversWindows uses OpenProcess+TerminateProcess directly via syscall.
 // This is guaranteed to work — it bypasses taskkill entirely, which can fail silently.
 func killStaleObserversWindows(myPID int) {
+	// myExe is the EXACT filename of this running binary (e.g. "observerstreamer1.3.4.exe").
+	// We must never kill a process with this exact name — only older/different versions.
 	myExe := strings.ToLower(filepath.Base(os.Args[0]))
 	legacyPrefixes := []string{
 		"observerstreamer",
