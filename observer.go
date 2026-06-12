@@ -34,7 +34,7 @@ import (
 )
 
 const (
-	Version              = "1.3.0"
+	Version              = "1.3.1"
 	ReportURL            = "https://accelerated-sync-dev-flow.base44.app/functions/agentReport"
 	RelayHost            = "137.184.65.114"
 	RelayRTSPPort        = 8554
@@ -1299,7 +1299,31 @@ func main() {
 	cleanupOldAgentServices()
 	killStaleObservers()
 	killAllFFmpeg()
-	time.Sleep(500 * time.Millisecond)
+
+	// ── Single-instance mutex: only ONE ObserverStreamer (any version) may run ──
+	// Retry up to 5 times — gives killStaleObservers time to reap the old process.
+	var mutexAcquired bool
+	for attempt := 0; attempt < 5; attempt++ {
+		var mutexHandle uintptr
+		mutexAcquired, mutexHandle = acquireSingleInstanceMutex()
+		if mutexAcquired {
+			_ = mutexHandle // held for process lifetime — never close it
+			break
+		}
+		// Mutex already held by another version — kill it and retry
+		logf("[SingleInstance] Attempt %d: killing old instance and retrying in 1s", attempt+1)
+		killStaleObservers()
+		killAllFFmpeg()
+		time.Sleep(1 * time.Second)
+	}
+	if !mutexAcquired {
+		logf("[SingleInstance] Could not acquire mutex after 5 attempts — forcing kill and continuing anyway")
+		killStaleObservers()
+		killAllFFmpeg()
+		time.Sleep(500 * time.Millisecond)
+	}
+
+	time.Sleep(200 * time.Millisecond)
 	initCache()
 	h, _ := os.Hostname()
 	logf("RealSecCam ObserverStreamer v%s  host=%s  ip=%s  ssid=%s", Version, h, getLocalIP(), getSSID())
