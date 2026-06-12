@@ -6,9 +6,9 @@
 // Linux:   installs to /opt/realseccam/
 //
 // Build:
-//   Windows: GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w -H windowsgui" -o ObserverStreamer1.2.4.exe .
-//   macOS:   GOOS=darwin  GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o ObserverStreamer1.2.4-macOS .
-//   Linux:   GOOS=linux   GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o ObserverStreamer1.2.4-Linux .
+//   Windows: GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w -H windowsgui" -o ObserverStreamer1.2.7.exe .
+//   macOS:   GOOS=darwin  GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o ObserverStreamer1.2.7-macOS .
+//   Linux:   GOOS=linux   GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o ObserverStreamer1.2.7-Linux .
 
 package main
 
@@ -34,7 +34,7 @@ import (
 )
 
 const (
-	Version              = "1.2.6"
+	Version              = "1.2.7"
 	ReportURL            = "https://accelerated-sync-dev-flow.base44.app/functions/agentReport"
 	RelayHost            = "137.184.65.114"
 	RelayRTSPPort        = 8554
