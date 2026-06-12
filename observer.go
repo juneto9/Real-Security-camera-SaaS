@@ -1,4 +1,4 @@
-// ObserverStreamer v1.1.6
+// ObserverStreamer v1.1.7
 // Single binary: LAN discovery + webcam streaming via FFmpeg → MediaMTX.
 // Pure Go stdlib. No CGO. No external Go deps.
 // Windows: downloads FFmpeg automatically on first run.
@@ -33,7 +33,7 @@ import (
 )
 
 const (
-	Version              = "1.1.6"
+	Version              = "1.1.7"
 	ReportURL            = "https://accelerated-sync-dev-flow.base44.app/functions/agentReport"
 	RelayHost            = "137.184.65.114"
 	RelayRTSPPort        = 8554
@@ -184,7 +184,7 @@ var (
 	cachedSSID   string
 	cachedIP     string
 	cachedSubnet string
-	cacheMu      sync.Once
+	cacheMu      sync.RWMutex
 	ffmpegPath   string
 	ffmpegMu     sync.Mutex
 )
@@ -206,20 +206,20 @@ func exeDir() string {
 }
 
 func initCache() {
-	cacheMu.Do(func() {
-		ifaces := getNetworkInterfacesRaw()
-		if len(ifaces) > 0 {
-			cachedIP = ifaces[0].IP
-			cachedSubnet = ifaces[0].Subnet
-		}
-		cachedSSID = detectSSID()
-		logf("Cache: ip=%s subnet=%s ssid=%s", cachedIP, cachedSubnet, cachedSSID)
-	})
+	cacheMu.Lock()
+	defer cacheMu.Unlock()
+	ifaces := getNetworkInterfacesRaw()
+	if len(ifaces) > 0 {
+		cachedIP = ifaces[0].IP
+		cachedSubnet = ifaces[0].Subnet
+	}
+	cachedSSID = detectSSID()
+	logf("Cache: ip=%s subnet=%s ssid=%s", cachedIP, cachedSubnet, cachedSSID)
 }
 
-func getLocalIP() string     { return cachedIP }
-func getLocalSubnet() string { return cachedSubnet }
-func getSSID() string        { return cachedSSID }
+func getLocalIP() string     { cacheMu.RLock(); defer cacheMu.RUnlock(); return cachedIP }
+func getLocalSubnet() string { cacheMu.RLock(); defer cacheMu.RUnlock(); return cachedSubnet }
+func getSSID() string        { cacheMu.RLock(); defer cacheMu.RUnlock(); return cachedSSID }
 
 func getLocalMAC() string {
 	ifaces := getNetworkInterfacesRaw()
@@ -261,16 +261,42 @@ func startKillServer() {
 func detectSSID() string {
 	switch runtime.GOOS {
 	case "windows":
+		// Try WiFi first
 		out, err := hiddenCmd("netsh", "wlan", "show", "interfaces").Output()
-		if err != nil { return "(wired)" }
-		for _, line := range strings.Split(string(out), "\n") {
-			t := strings.TrimSpace(line)
-			if strings.HasPrefix(t, "SSID") && !strings.HasPrefix(t, "BSSID") {
-				if parts := strings.SplitN(t, ":", 2); len(parts) == 2 {
-					return strings.TrimSpace(parts[1])
+		if err == nil {
+			var ifaceName, ssid string
+			for _, line := range strings.Split(string(out), "\n") {
+				t := strings.TrimSpace(line)
+				if strings.HasPrefix(t, "Name") {
+					if parts := strings.SplitN(t, ":", 2); len(parts) == 2 {
+						ifaceName = strings.TrimSpace(parts[1])
+					}
+				}
+				if strings.HasPrefix(t, "SSID") && !strings.HasPrefix(t, "BSSID") {
+					if parts := strings.SplitN(t, ":", 2); len(parts) == 2 {
+						ssid = strings.TrimSpace(parts[1])
+					}
+				}
+				_ = ifaceName
+			}
+			if ssid != "" { return ssid }
+		}
+		// Wired: find active Ethernet adapter name
+		out2, err2 := hiddenCmd("netsh", "interface", "show", "interface").Output()
+		if err2 == nil {
+			for _, line := range strings.Split(string(out2), "\n") {
+				fields := strings.Fields(line)
+				// Format: AdminState  State  Type  Interface Name
+				if len(fields) >= 4 && strings.EqualFold(fields[0], "Enabled") && strings.EqualFold(fields[1], "Connected") {
+					ifName := strings.Join(fields[3:], " ")
+					ifLower := strings.ToLower(ifName)
+					if strings.Contains(ifLower, "ethernet") || strings.Contains(ifLower, "local area") || strings.Contains(ifLower, "lan") {
+						return "Ethernet (" + ifName + ")"
+					}
 				}
 			}
 		}
+		return "(wired)"
 	case "darwin":
 		out, err := hiddenCmd("/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport", "-I").Output()
 		if err == nil {
@@ -283,6 +309,7 @@ func detectSSID() string {
 				}
 			}
 		}
+		return "(wired)"
 	default:
 		out, err := hiddenCmd("iwgetid", "-r").Output()
 		if err == nil {
@@ -290,8 +317,8 @@ func detectSSID() string {
 		}
 		out, _ = hiddenCmd("sh", "-c", "nmcli -t -f active,ssid dev wifi 2>/dev/null | grep '^yes' | cut -d: -f2").Output()
 		if s := strings.TrimSpace(string(out)); s != "" { return s }
+		return "(wired)"
 	}
-	return "(wired)"
 }
 
 func getARPTable() map[string]string {
@@ -592,7 +619,17 @@ func killStaleObservers() {
 	myPID := os.Getpid()
 	switch runtime.GOOS {
 	case "windows":
-		for _, pattern := range []string{"RealSecCam-Observer*", "ObserverStreamer*"} {
+		// Kill ALL known legacy agent EXE names + current binary names
+		legacyExes := []string{
+			"RealSecCam-Observer*",
+			"ObserverStreamer*",
+			"RealSecCam-Discovery-Agent*",
+			"realseccam-agent*",
+			"agent.exe",
+			"discovery-agent*",
+			"RealSecCamAgent*",
+		}
+		for _, pattern := range legacyExes {
 			out, err := hiddenCmd("tasklist", "/FI", "IMAGENAME eq "+pattern, "/FO", "CSV", "/NH").Output()
 			if err != nil { continue }
 			for _, line := range strings.Split(string(out), "\n") {
@@ -603,12 +640,14 @@ func killStaleObservers() {
 				pidStr := strings.Trim(strings.TrimSpace(fields[1]), "\x22\x27")
 				pid, err := strconv.Atoi(pidStr)
 				if err != nil || pid == myPID || pid == 0 { continue }
-				logf("[Cleanup] Killing stale PID=%d", pid)
+				logf("[Cleanup] Killing stale PID=%d name=%s", pid, strings.Trim(strings.TrimSpace(fields[0]), "\x22\x27"))
 				hiddenCmd("taskkill", "/F", "/PID", pidStr).Run()
 			}
 		}
+		// Also kill by window title for any lingering console windows
+		hiddenCmd("taskkill", "/F", "/FI", "WINDOWTITLE eq RealSecCam*").Run()
 	case "darwin", "linux":
-		for _, pattern := range []string{"RealSecCam-Observer", "ObserverStreamer"} {
+		for _, pattern := range []string{"RealSecCam-Observer", "ObserverStreamer", "RealSecCam-Discovery", "realseccam-agent"} {
 			out, err := exec.Command("pgrep", "-f", pattern).Output()
 			if err != nil { continue }
 			for _, pidStr := range strings.Fields(string(out)) {
@@ -622,6 +661,8 @@ func killStaleObservers() {
 }
 
 func performScan() {
+	// Refresh network info on every scan — SSID can change (wifi roam, cable swap)
+	initCache()
 	logf("Scanning subnet=%s ssid=%s ip=%s", getLocalSubnet(), getSSID(), getLocalIP())
 	var devices []DiscoveredDevice
 	for attempt := 1; attempt <= MaxScanRetries; attempt++ {
