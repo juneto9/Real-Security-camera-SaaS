@@ -11,35 +11,80 @@ import (
 )
 
 // hiddenCmdPlatform hides child process console windows (arp, netsh, ffmpeg probe).
-// The main ObserverStreamer.exe keeps its own visible console window.
+// Built with -H windowsgui so the main process itself never has a console window.
 func hiddenCmdPlatform(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: 0x08000000} // CREATE_NO_WINDOW
 }
 
-// setConsoleTitle sets the visible title of this process's console window,
-// so Task Manager shows "RealSecCam ObserverStreamer v1.1.4".
-func setConsoleTitle(title string) {
-	kernel32 := syscall.NewLazyDLL("kernel32.dll")
-	setTitle := kernel32.NewProc("SetConsoleTitleW")
-	p, err := syscall.UTF16PtrFromString(title)
-	if err == nil {
-		setTitle.Call(uintptr(unsafe.Pointer(p)))
-	}
-}
+// setConsoleTitle is a no-op on Windows GUI subsystem builds.
+func setConsoleTitle(_ string) {}
 
-// showInstallNotification hides the console window after a brief visible startup log.
-// No dialog box — the console shows startup info for 2 seconds then disappears silently.
+// showInstallNotification shows a Windows system tray balloon tooltip.
+// Because we build with -H windowsgui there is NO console window ever —
+// this balloon is the only UI the user sees on first run.
 func showInstallNotification() {
-	time.Sleep(2 * time.Second)
-	kernel32 := syscall.NewLazyDLL("kernel32.dll")
-	user32   := syscall.NewLazyDLL("user32.dll")
-	getConsoleWnd := kernel32.NewProc("GetConsoleWindow")
-	showWindow    := user32.NewProc("ShowWindow")
-	hwnd, _, _ := getConsoleWnd.Call()
-	if hwnd != 0 {
-		const SW_HIDE = 0
-		showWindow.Call(hwnd, SW_HIDE)
+	// We use Shell_NotifyIconW to pop a balloon from the system tray area.
+	// This is a native Win32 call — no dependencies, no console needed.
+	shell32 := syscall.NewLazyDLL("shell32.dll")
+	user32  := syscall.NewLazyDLL("user32.dll")
+	shellNotifyIcon := shell32.NewProc("Shell_NotifyIconW")
+	loadIcon        := user32.NewProc("LoadIconW")
+
+	// NIM_ADD=0, NIM_MODIFY=1, NIM_DELETE=2
+	// NIIF_INFO=1 (blue info balloon)
+	const (
+		NIM_ADD    = 0
+		NIM_MODIFY = 1
+		NIM_DELETE = 2
+		NIF_MESSAGE  = 0x1
+		NIF_ICON     = 0x2
+		NIF_TIP      = 0x4
+		NIF_INFO     = 0x10
+		NIIF_INFO    = 0x1
+		WM_APP       = 0x8000
+	)
+
+	// NOTIFYICONDATA structure (trimmed to what we need — uID=1, minimal fields)
+	// We use a fixed-size struct that matches the Win32 layout for unicode.
+	type NOTIFYICONDATA struct {
+		cbSize           uint32
+		hWnd             uintptr
+		uID              uint32
+		uFlags           uint32
+		uCallbackMessage uint32
+		hIcon            uintptr
+		szTip           [128]uint16
+		dwState         uint32
+		dwStateMask     uint32
+		szInfo          [256]uint16
+		uVersion        uint32
+		szInfoTitle     [64]uint16
+		dwInfoFlags     uint32
 	}
+
+	// Load default application icon (IDI_APPLICATION = 32512)
+	hIcon, _, _ := loadIcon.Call(0, 32512)
+
+	nid := NOTIFYICONDATA{}
+	nid.cbSize = uint32(unsafe.Sizeof(nid))
+	nid.uID    = 1
+	nid.uFlags = NIF_ICON | NIF_TIP | NIF_INFO
+	nid.hIcon  = hIcon
+
+	copyWStr := func(dst []uint16, s string) {
+		p, _ := syscall.UTF16FromString(s)
+		copy(dst, p)
+	}
+	copyWStr(nid.szTip[:],       "RealSecCam ObserverStreamer")
+	copyWStr(nid.szInfo[:],      "ObserverStreamer installed successfully. Running silently in the background.")
+	copyWStr(nid.szInfoTitle[:], "RealSecCam")
+	nid.dwInfoFlags = NIIF_INFO
+
+	shellNotifyIcon.Call(NIM_ADD, uintptr(unsafe.Pointer(&nid)))
+
+	// Keep the icon alive long enough for the balloon to display (~5s), then remove
+	time.Sleep(6 * time.Second)
+	shellNotifyIcon.Call(NIM_DELETE, uintptr(unsafe.Pointer(&nid)))
 }
 
 // cleanupOldAgentServices removes legacy "RealSecCam Discovery Agent" Windows services
