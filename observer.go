@@ -34,7 +34,7 @@ import (
 )
 
 const (
-	Version              = "1.3.1"
+	Version              = "1.3.2"
 	ReportURL            = "https://accelerated-sync-dev-flow.base44.app/functions/agentReport"
 	RelayHost            = "137.184.65.114"
 	RelayRTSPPort        = 8554
