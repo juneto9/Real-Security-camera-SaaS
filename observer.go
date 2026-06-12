@@ -34,7 +34,7 @@ import (
 )
 
 const (
-	Version              = "1.2.8"
+	Version              = "1.2.9"
 	ReportURL            = "https://accelerated-sync-dev-flow.base44.app/functions/agentReport"
 	RelayHost            = "137.184.65.114"
 	RelayRTSPPort        = 8554
@@ -197,6 +197,10 @@ var (
 	cacheMu      sync.RWMutex
 	ffmpegPath   string
 	ffmpegMu     sync.Mutex
+	// activeFFmpeg tracks the single running FFmpeg child so we can kill it before
+	// starting a new one and avoid the pile-up seen in Task Manager.
+	activeFFmpegMu sync.Mutex
+	activeFFmpeg   *os.Process
 )
 
 // logFile is the rolling log written to disk (no console in -H windowsgui builds).
@@ -734,6 +738,26 @@ func registerAutostart() {
 	}
 }
 
+// killAllFFmpeg kills every ffmpeg.exe running on this machine (Windows).
+// Called on startup so stale orphaned processes from previous crashes are cleaned up.
+func killAllFFmpeg() {
+	if runtime.GOOS != "windows" { return }
+	out, err := hiddenCmd("tasklist", "/FO", "CSV", "/NH").Output()
+	if err != nil { return }
+	for _, line := range strings.Split(string(out), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" { continue }
+		fields := strings.Split(line, ",")
+		if len(fields) < 2 { continue }
+		exeName := strings.ToLower(strings.Trim(strings.TrimSpace(fields[0]), "\""))
+		pidStr := strings.Trim(strings.TrimSpace(fields[1]), "\"")
+		if exeName == "ffmpeg.exe" {
+			logf("[Cleanup] Killing orphan ffmpeg.exe PID=%s", pidStr)
+			hiddenCmd("taskkill", "/F", "/PID", pidStr).Run()
+		}
+	}
+}
+
 func killStaleObservers() {
 	myPID := os.Getpid()
 	switch runtime.GOOS {
@@ -1184,6 +1208,15 @@ func runStreamer() {
 			logf("[Streamer] RTSP port %d reachable on %s ✓", RelayRTSPPort, RelayHost)
 		}
 
+		// Kill any previously tracked FFmpeg before starting a new one
+		activeFFmpegMu.Lock()
+		if activeFFmpeg != nil {
+			logf("[Streamer] Killing previous FFmpeg PID=%d before restart", activeFFmpeg.Pid)
+			activeFFmpeg.Kill()
+			activeFFmpeg = nil
+		}
+		activeFFmpegMu.Unlock()
+
 		// Pipe stderr to a buffer so errors appear in observer.log
 		var stderrBuf bytes.Buffer
 		cmd := hiddenCmd(ffmpeg, args...)
@@ -1195,6 +1228,11 @@ func runStreamer() {
 			time.Sleep(15 * time.Second)
 			continue
 		}
+
+		// Register as the active FFmpeg process
+		activeFFmpegMu.Lock()
+		activeFFmpeg = cmd.Process
+		activeFFmpegMu.Unlock()
 
 		// Report stream to dashboard once FFmpeg starts
 		reportStream(webcamDisplayName)
@@ -1210,6 +1248,9 @@ func runStreamer() {
 				select {
 				case err := <-done:
 					ticker.Stop()
+					activeFFmpegMu.Lock()
+					activeFFmpeg = nil
+					activeFFmpegMu.Unlock()
 					ffErr := strings.TrimSpace(stderrBuf.String())
 					if len(ffErr) > 600 { ffErr = ffErr[len(ffErr)-600:] }
 					logf("[Streamer] FFmpeg exited: %v\nFFmpeg stderr (tail):\n%s", err, ffErr)
@@ -1221,7 +1262,9 @@ func runStreamer() {
 					sendHeartbeat("streamer", 0)
 				case <-shutdownCh:
 					ticker.Stop()
-					cmd.Process.Kill()
+					activeFFmpegMu.Lock()
+					if activeFFmpeg != nil { activeFFmpeg.Kill(); activeFFmpeg = nil }
+					activeFFmpegMu.Unlock()
 					return
 				}
 			}
@@ -1244,6 +1287,7 @@ func main() {
 	setConsoleTitle("RealSecCam ObserverStreamer v" + Version)
 	cleanupOldAgentServices()
 	killStaleObservers()
+	killAllFFmpeg()
 	time.Sleep(500 * time.Millisecond)
 	initCache()
 	h, _ := os.Hostname()
