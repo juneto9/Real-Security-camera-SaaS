@@ -34,7 +34,7 @@ import (
 )
 
 const (
-	Version              = "1.2.4"
+	Version              = "1.2.5"
 	ReportURL            = "https://accelerated-sync-dev-flow.base44.app/functions/agentReport"
 	RelayHost            = "137.184.65.114"
 	RelayRTSPPort        = 8554
@@ -1049,7 +1049,9 @@ func runStreamer() {
 	// Use machine hostname as the RTSP path so each machine gets a unique stream
 	rtspPath := strings.ToLower(strings.ReplaceAll(h, " ", "-"))
 	rtspURL  := fmt.Sprintf("rtsp://%s:%d/%s", RelayHost, RelayRTSPPort, rtspPath)
-	hlsURL   := fmt.Sprintf("http://%s:8888/%s/index.m3u8", RelayHost, rtspPath)
+	// Always use HTTPS for HLS — browsers block mixed HTTP content on HTTPS dashboards.
+	// MediaMTX on the relay must have TLS configured on port 8888 (or nginx proxying it).
+	hlsURL   := fmt.Sprintf("https://%s:8888/%s/index.m3u8", RelayHost, rtspPath)
 
 	logf("[Streamer] Will push to %s → HLS: %s", rtspURL, hlsURL)
 
