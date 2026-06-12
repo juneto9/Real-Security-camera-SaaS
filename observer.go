@@ -36,7 +36,7 @@ import (
 const (
 	Version              = "1.2.6"
 	ReportURL            = "https://accelerated-sync-dev-flow.base44.app/functions/agentReport"
-	RelayHost            = "relay.realsecuritycamera.com"
+	RelayHost            = "137.184.65.114"
 	RelayRTSPPort        = 8554
 	ScanIntervalSec      = 30
 	HeartbeatIntervalSec = 15
