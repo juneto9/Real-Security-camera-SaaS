@@ -1,13 +1,14 @@
-// ObserverStreamer v1.2.3
+// ObserverStreamer v1.2.4
 // Single binary: LAN discovery + webcam streaming via FFmpeg → MediaMTX.
 // Pure Go stdlib. No CGO. No external Go deps.
-// Windows: downloads FFmpeg automatically on first run.
-// macOS/Linux: uses system ffmpeg (brew/apt).
+// Windows: installs to C:\Program Files\RealSecCam\ObserverStreamer\
+// macOS:   installs to /Applications/RealSecCam/
+// Linux:   installs to /opt/realseccam/
 //
 // Build:
-//   Windows: GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w -H windowsgui" -o ObserverStreamer1.2.0.exe .
-//   macOS:   GOOS=darwin  GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o ObserverStreamer1.2.0-macOS .
-//   Linux:   GOOS=linux   GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o ObserverStreamer1.2.0-Linux .
+//   Windows: GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w -H windowsgui" -o ObserverStreamer1.2.4.exe .
+//   macOS:   GOOS=darwin  GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o ObserverStreamer1.2.4-macOS .
+//   Linux:   GOOS=linux   GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o ObserverStreamer1.2.4-Linux .
 
 package main
 
@@ -33,7 +34,7 @@ import (
 )
 
 const (
-	Version              = "1.2.3"
+	Version              = "1.2.4"
 	ReportURL            = "https://accelerated-sync-dev-flow.base44.app/functions/agentReport"
 	RelayHost            = "137.184.65.114"
 	RelayRTSPPort        = 8554
@@ -226,6 +227,71 @@ func exeDir() string {
 	p, err := os.Executable()
 	if err != nil { return "." }
 	return filepath.Dir(p)
+}
+
+// installDir returns the canonical install location for the current OS.
+// Windows: C:\Program Files\RealSecCam\ObserverStreamer
+// macOS:   /Applications/RealSecCam
+// Linux:   /opt/realseccam
+func installDir() string {
+	switch runtime.GOOS {
+	case "windows":
+		pf := os.Getenv("ProgramFiles")
+		if pf == "" { pf = "C:\\Program Files" }
+		return filepath.Join(pf, "RealSecCam", "ObserverStreamer")
+	case "darwin":
+		return "/Applications/RealSecCam"
+	default:
+		return "/opt/realseccam"
+	}
+}
+
+// ensureInstalled copies the running binary into the canonical install directory
+// if it is not already running from there. It then re-launches from the install
+// path and exits the current process, so all subsequent work happens from the
+// proper location. Returns true if a re-launch was triggered (caller should exit).
+func ensureInstalled() bool {
+	targetDir := installDir()
+	// Determine the installed binary name (always versioned so old copies stay alongside)
+	myExe, err := os.Executable()
+	if err != nil { return false }
+	myExeAbs, err := filepath.Abs(myExe)
+	if err != nil { return false }
+	targetExe := filepath.Join(targetDir, filepath.Base(myExeAbs))
+
+	// Already running from install dir — nothing to do
+	if strings.EqualFold(filepath.Dir(myExeAbs), targetDir) { return false }
+
+	// Create install dir
+	if err := os.MkdirAll(targetDir, 0755); err != nil {
+		logf("[Install] Cannot create install dir %s: %v — running from current location", targetDir, err)
+		return false
+	}
+
+	// Copy binary to install dir
+	src, err := os.Open(myExeAbs)
+	if err != nil { logf("[Install] Cannot open self: %v", err); return false }
+	defer src.Close()
+	dst, err := os.OpenFile(targetExe, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
+	if err != nil { logf("[Install] Cannot write to install dir: %v — running from current location", err); return false }
+	if _, err := io.Copy(dst, src); err != nil {
+		dst.Close()
+		os.Remove(targetExe)
+		logf("[Install] Copy failed: %v", err)
+		return false
+	}
+	dst.Close()
+	logf("[Install] Installed to %s", targetExe)
+
+	// Re-launch from install dir
+	cmd := exec.Command(targetExe, os.Args[1:]...)
+	hiddenCmdPlatform(cmd)
+	if err := cmd.Start(); err != nil {
+		logf("[Install] Re-launch failed: %v — continuing from current location", err)
+		return false
+	}
+	logf("[Install] Re-launched PID=%d from %s — exiting launcher", cmd.Process.Pid, targetExe)
+	return true // caller should os.Exit(0)
 }
 
 func initCache() {
@@ -1117,7 +1183,15 @@ func main() {
 	flag.BoolVar(&debugMode, "debug", false, "Enable verbose output")
 	flag.BoolVar(&onceMode, "once", false, "Run a single scan then exit")
 	flag.Parse()
+
+	// ── Step 1: Self-install — move to Program Files if not already there ──
+	// initLogFile() is called first so we can log the install attempt.
 	initLogFile()
+	if ensureInstalled() {
+		// Re-launched from install dir — this process is just the launcher, exit cleanly.
+		os.Exit(0)
+	}
+
 	setConsoleTitle("RealSecCam ObserverStreamer v" + Version)
 	cleanupOldAgentServices()
 	killStaleObservers()
