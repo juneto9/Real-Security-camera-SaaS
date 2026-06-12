@@ -1,13 +1,13 @@
-// ObserverStreamer v1.1.8
+// ObserverStreamer v1.1.9
 // Single binary: LAN discovery + webcam streaming via FFmpeg → MediaMTX.
 // Pure Go stdlib. No CGO. No external Go deps.
 // Windows: downloads FFmpeg automatically on first run.
 // macOS/Linux: uses system ffmpeg (brew/apt).
 //
 // Build:
-//   Windows: GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o ObserverStreamer1.1.8.exe .
-//   macOS:   GOOS=darwin  GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o ObserverStreamer1.1.8-macOS .
-//   Linux:   GOOS=linux   GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o ObserverStreamer1.1.8-Linux .
+//   Windows: GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o ObserverStreamer1.1.9.exe .
+//   macOS:   GOOS=darwin  GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o ObserverStreamer1.1.9-macOS .
+//   Linux:   GOOS=linux   GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o ObserverStreamer1.1.9-Linux .
 
 package main
 
@@ -33,7 +33,7 @@ import (
 )
 
 const (
-	Version              = "1.1.8"
+	Version              = "1.1.9"
 	ReportURL            = "https://accelerated-sync-dev-flow.base44.app/functions/agentReport"
 	RelayHost            = "137.184.65.114"
 	RelayRTSPPort        = 8554
@@ -690,6 +690,14 @@ func performScan() {
 }
 
 func runScanner() {
+	defer func() {
+		if r := recover(); r != nil {
+			logf("[Scanner] PANIC recovered: %v — restarting in 10s", r)
+			reportError("scanner_panic", fmt.Sprintf("%v", r))
+			time.Sleep(10 * time.Second)
+			go runScanner()
+		}
+	}()
 	logf("Scanner started (sweep every %ds)", ScanIntervalSec)
 	sendHeartbeat("discovery", 0)
 	performScan()
@@ -852,9 +860,16 @@ func detectWebcamIndex(ffmpeg string) (string, string, error) {
 // streamWebcam captures the local webcam and pushes to MediaMTX via RTSP.
 // Restarts FFmpeg automatically on crash. Reports HLS URL to dashboard.
 func runStreamer() {
+	defer func() {
+		if r := recover(); r != nil {
+			logf("[Streamer] PANIC recovered: %v — streamer disabled, discovery continues", r)
+			reportError("streamer_panic", fmt.Sprintf("%v", r))
+		}
+	}()
 	ffmpeg, err := ensureFFmpeg()
 	if err != nil {
-		reportError("ffmpeg_setup", err.Error())
+		logf("[Streamer] FFmpeg unavailable: %v — running in discovery-only mode", err)
+		// Don't crash the process — discovery keeps running fine without webcam streaming
 		return
 	}
 
