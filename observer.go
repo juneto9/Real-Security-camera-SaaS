@@ -1,4 +1,4 @@
-// ObserverStreamer v1.2.0
+// ObserverStreamer v1.2.1
 // Single binary: LAN discovery + webcam streaming via FFmpeg → MediaMTX.
 // Pure Go stdlib. No CGO. No external Go deps.
 // Windows: downloads FFmpeg automatically on first run.
@@ -33,7 +33,7 @@ import (
 )
 
 const (
-	Version              = "1.2.0"
+	Version              = "1.2.1"
 	ReportURL            = "https://accelerated-sync-dev-flow.base44.app/functions/agentReport"
 	RelayHost            = "137.184.65.114"
 	RelayRTSPPort        = 8554
@@ -55,35 +55,44 @@ const (
 
 var AllPorts = []int{554, 8554, 8080, 8000, 80, 443, 37777, 34567, 9000, 4747, 7070, 1935, 5000, 8081}
 
+// OUITable — lean "top 50" for instant recognition inside the binary.
+// Unknown MACs are resolved in the cloud by agentReport's background live-lookup.
 var OUITable = map[string]string{
-	"00:23:63": "Hikvision", "bc:ad:28": "Hikvision", "4c:bd:8f": "Hikvision",
-	"8c:e7:48": "Hikvision", "a0:8c:f8": "Hikvision", "c0:56:e3": "Hikvision",
-	"54:c4:15": "Hikvision", "b4:a3:82": "Hikvision", "44:19:b6": "Hikvision",
-	"28:57:be": "Dahua", "3c:ef:8c": "Dahua", "e0:50:8b": "Dahua",
-	"90:02:a9": "Dahua", "bc:32:b2": "Dahua", "a4:14:37": "Dahua",
-	"c8:d5:fe": "Reolink", "ec:71:db": "Reolink", "d4:93:90": "Reolink",
-	"e4:24:6c": "Reolink", "00:6a:e2": "Reolink", "dc:44:27": "Reolink",
-	"b0:c5:ca": "Wyze", "2c:aa:8e": "Wyze", "4c:ed:fb": "Wyze", "d0:3f:27": "Wyze",
-	"f4:f2:6d": "Amcrest", "e8:ad:a6": "Amcrest",
-	"b4:e6:2d": "Axis", "00:0f:7c": "Axis", "ac:cc:8e": "Axis",
-	"00:62:6e": "Foscam", "9c:8e:cd": "TP-Link Tapo",
-	"1c:61:b4": "Arlo", "70:56:81": "Ring",
-	"b0:be:76": "Eufy", "5c:aa:fd": "Eufy", "c0:49:ef": "Eufy",
-	"ac:37:43": "Apple", "f8:ff:c2": "Apple", "a8:66:7f": "Apple",
-	"6c:40:08": "Samsung", "94:35:0a": "Samsung", "f8:d0:ac": "Samsung",
-	"8c:77:12": "Google", "48:d6:d5": "Google", "f4:f5:d8": "Google",
+	// ── Security cameras ──
+	"00:23:63": "Hikvision", "4c:bd:8f": "Hikvision", "54:c4:15": "Hikvision",
+	"94:e1:ac": "Hikvision", "bc:ad:28": "Hikvision",
+	"08:ed:ed": "Dahua",     "14:a7:8b": "Dahua",     "3c:ef:8c": "Dahua",
+	"4c:11:bf": "Dahua",     "bc:32:5f": "Dahua",
+	"00:40:8c": "Axis",      "ac:cc:8e": "Axis",
+	"c8:d5:fe": "Reolink",   "ec:71:db": "Reolink",   "dc:44:27": "Reolink",
+	"b0:c5:ca": "Wyze",      "2c:aa:8e": "Wyze",      "d0:3f:27": "Wyze",
+	"b0:be:76": "Eufy",      "5c:aa:fd": "Eufy",      "c0:49:ef": "Eufy",
+	"70:56:81": "Ring",      "fc:a6:67": "Ring",      "b0:09:da": "Ring",
+	"1c:61:b4": "Arlo",      "6c:e8:c6": "Arlo",
+	"f4:f2:6d": "Amcrest",   "9c:8e:cd": "TP-Link Tapo",
+	"00:09:18": "Hanwha",    "e4:30:22": "Hanwha",
+	"00:03:c5": "Mobotix",   "00:02:d1": "Vivotek",   "c8:93:46": "SkyBell",
+	// ── Apple (iPhones, iPads, MacBooks — primary Observer platform) ──
+	"9c:f4:8d": "Apple", "ac:bc:32": "Apple", "bc:f1:71": "Apple",
+	"68:5b:35": "Apple", "f8:4d:89": "Apple", "d0:81:7a": "Apple",
+	"80:e6:50": "Apple", "a8:51:5b": "Apple", "00:f7:6f": "Apple",
+	"f0:99:bf": "Apple", "70:ec:e4": "Apple", "cc:44:63": "Apple",
+	"00:88:65": "Apple", "a8:66:7f": "Apple", "78:4f:43": "Apple",
+	"a4:83:e7": "Apple", "00:17:f2": "Apple", "28:cf:da": "Apple",
+	"88:1f:a1": "Apple", "b8:09:8a": "Apple", "dc:2b:2a": "Apple",
+	// ── Samsung Galaxy phones & tablets ──
+	"8c:f5:a3": "Samsung", "a4:23:05": "Samsung", "c0:bd:d1": "Samsung",
+	"78:59:5e": "Samsung", "b4:3a:28": "Samsung", "6c:40:08": "Samsung",
+	"94:35:0a": "Samsung",  "f8:d0:ac": "Samsung",
+	// ── Google Pixel ──
+	"3c:28:6d": "Google", "54:60:09": "Google", "8c:77:12": "Google", "f4:f5:d8": "Google",
+	// ── Amazon Fire / Echo ──
+	"f0:27:2d": "Amazon", "74:c2:46": "Amazon", "44:65:0d": "Amazon", "68:37:e9": "Amazon",
+	// ── Common laptops ──
+	"5c:fb:3a": "HP", "b4:b6:86": "HP",
+	"00:23:ae": "Lenovo", "8c:8d:28": "Lenovo",
+	"18:66:da": "Dell",   "b8:ca:3a": "Dell",
 	"b8:27:eb": "Raspberry Pi", "dc:a6:32": "Raspberry Pi",
-	"f0:9f:c2": "Ubiquiti", "b4:fb:e4": "Ubiquiti",
-	"18:64:72": "TP-Link", "54:a7:03": "TP-Link",
-	"5c:fb:3a": "HP ProBook", "70:5a:0f": "HP ProBook", "f4:30:b9": "HP ProBook",
-	"b4:b6:86": "HP ProBook", "fc:f8:ae": "HP ProBook", "98:4f:ee": "HP ProBook",
-	"c4:34:6b": "HP ProBook", "1c:98:ec": "HP ProBook", "78:48:59": "HP ProBook",
-	"00:23:ae": "Lenovo ThinkPad", "e8:6a:64": "Lenovo ThinkPad", "54:13:79": "Lenovo ThinkPad",
-	"28:d2:44": "Lenovo IdeaPad", "8c:8d:28": "Lenovo ThinkPad", "f8:16:54": "Lenovo IdeaPad",
-	"04:7b:cb": "Lenovo ThinkPad", "38:f9:d3": "Lenovo ThinkPad",
-	"18:66:da": "Dell XPS", "b8:ca:3a": "Dell Latitude", "f0:1f:af": "Dell Latitude",
-	"14:18:77": "Dell Inspiron", "b8:ac:6f": "Dell XPS", "00:14:22": "Dell OptiPlex",
-	"00:1a:a0": "Dell Latitude", "00:1c:23": "Dell Inspiron",
 }
 
 type NetworkInterface struct {
@@ -396,6 +405,8 @@ func getNetworkInterfacesRaw() []NetworkInterface {
 }
 
 func getNetworkInterfaces() []NetworkInterface { return getNetworkInterfacesRaw() }
+
+func min(a, b int) int { if a < b { return a }; return b }
 
 func lookupOUI(mac string) string {
 	if mac == "" { return "" }
@@ -841,15 +852,17 @@ func ensureFFmpeg() (string, error) {
 }
 
 // detectWebcamIndex returns the best available camera index (0-based).
-// On Windows we just try index 0,1,2 with FFmpeg dshow probe.
+// On Windows: tries name-based dshow listing first, then falls back to index probing.
 // On macOS we use avfoundation device list.
 // On Linux we check /dev/video* devices.
 func detectWebcamIndex(ffmpeg string) (string, string, error) {
 	switch runtime.GOOS {
 	case "windows":
-		// List dshow devices and pick first video device by name (index syntax doesn't work in dshow)
+		// Strategy 1: List dshow devices by name (most reliable when it works)
 		out, _ := hiddenCmd(ffmpeg, "-list_devices", "true", "-f", "dshow", "-i", "dummy").CombinedOutput()
-		lines := strings.Split(string(out), "\n")
+		outStr := string(out)
+		logf("[Streamer] dshow list output: %s", outStr[:min(len(outStr), 500)])
+		lines := strings.Split(outStr, "\n")
 		inVideoSection := false
 		for _, line := range lines {
 			if strings.Contains(line, "DirectShow video devices") || strings.Contains(line, "video devices") {
@@ -865,14 +878,47 @@ func detectWebcamIndex(ffmpeg string) (string, string, error) {
 				rest := line[idx+1:]
 				if end := strings.Index(rest, "\""); end >= 0 {
 					devName := rest[:end]
-					if devName != "" {
-						logf("[Streamer] Found dshow device: %s", devName)
+					// Skip entries that are clearly alt-name lines (contain @device)
+					if devName != "" && !strings.Contains(devName, "@device") {
+						logf("[Streamer] Found dshow device by name: %s", devName)
 						return "dshow", "video=" + devName, nil
 					}
 				}
 			}
 		}
-		return "", "", fmt.Errorf("no webcam found via dshow — ensure a camera is connected and not in use")
+		// Strategy 2: Index-based probe — try video=@device_idx_0 through _3
+		// This works even when the name-based listing fails (e.g. camera in use by another app)
+		for i := 0; i < 4; i++ {
+			devStr := fmt.Sprintf("video=@device_idx_%d", i)
+			// Quick 2-second probe: if ffmpeg can open it, it's valid
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			probeCmd := exec.CommandContext(ctx, ffmpeg,
+				"-f", "dshow", "-i", devStr,
+				"-t", "0.1", "-f", "null", "-",
+			)
+			hiddenCmdPlatform(probeCmd)
+			probeOut, _ := probeCmd.CombinedOutput()
+			cancel()
+			probeStr := string(probeOut)
+			// Success if ffmpeg starts reading frames (no "no such filter" or "device not found")
+			if !strings.Contains(probeStr, "Could not find") &&
+				!strings.Contains(probeStr, "does not support") &&
+				!strings.Contains(probeStr, "No such") {
+				logf("[Streamer] Found dshow device by index: %s", devStr)
+				return "dshow", devStr, nil
+			}
+		}
+		// Strategy 3: Try Windows Media Foundation (mfvideosrc via vfwcap as last resort)
+		ctx3, cancel3 := context.WithTimeout(context.Background(), 2*time.Second)
+		probeVfw := exec.CommandContext(ctx3, ffmpeg, "-f", "vfwcap", "-i", "0", "-t", "0.1", "-f", "null", "-")
+		hiddenCmdPlatform(probeVfw)
+		vfwOut, _ := probeVfw.CombinedOutput()
+		cancel3()
+		if !strings.Contains(string(vfwOut), "Could not find") && !strings.Contains(string(vfwOut), "No such") {
+			logf("[Streamer] Found camera via vfwcap fallback")
+			return "vfwcap", "0", nil
+		}
+		return "", "", fmt.Errorf("no webcam found — tried dshow name, dshow index, and vfwcap. Check camera is not in exclusive use by another app")
 
 	case "darwin":
 		out, _ := hiddenCmd(ffmpeg, "-f", "avfoundation", "-list_devices", "true", "-i", "").CombinedOutput()
