@@ -34,13 +34,13 @@ import (
 )
 
 const (
-	Version              = "1.2.7"
+	Version              = "1.2.8"
 	ReportURL            = "https://accelerated-sync-dev-flow.base44.app/functions/agentReport"
 	RelayHost            = "137.184.65.114"
 	RelayRTSPPort        = 8554
-	ScanIntervalSec      = 30
-	HeartbeatIntervalSec = 15
-	StreamHeartbeatSec   = 20
+	ScanIntervalSec      = 120
+	HeartbeatIntervalSec = 60
+	StreamHeartbeatSec   = 60
 	PortScanTimeoutMs    = 800
 	MaxConcurrentProbes  = 50
 	WatchdogTimeoutSec   = 120
@@ -1173,9 +1173,22 @@ func runStreamer() {
 			}
 		}
 
+		// Pre-flight: test TCP connectivity to relay RTSP port before launching FFmpeg
+		if conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", RelayHost, RelayRTSPPort), 5*time.Second); err != nil {
+			logf("[Streamer] RTSP port %d on %s is UNREACHABLE: %v — check VPS firewall. Retry in 30s", RelayRTSPPort, RelayHost, err)
+			reportError("rtsp_port_blocked", fmt.Sprintf("Cannot reach %s:%d — %v", RelayHost, RelayRTSPPort, err))
+			time.Sleep(30 * time.Second)
+			continue
+		} else {
+			conn.Close()
+			logf("[Streamer] RTSP port %d reachable on %s ✓", RelayRTSPPort, RelayHost)
+		}
+
+		// Pipe stderr to a buffer so errors appear in observer.log
+		var stderrBuf bytes.Buffer
 		cmd := hiddenCmd(ffmpeg, args...)
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
+		cmd.Stdout = nil
+		cmd.Stderr = &stderrBuf
 
 		if err := cmd.Start(); err != nil {
 			logf("[Streamer] FFmpeg start error: %v — retry in 15s", err)
@@ -1197,7 +1210,10 @@ func runStreamer() {
 				select {
 				case err := <-done:
 					ticker.Stop()
-					logf("[Streamer] FFmpeg exited: %v — restarting in 5s", err)
+					ffErr := strings.TrimSpace(stderrBuf.String())
+					if len(ffErr) > 600 { ffErr = ffErr[len(ffErr)-600:] }
+					logf("[Streamer] FFmpeg exited: %v\nFFmpeg stderr (tail):\n%s", err, ffErr)
+					if ffErr != "" { reportError("ffmpeg_exit", ffErr) }
 					time.Sleep(5 * time.Second)
 					break outer
 				case <-ticker.C:
