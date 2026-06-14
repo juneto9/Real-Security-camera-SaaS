@@ -1,5 +1,5 @@
 name: Build Camera Agent
-run-name: Build Camera Agent v${{ github.event.inputs.version || '1.1.5' }} by @${{ github.actor }}
+run-name: Build Camera Agent v${{ github.event.inputs.version || '1.1.6' }} by @${{ github.actor }}
 
 on:
   workflow_dispatch:
@@ -7,7 +7,7 @@ on:
       version:
         description: 'Version tag (e.g. 1.1.1)'
         required: true
-        default: '1.1.5'
+        default: '1.1.6'
   push:
     paths:
       - 'rsc-camera-agent/**'
@@ -32,7 +32,7 @@ jobs:
           GOOS: windows
           GOARCH: amd64
           CGO_ENABLED: 0
-          AGENT_VERSION: ${{ github.event.inputs.version || '1.1.5' }}
+          AGENT_VERSION: ${{ github.event.inputs.version || '1.1.6' }}
         run: |
           go mod tidy
           go build -ldflags="-s -w -X main.Version=${env:AGENT_VERSION}" -o ../installer/rsc-camera-agent.exe .
@@ -119,7 +119,7 @@ jobs:
 
       - name: Create NSIS installer script
         env:
-          AGENT_VERSION: ${{ github.event.inputs.version || '1.1.5' }}
+          AGENT_VERSION: ${{ github.event.inputs.version || '1.1.6' }}
         run: |
           @'
           !include "MUI2.nsh"
@@ -137,8 +137,6 @@ jobs:
           !insertmacro MUI_PAGE_INSTFILES
           !include "FileFunc.nsh"
 !insertmacro GetFileName
-!include "StrFunc.nsh"
-${StrFunc} StrStr
 !insertmacro MUI_LANGUAGE "English"
 
           Section "Install"
@@ -148,32 +146,12 @@ ${StrFunc} StrStr
             nsExec::ExecToLog 'taskkill /F /IM rsc-camera-agent.exe'
             Sleep 2000
 
-            ; Extract camera ID from the installer filename
-            ; Expected pattern: RSC-Camera-Agent-Setup-cam_<camera_id>.exe
-            System::Call 'kernel32::GetModuleFileNameA(i 0, t .R0, i 1024) i r1'
-            StrCpy $R1 $R0
-            ; Strip path, keep filename only
-            ${GetFileName} $R0 $R1
-            ; Remove ".exe" suffix
-            StrCpy $R2 $R1 -4
-            ; Extract everything after "RSC-Camera-Agent-Setup-cam_"
-            ${StrStr} $R3 $R2 "RSC-Camera-Agent-Setup-cam_"
-            StrCmp $R3 "" noCamId 0
-            StrLen $R4 "RSC-Camera-Agent-Setup-cam_"
-            StrCpy $R5 $R3 "" $R4
-            Goto haveCamId
-noCamId:
-            StrCpy $R5 ""
-haveCamId:
-
             SetOutPath $INSTDIR
             File "rsc-camera-agent.exe"
-
-            ; Download agent_config.json from the server for this specific camera
-            StrCmp $R5 "" skipConfigDownload 0
-            DetailPrint "Downloading agent config for camera $R5..."
-            nsExec::ExecToLog 'powershell -NoProfile -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri https://api.base44.com/fn/cameraAgentConfig?camera_id=$R5 -OutFile $INSTDIR\agent_config.json"'
-skipConfigDownload:
+            File "livekit-cli.exe"
+            File "install.bat"
+            File "uninstall.bat"
+            File "agent_config.json"
             File "livekit-cli.exe"
             File "install.bat"
             File "uninstall.bat"
@@ -210,7 +188,7 @@ skipConfigDownload:
 
       - name: Build NSIS installer
         env:
-          AGENT_VERSION: ${{ github.event.inputs.version || '1.1.5' }}
+          AGENT_VERSION: ${{ github.event.inputs.version || '1.1.6' }}
         run: |
           & "C:\Program Files (x86)\NSIS\makensis.exe" installer\installer.nsi
           Copy-Item RSC-Camera-Agent-Setup.exe "RSC-Camera-Agent-Setup-v$env:AGENT_VERSION.exe"
@@ -239,7 +217,7 @@ skipConfigDownload:
           GOOS: linux
           GOARCH: amd64
           CGO_ENABLED: 0
-          AGENT_VERSION: ${{ github.event.inputs.version || '1.1.5' }}
+          AGENT_VERSION: ${{ github.event.inputs.version || '1.1.6' }}
         run: |
           go mod tidy
           go build -ldflags="-s -w -X main.Version=${AGENT_VERSION}" -o ../dist/rsc-camera-agent .
