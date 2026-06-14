@@ -16,7 +16,7 @@ Section "Install"
             ; Create uninstaller
             WriteUninstaller "$INSTDIR\Uninstall.exe"
           SectionEndld Camera Agent
-run-name: Build Camera Agent v${{ github.event.inputs.version || '1.1.6' }} by @${{ github.actor }}
+run-name: Build Camera Agent v${{ github.event.inputs.version || '2.1.0' }} by @${{ github.actor }}
 
 on:
   workflow_dispatch:
@@ -24,7 +24,7 @@ on:
       version:
         description: 'Version tag (e.g. 1.1.1)'
         required: true
-        default: '1.1.6'
+        default: '2.1.0'
   push:
     paths:
       - 'rsc-camera-agent/**'
@@ -49,7 +49,7 @@ jobs:
           GOOS: windows
           GOARCH: amd64
           CGO_ENABLED: 0
-          AGENT_VERSION: ${{ github.event.inputs.version || '1.1.6' }}
+          AGENT_VERSION: ${{ github.event.inputs.version || '2.1.0' }}
         run: |
           go mod tidy
           go build -ldflags="-s -w -X main.Version=${env:AGENT_VERSION}" -o ../installer/rsc-camera-agent.exe .
@@ -93,7 +93,7 @@ jobs:
           echo Done.
           '@ | Out-File -Encoding ASCII installer.batname: Build NSIS installer
         env:
-          AGENT_VERSION: ${{ github.event.inputs.version || '1.1.6' }}
+          AGENT_VERSION: ${{ github.event.inputs.version || '2.1.0' }}
         run: |
           & "C:\Program Files (x86)\NSIS\makensis.exe" installer\installer.nsi
           Copy-Item RSC-Camera-Agent-Setup.exe "RSC-Camera-Agent-Setup-v$env:AGENT_VERSION.exe"
@@ -122,7 +122,7 @@ jobs:
           GOOS: linux
           GOARCH: amd64
           CGO_ENABLED: 0
-          AGENT_VERSION: ${{ github.event.inputs.version || '1.1.6' }}
+          AGENT_VERSION: ${{ github.event.inputs.version || '2.1.0' }}
         run: |
           go mod tidy
           go build -ldflags="-s -w -X main.Version=${AGENT_VERSION}" -o ../dist/rsc-camera-agent .
