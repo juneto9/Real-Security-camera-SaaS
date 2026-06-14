@@ -3,52 +3,40 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
+	"os"
+	"strings"
 	"syscall"
 	"unsafe"
 )
 
-var (
-	kernel32       = syscall.NewLazyDLL("kernel32.dll")
-	user32         = syscall.NewLazyDLL("user32.dll")
-	getConsoleWin  = kernel32.NewProc("GetConsoleWindow")
-	showWindowProc = user32.NewProc("ShowWindow")
-	messageBoxProc = user32.NewProc("MessageBoxW")
-)
-
 func hideWindow() {
-	hwnd, _, _ := getConsoleWin.Call()
+	getConsoleWindow := syscall.NewLazyDLL("kernel32.dll").NewProc("GetConsoleWindow")
+	showWindow := syscall.NewLazyDLL("user32.dll").NewProc("ShowWindow")
+	hwnd, _, _ := getConsoleWindow.Call()
 	if hwnd != 0 {
-		showWindowProc.Call(hwnd, 0)
+		showWindow.Call(hwnd, 0) // SW_HIDE = 0
 	}
 }
 
 func showError(msg string) {
-	hwnd, _, _ := getConsoleWin.Call()
-	if hwnd != 0 { showWindowProc.Call(hwnd, 5) }
-	title, _ := syscall.UTF16PtrFromString("RSC Camera Agent")
+	msgBox := syscall.NewLazyDLL("user32.dll").NewProc("MessageBoxW")
+	caption, _ := syscall.UTF16PtrFromString("RSC Camera Agent")
 	text, _ := syscall.UTF16PtrFromString(msg)
-	messageBoxProc.Call(0, uintptr(unsafe.Pointer(text)), uintptr(unsafe.Pointer(title)), 0x00000010)
+	msgBox.Call(0, uintptr(unsafe.Pointer(text)), uintptr(unsafe.Pointer(caption)), 0x10) // MB_ICONERROR
 }
 
 func showInfo(msg string) {
-	title, _ := syscall.UTF16PtrFromString("RSC Camera Agent")
+	msgBox := syscall.NewLazyDLL("user32.dll").NewProc("MessageBoxW")
+	caption, _ := syscall.UTF16PtrFromString("RSC Camera Agent")
 	text, _ := syscall.UTF16PtrFromString(msg)
-	messageBoxProc.Call(0, uintptr(unsafe.Pointer(text)), uintptr(unsafe.Pointer(title)), 0x00000040)
+	msgBox.Call(0, uintptr(unsafe.Pointer(text)), uintptr(unsafe.Pointer(caption)), 0x40) // MB_ICONINFORMATION
 }
 
 func promptForCode(prompt string) string {
-	hwnd, _, _ := getConsoleWin.Call()
-	if hwnd != 0 { showWindowProc.Call(hwnd, 5) }
-	fmt.Println("============================================")
-	fmt.Println("  RSC Camera Agent - Device Registration")
-	fmt.Println("============================================")
-	fmt.Println()
-	fmt.Println(prompt)
-	fmt.Println()
-	fmt.Print("  Code: ")
-	var code string
-	fmt.Scanln(&code)
-	if hwnd != 0 { showWindowProc.Call(hwnd, 0) }
-	return code
+	fmt.Print(prompt + " ")
+	reader := bufio.NewReader(os.Stdin)
+	code, _ := reader.ReadString('\n')
+	return strings.TrimSpace(code)
 }
