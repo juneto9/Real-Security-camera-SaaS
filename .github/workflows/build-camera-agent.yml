@@ -1,4 +1,5 @@
 name: Build Camera Agent
+run-name: Build Camera Agent v${{ github.event.inputs.version || '1.1.2' }} by @${{ github.actor }}
 
 on:
   workflow_dispatch:
@@ -6,7 +7,7 @@ on:
       version:
         description: 'Version tag (e.g. 1.1.1)'
         required: true
-        default: '1.1.1'
+        default: '1.1.2'
   push:
     paths:
       - 'rsc-camera-agent/**'
@@ -31,7 +32,7 @@ jobs:
           GOOS: windows
           GOARCH: amd64
           CGO_ENABLED: 0
-          AGENT_VERSION: ${{ github.event.inputs.version || '1.1.1' }}
+          AGENT_VERSION: ${{ github.event.inputs.version || '1.1.2' }}
         run: |
           go mod tidy
           go build -ldflags="-s -w -X main.Version=${env:AGENT_VERSION}" -o ../installer/rsc-camera-agent.exe .
@@ -118,7 +119,7 @@ jobs:
 
       - name: Create NSIS installer script
         env:
-          AGENT_VERSION: ${{ github.event.inputs.version || '1.1.1' }}
+          AGENT_VERSION: ${{ github.event.inputs.version || '1.1.2' }}
         run: |
           @'
           !include "MUI2.nsh"
@@ -175,15 +176,20 @@ jobs:
         shell: pwsh
 
       - name: Build NSIS installer
+        env:
+          AGENT_VERSION: ${{ github.event.inputs.version || '1.1.2' }}
         run: |
           & "C:\Program Files (x86)\NSIS\makensis.exe" installer\installer.nsi
+          Copy-Item RSC-Camera-Agent-Setup.exe "RSC-Camera-Agent-Setup-v$env:AGENT_VERSION.exe"
         shell: pwsh
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: RSC-Camera-Agent-Setup
-          path: RSC-Camera-Agent-Setup.exe
+          path: |
+            RSC-Camera-Agent-Setup.exe
+            RSC-Camera-Agent-Setup-v*.exe
 
   build-linux:
     runs-on: ubuntu-latest
@@ -200,7 +206,7 @@ jobs:
           GOOS: linux
           GOARCH: amd64
           CGO_ENABLED: 0
-          AGENT_VERSION: ${{ github.event.inputs.version || '1.1.1' }}
+          AGENT_VERSION: ${{ github.event.inputs.version || '1.1.2' }}
         run: |
           go mod tidy
           go build -ldflags="-s -w -X main.Version=${AGENT_VERSION}" -o ../dist/rsc-camera-agent .
@@ -251,10 +257,13 @@ jobs:
           body: |
             ## RSC Camera Agent v${{ github.event.inputs.version }}
 
-            **Windows:** Download `RSC-Camera-Agent-Setup.exe`, double-click, done.
+            **Windows:** Download `RSC-Camera-Agent-Setup-v${{ github.event.inputs.version }}.exe`, double-click, done.
             **Linux:** Download the tar.gz, extract, edit config, run install.
+
+            > Stable filename `RSC-Camera-Agent-Setup.exe` always points to this version too.
           files: |
             RSC-Camera-Agent-Setup.exe
+            RSC-Camera-Agent-Setup-v*.exe
             RSC-Camera-Agent-linux-amd64.tar.gz
           draft: false
           prerelease: false
