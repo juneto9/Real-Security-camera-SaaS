@@ -40,7 +40,7 @@ jobs:
           $version = "2.16.5"
           Invoke-WebRequest -Uri "https://github.com/livekit/livekit-cli/releases/download/v${version}/lk_${version}_windows_amd64.zip" -OutFile lk.zip
           Expand-Archive -Path lk.zip -DestinationPath installer/
-          if (Test-Path installer/lk.exe) { Rename-Item installer/lk.exe installer/livekit-cli.exe }
+          if (Test-Path installer/lk.exe) { Move-Item -Force installer/lk.exe installer/livekit-cli.exe }
         shell: pwsh
 
       - name: Create default config
