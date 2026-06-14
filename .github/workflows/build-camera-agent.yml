@@ -59,7 +59,7 @@ jobs:
           {
             "camera_id": "PASTE_YOUR_CAMERA_ID_HERE",
             "app_id": "6a222676d0341a74d583c12f",
-            "config_server": ""
+            "config_server": "https://stark-lemming-24-0hwcw4wat1hy.deno.dev/",
             "token_url": "https://livekit.realsecuritycamera.com/livekit-token",
             "livekit_url": "wss://livekit.realsecuritycamera.com",
             "device_name": "",
@@ -232,7 +232,7 @@ jobs:
           {
             "camera_id": "PASTE_YOUR_CAMERA_ID_HERE",
             "app_id": "6a222676d0341a74d583c12f",
-            "config_server": ""
+            "config_server": "https://stark-lemming-24-0hwcw4wat1hy.deno.dev/",
             "token_url": "https://livekit.realsecuritycamera.com/livekit-token",
             "livekit_url": "wss://livekit.realsecuritycamera.com",
             "device_name": "",
