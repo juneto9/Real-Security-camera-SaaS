@@ -55,7 +55,14 @@ func main() {
 
 	hideWindow()
 
-	log.Printf("[RSC] Camera Agent v%s starting", AppVersion)
+	h, _ := os.Hostname()
+	log.Printf("========================================")
+	log.Printf("[RSC] Camera Agent v%s | %s/%s", AppVersion, runtime.GOOS, runtime.GOARCH)
+	log.Printf("[RSC] PID: %d | Host: %s", os.Getpid(), h)
+	log.Printf("========================================")
+
+	// Write version file so install dir always shows current version
+	os.WriteFile(filepath.Join(getExeDir(), "VERSION.txt"), []byte(AppVersion), 0644)
 
 	cfg, err := loadConfig(*configPath)
 	if err != nil {
