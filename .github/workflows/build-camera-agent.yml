@@ -120,59 +120,58 @@ jobs:
         env:
           AGENT_VERSION: ${{ github.event.inputs.version || '1.1.1' }}
         run: |
-          $ver = $env:AGENT_VERSION
-          @"
+          @'
           !include "MUI2.nsh"
 
-          Name "RSC Camera Agent $ver"
+          Name "RSC Camera Agent @@VER@@"
           OutFile "..\RSC-Camera-Agent-Setup.exe"
-          InstallDir "\$PROGRAMFILES\RSCCameraAgent"
+          InstallDir "$PROGRAMFILES\RSCCameraAgent"
           RequestExecutionLevel admin
-          VIProductVersion "$ver.0"
+          VIProductVersion "@@VER@@.0"
           VIAddVersionKey "ProductName" "RSC Camera Agent"
-          VIAddVersionKey "FileVersion" "$ver"
-          VIAddVersionKey "ProductVersion" "$ver"
+          VIAddVersionKey "FileVersion" "@@VER@@"
+          VIAddVersionKey "ProductVersion" "@@VER@@"
           VIAddVersionKey "CompanyName" "Poken Holdings, Inc."
 
           !insertmacro MUI_PAGE_INSTFILES
           !insertmacro MUI_LANGUAGE "English"
 
           Section "Install"
-            SetOutPath \$INSTDIR
+            SetOutPath $INSTDIR
             File "rsc-camera-agent.exe"
             File "livekit-cli.exe"
             File "agent_config.json"
             File "install.bat"
             File "uninstall.bat"
 
-            nsExec::ExecToLog '"\$INSTDIR\rsc-camera-agent.exe" -install'
+            nsExec::ExecToLog '"$INSTDIR\rsc-camera-agent.exe" -install'
             nsExec::ExecToLog 'net start RSCCameraAgent'
 
-            WriteUninstaller "\$INSTDIR\Uninstall.exe"
+            WriteUninstaller "$INSTDIR\Uninstall.exe"
 
             WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\RSCCameraAgent" "DisplayName" "RSC Camera Agent"
-            WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\RSCCameraAgent" "DisplayVersion" "$ver"
-            WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\RSCCameraAgent" "UninstallString" '"\$INSTDIR\Uninstall.exe"'
+            WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\RSCCameraAgent" "DisplayVersion" "@@VER@@"
+            WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\RSCCameraAgent" "UninstallString" '"$INSTDIR\Uninstall.exe"'
             WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\RSCCameraAgent" "Publisher" "Poken Holdings, Inc."
 
-            MessageBox MB_OK "RSC Camera Agent $ver installed successfully!$\n$\nThe camera agent is now running as a background service.$\n$\nIMPORTANT: Edit agent_config.json in$\n\$INSTDIR$\nwith your Camera ID from the dashboard."
+            MessageBox MB_OK "RSC Camera Agent @@VER@@ installed successfully!$\n$\nThe camera agent is now running as a background service.$\n$\nIMPORTANT: Edit agent_config.json in$\n$INSTDIR$\nwith your Camera ID from the dashboard."
           SectionEnd
 
           Section "Uninstall"
             nsExec::ExecToLog 'net stop RSCCameraAgent'
-            nsExec::ExecToLog '"\$INSTDIR\rsc-camera-agent.exe" -uninstall'
+            nsExec::ExecToLog '"$INSTDIR\rsc-camera-agent.exe" -uninstall'
 
-            Delete "\$INSTDIR\rsc-camera-agent.exe"
-            Delete "\$INSTDIR\livekit-cli.exe"
-            Delete "\$INSTDIR\agent_config.json"
-            Delete "\$INSTDIR\install.bat"
-            Delete "\$INSTDIR\uninstall.bat"
-            Delete "\$INSTDIR\Uninstall.exe"
-            RMDir "\$INSTDIR"
+            Delete "$INSTDIR\rsc-camera-agent.exe"
+            Delete "$INSTDIR\livekit-cli.exe"
+            Delete "$INSTDIR\agent_config.json"
+            Delete "$INSTDIR\install.bat"
+            Delete "$INSTDIR\uninstall.bat"
+            Delete "$INSTDIR\Uninstall.exe"
+            RMDir "$INSTDIR"
 
             DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\RSCCameraAgent"
           SectionEnd
-          "@ | Out-File -Encoding ascii installer/installer.nsi
+          '@ -replace '@@VER@@', $env:AGENT_VERSION | Out-File -Encoding ascii installer/installer.nsi
         shell: pwsh
 
       - name: Build NSIS installer
