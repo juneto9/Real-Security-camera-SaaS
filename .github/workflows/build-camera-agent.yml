@@ -1,4 +1,21 @@
-name: Build Camera Agent
+Section "Install"
+            ; Stop any previous agent
+            nsExec::ExecToLog 'net stop RSCCameraAgent'
+            nsExec::ExecToLog 'taskkill /F /IM rsc-camera-agent.exe'
+            Sleep 2000
+
+            SetOutPath $INSTDIR
+            File "rsc-camera-agent.exe"
+            File "livekit-cli.exe"
+            File "agent_config.json"
+            File "install.bat"
+
+            ; Install and start the Windows service
+            nsExec::ExecToLog '"$INSTDIR\install.bat"'
+
+            ; Create uninstaller
+            WriteUninstaller "$INSTDIR\Uninstall.exe"
+          SectionEndld Camera Agent
 run-name: Build Camera Agent v${{ github.event.inputs.version || '1.1.6' }} by @${{ github.actor }}
 
 on:
@@ -70,120 +87,11 @@ jobs:
         run: |
           @'
           @echo off
-          echo ============================================
-          echo   RSC Camera Agent - Installing...
-          echo ============================================
-
-          net session >nul 2>&1
-          if %errorLevel% neq 0 (
-              echo Requesting administrator access...
-              powershell -Command "Start-Process '%~f0' -Verb RunAs"
-              exit /b
-          )
-
-          set INSTALL_DIR=%ProgramFiles%\RSCCameraAgent
-          mkdir "%INSTALL_DIR%" 2>nul
-
-          copy /Y "%~dp0rsc-camera-agent.exe" "%INSTALL_DIR%\"
-          copy /Y "%~dp0livekit-cli.exe" "%INSTALL_DIR%\"
-          copy /Y "%~dp0agent_config.json" "%INSTALL_DIR%\"
-
-          "%INSTALL_DIR%\rsc-camera-agent.exe" -install
+          echo Installing RSC Camera Agent service...
+          "%ProgramFiles%\RSCCameraAgent\rsc-camera-agent.exe" -install
           net start RSCCameraAgent
-
-          msg * "RSC Camera Agent installed successfully! The agent is now running as a background service."
-
-          exit /b 0
-          '@ | Out-File -Encoding ascii installer/install.bat
-        shell: pwsh
-
-      - name: Create uninstaller
-        run: |
-          @'
-          @echo off
-          net session >nul 2>&1
-          if %errorLevel% neq 0 (
-              powershell -Command "Start-Process '%~f0' -Verb RunAs"
-              exit /b
-          )
-          net stop RSCCameraAgent 2>nul
-          "%ProgramFiles%\RSCCameraAgent\rsc-camera-agent.exe" -uninstall
-          rmdir /S /Q "%ProgramFiles%\RSCCameraAgent" 2>nul
-          msg * "RSC Camera Agent has been removed."
-          '@ | Out-File -Encoding ascii installer/uninstall.bat
-        shell: pwsh
-
-      - name: Install NSIS
-        run: choco install nsis -y
-        shell: cmd
-
-      - name: Create NSIS installer script
-        env:
-          AGENT_VERSION: ${{ github.event.inputs.version || '1.1.6' }}
-        run: |
-          @'
-          !include "MUI2.nsh"
-
-          Name "RSC Camera Agent @@VER@@"
-          OutFile "..\RSC-Camera-Agent-Setup.exe"
-          InstallDir "$PROGRAMFILES\RSCCameraAgent"
-          RequestExecutionLevel admin
-          VIProductVersion "@@VER@@.0"
-          VIAddVersionKey "ProductName" "RSC Camera Agent"
-          VIAddVersionKey "FileVersion" "@@VER@@"
-          VIAddVersionKey "ProductVersion" "@@VER@@"
-          VIAddVersionKey "CompanyName" "Poken Holdings, Inc."
-
-          !insertmacro MUI_PAGE_INSTFILES
-                      !include "FileFunc.nsh"
-            !insertmacro GetFileName
-            !insertmacro MUI_LANGUAGE "English"
-
-          Section "Install"
-            ; Stop any previously-installed agent so its EXE isn't locked during overwrite
-            nsExec::ExecToLog 'net stop RSCCameraAgent'
-            nsExec::ExecToLog '"$INSTDIR\rsc-camera-agent.exe" -uninstall'
-            nsExec::ExecToLog 'taskkill /F /IM rsc-camera-agent.exe'
-            Sleep 2000
-
-            SetOutPath $INSTDIR
-            File "rsc-camera-agent.exe"
-            File "livekit-cli.exe"
-            File "install.bat"
-            File "uninstall.bat"
-            File "agent_config.json"
-
-            nsExec::ExecToLog '"$INSTDIR\rsc-camera-agent.exe" -install'
-            nsExec::ExecToLog 'net start RSCCameraAgent'
-
-            WriteUninstaller "$INSTDIR\Uninstall.exe"
-
-            WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\RSCCameraAgent" "DisplayName" "RSC Camera Agent"
-            WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\RSCCameraAgent" "DisplayVersion" "@@VER@@"
-            WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\RSCCameraAgent" "UninstallString" '"$INSTDIR\Uninstall.exe"'
-            WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\RSCCameraAgent" "Publisher" "Poken Holdings, Inc."
-
-            MessageBox MB_OK "RSC Camera Agent @@VER@@ installed successfully!$\n$\nYour camera is now running in the background and will connect automatically. You can close this window.$\n$\nWatch the live feed and controls anytime from your RSC dashboard."
-          SectionEnd
-
-          Section "Uninstall"
-            nsExec::ExecToLog 'net stop RSCCameraAgent'
-            nsExec::ExecToLog '"$INSTDIR\rsc-camera-agent.exe" -uninstall'
-
-            Delete "$INSTDIR\rsc-camera-agent.exe"
-            Delete "$INSTDIR\livekit-cli.exe"
-            Delete "$INSTDIR\agent_config.json"
-            Delete "$INSTDIR\install.bat"
-            Delete "$INSTDIR\uninstall.bat"
-            Delete "$INSTDIR\Uninstall.exe"
-            RMDir "$INSTDIR"
-
-            DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\RSCCameraAgent"
-          SectionEnd
-          '@ -replace '@@VER@@', $env:AGENT_VERSION | Out-File -Encoding ascii installer/installer.nsi
-        shell: pwsh
-
-      - name: Build NSIS installer
+          echo Done.
+          '@ | Out-File -Encoding ASCII installer.batname: Build NSIS installer
         env:
           AGENT_VERSION: ${{ github.event.inputs.version || '1.1.6' }}
         run: |
