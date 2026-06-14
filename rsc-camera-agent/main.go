@@ -21,7 +21,7 @@ import (
 
 const (
 	AppName    = "RSCCameraAgent"
-	AppVersion = "2.2.0"
+	AppVersion = "2.2.1"
 	RegServer  = "https://livekit.realsecuritycamera.com"
 )
 
