@@ -1,4 +1,4 @@
-name: Build Camera Agent v2.2.1
+name: Build Camera Agent v2.2.2
 
 on:
   workflow_dispatch:
@@ -6,7 +6,7 @@ on:
       version:
         description: 'Version tag (e.g. 2.0.1)'
         required: true
-        default: '2.2.1'
+        default: '2.2.2'
   push:
     paths:
       - 'rsc-camera-agent/**'
