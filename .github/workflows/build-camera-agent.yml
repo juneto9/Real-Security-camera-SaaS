@@ -1,4 +1,4 @@
-name: Build Camera Agent
+name: Build Camera Agent v2.3.0
 
 on:
   workflow_dispatch:
