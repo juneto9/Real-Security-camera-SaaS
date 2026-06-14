@@ -1,16 +1,12 @@
-name: Build Camera Agent v2.2.2
+name: Build Camera Agent
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version tag (e.g. 2.0.1)'
+        description: 'Version (e.g. 2.3.0)'
         required: true
-        default: '2.2.2'
-  push:
-    paths:
-      - 'rsc-camera-agent/**'
-    branches: [main]
+        default: '2.3.0'
 
 permissions:
   contents: write
@@ -25,7 +21,7 @@ jobs:
         with:
           go-version: '1.22'
 
-      - name: Build RSC Camera Agent
+      - name: Build agent
         working-directory: rsc-camera-agent
         env:
           GOOS: windows
@@ -33,171 +29,28 @@ jobs:
           CGO_ENABLED: 0
         run: |
           go mod tidy
-          go build -ldflags="-s -w" -o ../installer/rsc-camera-agent.exe .
+          go build -ldflags="-s -w" -o ..\pkg\rsc-camera-agent.exe .
 
       - name: Download livekit-cli
-        run: |
-          $version = "2.16.5"
-          Invoke-WebRequest -Uri "https://github.com/livekit/livekit-cli/releases/download/v${version}/lk_${version}_windows_amd64.zip" -OutFile lk.zip
-          Expand-Archive -Path lk.zip -DestinationPath installer/
-          if (Test-Path installer/lk.exe) { Move-Item -Force installer/lk.exe installer/livekit-cli.exe }
         shell: pwsh
+        run: |
+          $v = "2.16.5"
+          Invoke-WebRequest "https://github.com/livekit/livekit-cli/releases/download/v${v}/lk_${v}_windows_amd64.zip" -OutFile lk.zip
+          Expand-Archive lk.zip -DestinationPath lk_temp\
+          Move-Item -Force lk_temp\lk.exe pkg\livekit-cli.exe
+
+      - name: Download FFmpeg
+        shell: pwsh
+        run: |
+          Invoke-WebRequest "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip" -OutFile ffmpeg.zip
+          Expand-Archive ffmpeg.zip -DestinationPath ffmpeg_temp\
+          $ffDir = Get-ChildItem ffmpeg_temp -Directory | Select-Object -First 1
+          Copy-Item "$($ffDir.FullName)\bin\ffmpeg.exe" pkg\ffmpeg.exe
 
       - name: Create default config
+        shell: pwsh
         run: |
           @'
-          {
-            "camera_id": "",
-            "token_url": "https://livekit.realsecuritycamera.com/livekit-token",
-            "livekit_url": "wss://livekit.realsecuritycamera.com",
-            "device_name": "",
-            "identity": ""
-          }
-          '@ | Out-File -Encoding utf8 installer/agent_config.json
-        shell: pwsh
-
-      - name: Create silent installer script
-        run: |
-          @'
-          @echo off
-          echo ============================================
-          echo   RSC Camera Agent - Installing...
-          echo ============================================
-          
-          net session >nul 2>&1
-          if %errorLevel% neq 0 (
-              echo Requesting administrator access...
-              powershell -Command "Start-Process '%~f0' -Verb RunAs"
-              exit /b
-          )
-          
-          set INSTALL_DIR=%ProgramFiles%\RSCCameraAgent
-          mkdir "%INSTALL_DIR%" 2>nul
-          
-          copy /Y "%~dp0rsc-camera-agent.exe" "%INSTALL_DIR%\"
-          copy /Y "%~dp0livekit-cli.exe" "%INSTALL_DIR%\"
-          copy /Y "%~dp0agent_config.json" "%INSTALL_DIR%\"
-          
-          "%INSTALL_DIR%\rsc-camera-agent.exe" -install
-          net start RSCCameraAgent
-          
-          msg * "RSC Camera Agent installed successfully! The agent is now running as a background service."
-          
-          exit /b 0
-          '@ | Out-File -Encoding ascii installer/install.bat
-        shell: pwsh
-
-      - name: Create uninstaller
-        run: |
-          @'
-          @echo off
-          net session >nul 2>&1
-          if %errorLevel% neq 0 (
-              powershell -Command "Start-Process '%~f0' -Verb RunAs"
-              exit /b
-          )
-          net stop RSCCameraAgent 2>nul
-          "%ProgramFiles%\RSCCameraAgent\rsc-camera-agent.exe" -uninstall
-          rmdir /S /Q "%ProgramFiles%\RSCCameraAgent" 2>nul
-          msg * "RSC Camera Agent has been removed."
-          '@ | Out-File -Encoding ascii installer/uninstall.bat
-        shell: pwsh
-
-      - name: Install NSIS
-        run: choco install nsis -y
-        shell: cmd
-
-      - name: Create NSIS installer script
-        run: |
-          @'
-          !include "MUI2.nsh"
-          
-          Name "RSC Camera Agent"
-          OutFile "..\RSC-Camera-Agent-Setup.exe"
-          InstallDir "$PROGRAMFILES\RSCCameraAgent"
-          RequestExecutionLevel admin
-          
-          !insertmacro MUI_PAGE_INSTFILES
-          !insertmacro MUI_LANGUAGE "English"
-          
-          Section "Install"
-            SetOutPath $INSTDIR
-            File "rsc-camera-agent.exe"
-            File "livekit-cli.exe"
-            File "agent_config.json"
-            File "install.bat"
-            File "uninstall.bat"
-            
-            ; Install and start the service
-            nsExec::ExecToLog '"$INSTDIR\rsc-camera-agent.exe" -install'
-            nsExec::ExecToLog 'net start RSCCameraAgent'
-            
-            ; Create uninstaller
-            WriteUninstaller "$INSTDIR\Uninstall.exe"
-            
-            ; Add to Add/Remove Programs
-            WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\RSCCameraAgent" "DisplayName" "RSC Camera Agent"
-            WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\RSCCameraAgent" "UninstallString" '"$INSTDIR\Uninstall.exe"'
-            WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\RSCCameraAgent" "Publisher" "Poken Holdings, Inc."
-            
-            MessageBox MB_OK "RSC Camera Agent installed successfully!$\n$\nThe camera agent is now running as a background service.$\n$\nIMPORTANT: Edit agent_config.json in$\n$INSTDIR$\nwith your Camera ID from the dashboard."
-          SectionEnd
-          
-          Section "Uninstall"
-            nsExec::ExecToLog 'net stop RSCCameraAgent'
-            nsExec::ExecToLog '"$INSTDIR\rsc-camera-agent.exe" -uninstall'
-            
-            Delete "$INSTDIR\rsc-camera-agent.exe"
-            Delete "$INSTDIR\livekit-cli.exe"
-            Delete "$INSTDIR\agent_config.json"
-            Delete "$INSTDIR\install.bat"
-            Delete "$INSTDIR\uninstall.bat"
-            Delete "$INSTDIR\Uninstall.exe"
-            RMDir "$INSTDIR"
-            
-            DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\RSCCameraAgent"
-          SectionEnd
-          '@ | Out-File -Encoding ascii installer/installer.nsi
-        shell: pwsh
-
-      - name: Build NSIS installer
-        run: |
-          & "C:\Program Files (x86)\NSIS\makensis.exe" installer\installer.nsi
-        shell: pwsh
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: RSC-Camera-Agent-Setup
-          path: RSC-Camera-Agent-Setup.exe
-
-  build-linux:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.22'
-
-      - name: Build RSC Camera Agent
-        working-directory: rsc-camera-agent
-        env:
-          GOOS: linux
-          GOARCH: amd64
-          CGO_ENABLED: 0
-        run: |
-          go mod tidy
-          go build -ldflags="-s -w" -o ../dist/rsc-camera-agent .
-
-      - name: Download livekit-cli
-        run: |
-          curl -L "https://github.com/livekit/livekit-cli/releases/download/v2.16.5/lk_2.16.5_linux_amd64.tar.gz" | tar -xz -C dist/
-          mv dist/lk dist/livekit-cli 2>/dev/null || true
-
-      - name: Create config
-        run: |
-          cat > dist/agent_config.json << 'EOF'
           {
             "camera_id": "PASTE_YOUR_CAMERA_ID_HERE",
             "token_url": "https://livekit.realsecuritycamera.com/livekit-token",
@@ -205,28 +58,84 @@ jobs:
             "device_name": "",
             "identity": ""
           }
-          EOF
+          '@ | Out-File -Encoding utf8 pkg\agent_config.json
 
-      - name: Package
+      - name: Install NSIS
+        run: choco install nsis -y
+
+      - name: Create NSIS script
+        shell: pwsh
         run: |
-          chmod +x dist/rsc-camera-agent dist/livekit-cli
-          cd dist && tar -czf ../RSC-Camera-Agent-linux-amd64.tar.gz *
+          @'
+          !include "MUI2.nsh"
+
+          Name "RSC Camera Agent"
+          OutFile "..\RSC-Camera-Agent-Setup.exe"
+          InstallDir "$LOCALAPPDATA\RSCCameraAgent"
+          RequestExecutionLevel user
+
+          !define MUI_ICON "${NSISDIR}\Contrib\Graphics\Icons\modern-install.ico"
+          !insertmacro MUI_PAGE_INSTFILES
+          !insertmacro MUI_LANGUAGE "English"
+
+          Section "Install"
+            SetOutPath $INSTDIR
+            File "rsc-camera-agent.exe"
+            File "livekit-cli.exe"
+            File "ffmpeg.exe"
+            File "agent_config.json"
+
+            ; Startup shortcut
+            CreateShortCut "$SMSTARTUP\RSCCameraAgent.lnk" "$INSTDIR\rsc-camera-agent.exe" "" "$INSTDIR\rsc-camera-agent.exe"
+
+            ; Uninstaller
+            WriteUninstaller "$INSTDIR\Uninstall.exe"
+
+            ; Add/Remove Programs
+            WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\RSCCameraAgent" "DisplayName" "RSC Camera Agent"
+            WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\RSCCameraAgent" "UninstallString" '"$INSTDIR\Uninstall.exe"'
+            WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\RSCCameraAgent" "Publisher" "Poken Holdings, Inc."
+
+            ; Start the agent — will prompt for 6-digit code on first run
+            Exec '"$INSTDIR\rsc-camera-agent.exe"'
+
+            MessageBox MB_OK "RSC Camera Agent installed!$\n$\nA registration window will appear.$\nEnter the 6-digit code from your RSC dashboard.$\n$\nThe agent will then stream your camera automatically."
+          SectionEnd
+
+          Section "Uninstall"
+            nsExec::ExecToLog 'taskkill /F /IM rsc-camera-agent.exe'
+            nsExec::ExecToLog 'taskkill /F /IM ffmpeg.exe'
+            Delete "$SMSTARTUP\RSCCameraAgent.lnk"
+            Delete "$INSTDIR\rsc-camera-agent.exe"
+            Delete "$INSTDIR\livekit-cli.exe"
+            Delete "$INSTDIR\ffmpeg.exe"
+            Delete "$INSTDIR\agent_config.json"
+            Delete "$INSTDIR\rsc-agent.log"
+            Delete "$INSTDIR\Uninstall.exe"
+            RMDir "$INSTDIR"
+            DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\RSCCameraAgent"
+            MessageBox MB_OK "RSC Camera Agent has been removed."
+          SectionEnd
+          '@ | Out-File -Encoding ascii pkg\installer.nsi
+
+      - name: Build NSIS installer
+        shell: cmd
+        run: |
+          "C:\Program Files (x86)\NSIS\makensis.exe" pkg\installer.nsi
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: RSC-Camera-Agent-linux
-          path: RSC-Camera-Agent-linux-amd64.tar.gz
+          name: RSC-Camera-Agent-Setup
+          path: RSC-Camera-Agent-Setup.exe
 
   release:
-    needs: [build-windows, build-linux]
+    needs: build-windows
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch'
-
     steps:
       - uses: actions/download-artifact@v4
         with:
-          merge-multiple: true
+          name: RSC-Camera-Agent-Setup
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -235,12 +144,15 @@ jobs:
           name: "RSC Camera Agent v${{ github.event.inputs.version }}"
           body: |
             ## RSC Camera Agent v${{ github.event.inputs.version }}
-            
-            **Windows:** Download `RSC-Camera-Agent-Setup.exe`, double-click, done.
-            **Linux:** Download the tar.gz, extract, edit config, run install.
-          files: |
-            RSC-Camera-Agent-Setup.exe
-            RSC-Camera-Agent-linux-amd64.tar.gz
+
+            **Download RSC-Camera-Agent-Setup.exe and double-click.**
+
+            On first run, enter the 6-digit code from your RSC dashboard.
+            The agent registers, captures your webcam via FFmpeg, and streams
+            to LiveKit silently in the background. No browser tab needed.
+
+            Includes: agent + livekit-cli + FFmpeg (all bundled)
+          files: RSC-Camera-Agent-Setup.exe
           draft: false
           prerelease: false
         env:
