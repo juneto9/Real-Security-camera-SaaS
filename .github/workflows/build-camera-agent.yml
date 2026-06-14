@@ -45,6 +45,10 @@ jobs:
         with:
           go-version: '1.22'
 
+      - name: Resolve Go modules
+        working-directory: rsc-camera-agent
+        run: go mod tidy
+
       - name: Build RSC Camera Agent
         working-directory: rsc-camera-agent
         env:
