@@ -62,7 +62,83 @@ var (
 	doRemove   = flag.Bool("uninstall", false, "Remove Windows service")
 )
 
+// autoRegister contacts the config server on first run to self-register
+// the agent. It sends hostname, MAC addresses and a fingerprint, and
+// receives back a full per-device AgentConfig.
+func autoRegister(cfg *AgentConfig) (*AgentConfig, error) {
+	hostname, _ := os.Hostname()
+
+	// Collect MAC addresses for device identification
+	var macs []string
+	ifaces, _ := net.Interfaces()
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagUp != 0 && len(iface.HardwareAddr) > 0 {
+			macs = append(macs, iface.HardwareAddr.String())
+		}
+	}
+
+	// Build a simple device fingerprint from hostname + first MAC
+	h := md5.New()
+	h.Write([]byte(hostname))
+	if len(macs) > 0 {
+		h.Write([]byte(macs[0]))
+	}
+	fp := hex.EncodeToString(h.Sum(nil))
+
+	payload := map[string]interface{}{
+		"mode":     "auto_register",
+		"hostname": hostname,
+		"macs":     macs,
+		"fp":       fp,
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("marshal register payload: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", cfg.ConfigServer, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("create register request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", UserAgent)
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("register request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read register response: %w", err)
+	}
+
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("register returned %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	newCfg := &AgentConfig{}
+	if err := json.Unmarshal(respBody, newCfg); err != nil {
+		return nil, fmt.Errorf("parse register response: %w", err)
+	}
+
+	// Save the new config so subsequent runs use it directly
+	cfgPath := *configPath
+	if cfgPath == "" {
+		exePath, _ := os.Executable()
+		cfgPath = filepath.Join(filepath.Dir(exePath), "agent_config.json")
+	}
+	newData, _ := json.MarshalIndent(newCfg, "", "  ")
+	os.WriteFile(cfgPath, newData, 0644)
+
+	return newCfg, nil
+}
+
 func main() {
+
 	flag.Parse()
 
 	// Windows service install/uninstall
