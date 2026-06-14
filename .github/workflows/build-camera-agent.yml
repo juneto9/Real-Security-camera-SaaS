@@ -1,0 +1,202 @@
+name: Build Camera Agent
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g. 2.0.0)'
+        required: true
+        default: '2.0.0'
+  push:
+    paths:
+      - 'rsc-camera-agent/**'
+    branches: [main]
+
+env:
+  LIVEKIT_CLI_VERSION: "2.3.0"
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            goos: windows
+            goarch: amd64
+            ext: .exe
+            lk_ext: .exe
+          - os: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            ext: ""
+            lk_ext: ""
+          - os: macos-latest
+            goos: darwin
+            goarch: amd64
+            ext: ""
+            lk_ext: ""
+
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Build RSC Camera Agent
+        working-directory: rsc-camera-agent
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: |
+          go build -ldflags="-s -w" -o ../dist/rsc-camera-agent${{ matrix.ext }} .
+
+      - name: Download livekit-cli
+        run: |
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            curl -L "https://github.com/livekit/livekit-cli/releases/download/v${{ env.LIVEKIT_CLI_VERSION }}/lk_${{ env.LIVEKIT_CLI_VERSION }}_windows_amd64.zip" -o lk.zip
+            unzip lk.zip -d dist/
+            mv dist/lk.exe dist/livekit-cli.exe 2>/dev/null || true
+          elif [ "${{ matrix.goos }}" = "linux" ]; then
+            curl -L "https://github.com/livekit/livekit-cli/releases/download/v${{ env.LIVEKIT_CLI_VERSION }}/lk_${{ env.LIVEKIT_CLI_VERSION }}_linux_amd64.tar.gz" | tar -xz -C dist/
+            mv dist/lk dist/livekit-cli 2>/dev/null || true
+          else
+            curl -L "https://github.com/livekit/livekit-cli/releases/download/v${{ env.LIVEKIT_CLI_VERSION }}/lk_${{ env.LIVEKIT_CLI_VERSION }}_darwin_amd64.tar.gz" | tar -xz -C dist/
+            mv dist/lk dist/livekit-cli 2>/dev/null || true
+          fi
+        shell: bash
+
+      - name: Create sample config
+        run: |
+          cat > dist/agent_config.json << 'CFGEOF'
+          {
+            "camera_id": "YOUR_CAMERA_ID_HERE",
+            "token_url": "https://livekit.realsecuritycamera.com/livekit-token",
+            "livekit_url": "wss://livekit.realsecuritycamera.com",
+            "device_name": "",
+            "identity": ""
+          }
+          CFGEOF
+        shell: bash
+
+      - name: Create Windows installer
+        if: matrix.goos == 'windows'
+        run: |
+          cat > dist/install.bat << 'BATEOF'
+          @echo off
+          echo ============================================
+          echo   RSC Camera Agent - One-Click Installer
+          echo ============================================
+          echo.
+          
+          :: Check admin
+          net session >nul 2>&1
+          if %errorLevel% neq 0 (
+              echo ERROR: Please run as Administrator
+              echo Right-click this file and select "Run as administrator"
+              pause
+              exit /b 1
+          )
+          
+          :: Create install directory
+          set INSTALL_DIR=%ProgramFiles%\RSCCameraAgent
+          mkdir "%INSTALL_DIR%" 2>nul
+          
+          :: Copy files
+          copy /Y rsc-camera-agent.exe "%INSTALL_DIR%\"
+          copy /Y livekit-cli.exe "%INSTALL_DIR%\"
+          copy /Y agent_config.json "%INSTALL_DIR%\"
+          
+          :: Install as Windows service
+          "%INSTALL_DIR%\rsc-camera-agent.exe" -install
+          
+          :: Start the service
+          net start RSCCameraAgent
+          
+          echo.
+          echo ============================================
+          echo   Installation complete!
+          echo   Service: RSCCameraAgent (auto-start)
+          echo   Config:  %INSTALL_DIR%\agent_config.json
+          echo ============================================
+          echo.
+          echo IMPORTANT: Edit agent_config.json with your
+          echo camera_id before the agent can stream.
+          echo.
+          pause
+          BATEOF
+        shell: bash
+
+      - name: Create Windows uninstaller
+        if: matrix.goos == 'windows'
+        run: |
+          cat > dist/uninstall.bat << 'BATEOF'
+          @echo off
+          echo Stopping RSC Camera Agent...
+          net stop RSCCameraAgent 2>nul
+          "%ProgramFiles%\RSCCameraAgent\rsc-camera-agent.exe" -uninstall
+          rmdir /S /Q "%ProgramFiles%\RSCCameraAgent" 2>nul
+          echo RSC Camera Agent removed.
+          pause
+          BATEOF
+        shell: bash
+
+      - name: Package release
+        run: |
+          cd dist
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            7z a -tzip ../RSC-Camera-Agent-${{ matrix.goos }}-${{ matrix.goarch }}.zip *
+          else
+            chmod +x rsc-camera-agent livekit-cli 2>/dev/null || true
+            tar -czf ../RSC-Camera-Agent-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz *
+          fi
+        shell: bash
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RSC-Camera-Agent-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: RSC-Camera-Agent-*
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: camera-agent-v${{ github.event.inputs.version }}
+          name: "RSC Camera Agent v${{ github.event.inputs.version }}"
+          body: |
+            ## RSC Camera Agent v${{ github.event.inputs.version }}
+            
+            Headless webcam publisher for Real Security Camera.
+            Runs as a Windows service or Linux daemon — no browser needed.
+            
+            ### Quick Install (Windows)
+            1. Download `RSC-Camera-Agent-windows-amd64.zip`
+            2. Extract all files
+            3. Edit `agent_config.json` with your camera ID
+            4. Right-click `install.bat` → Run as Administrator
+            
+            ### Quick Install (Linux)
+            1. Download `RSC-Camera-Agent-linux-amd64.tar.gz`
+            2. Extract: `tar -xzf RSC-Camera-Agent-linux-amd64.tar.gz`
+            3. Edit `agent_config.json` with your camera ID
+            4. Run: `sudo ./rsc-camera-agent -install`
+          files: |
+            RSC-Camera-Agent-*.zip
+            RSC-Camera-Agent-*.tar.gz
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
