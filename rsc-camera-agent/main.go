@@ -33,7 +33,7 @@ import (
 
 const (
 	AppName    = "RSCCameraAgent"
-	AppVersion = "2.1.0"
+	AppVersion = "2.2.0"
 	UserAgent  = "RSC-Camera-Agent/" + AppVersion
 )
 
