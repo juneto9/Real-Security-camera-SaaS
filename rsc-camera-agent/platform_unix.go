@@ -1,19 +1,27 @@
-﻿//go:build !windows
+//go:build !windows
 
 package main
 
 import (
-"fmt"
-"os"
+	"bufio"
+	"fmt"
+	"os"
+	"strings"
 )
 
-func hideWindow() {}
-func showError(msg string) { fmt.Fprintf(os.Stderr, "ERROR: %s\n", msg) }
-func showInfo(msg string) { fmt.Println(msg) }
+func hideWindow() {} // no-op on non-Windows
+
+func showError(msg string) {
+	fmt.Fprintln(os.Stderr, "[ERROR]", msg)
+}
+
+func showInfo(msg string) {
+	fmt.Fprintln(os.Stdout, "[INFO]", msg)
+}
+
 func promptForCode(prompt string) string {
-fmt.Println(prompt)
-fmt.Print("Code: ")
-var code string
-fmt.Scanln(&code)
-return code
+	fmt.Print(prompt + " ")
+	reader := bufio.NewReader(os.Stdin)
+	code, _ := reader.ReadString('\n')
+	return strings.TrimSpace(code)
 }
