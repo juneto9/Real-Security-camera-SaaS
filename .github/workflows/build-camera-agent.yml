@@ -12,6 +12,9 @@ on:
       - 'rsc-camera-agent/**'
     branches: [main]
 
+permissions:
+  contents: write
+
 env:
   LIVEKIT_CLI_VERSION: "2.16.5"
 
