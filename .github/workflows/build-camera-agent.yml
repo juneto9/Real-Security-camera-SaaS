@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version tag (e.g. 2.0.0)'
+        description: 'Version tag (e.g. 2.0.1)'
         required: true
-        default: '2.0.0'
+        default: '2.0.1'
   push:
     paths:
       - 'rsc-camera-agent/**'
@@ -15,32 +15,9 @@ on:
 permissions:
   contents: write
 
-env:
-  LIVEKIT_CLI_VERSION: "2.16.5"
-
 jobs:
-  build:
-    strategy:
-      matrix:
-        include:
-          - os: windows-latest
-            goos: windows
-            goarch: amd64
-            ext: .exe
-            lk_ext: .exe
-          - os: ubuntu-latest
-            goos: linux
-            goarch: amd64
-            ext: ""
-            lk_ext: ""
-          - os: macos-latest
-            goos: darwin
-            goarch: amd64
-            ext: ""
-            lk_ext: ""
-
-    runs-on: ${{ matrix.os }}
-    
+  build-windows:
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -48,131 +25,201 @@ jobs:
         with:
           go-version: '1.22'
 
-      - name: Resolve Go modules
-        working-directory: rsc-camera-agent
-        run: go mod tidy
-
       - name: Build RSC Camera Agent
         working-directory: rsc-camera-agent
         env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
+          GOOS: windows
+          GOARCH: amd64
           CGO_ENABLED: 0
         run: |
-          go build -ldflags="-s -w" -o ../dist/rsc-camera-agent${{ matrix.ext }} .
+          go mod tidy
+          go build -ldflags="-s -w" -o ../installer/rsc-camera-agent.exe .
 
       - name: Download livekit-cli
         run: |
-          if [ "${{ matrix.goos }}" = "windows" ]; then
-            curl -L "https://github.com/livekit/livekit-cli/releases/download/v${{ env.LIVEKIT_CLI_VERSION }}/lk_${{ env.LIVEKIT_CLI_VERSION }}_windows_amd64.zip" -o lk.zip
-            unzip lk.zip -d dist/
-            mv dist/lk.exe dist/livekit-cli.exe 2>/dev/null || true
-          elif [ "${{ matrix.goos }}" = "linux" ]; then
-            curl -L "https://github.com/livekit/livekit-cli/releases/download/v${{ env.LIVEKIT_CLI_VERSION }}/lk_${{ env.LIVEKIT_CLI_VERSION }}_linux_amd64.tar.gz" | tar -xz -C dist/
-            mv dist/lk dist/livekit-cli 2>/dev/null || true
-          else
-            curl -L "https://github.com/livekit/livekit-cli/releases/download/v${{ env.LIVEKIT_CLI_VERSION }}/lk_${{ env.LIVEKIT_CLI_VERSION }}_darwin_amd64.tar.gz" | tar -xz -C dist/
-            mv dist/lk dist/livekit-cli 2>/dev/null || true
-          fi
-        shell: bash
+          $version = "2.16.5"
+          Invoke-WebRequest -Uri "https://github.com/livekit/livekit-cli/releases/download/v${version}/lk_${version}_windows_amd64.zip" -OutFile lk.zip
+          Expand-Archive -Path lk.zip -DestinationPath installer/
+          if (Test-Path installer/lk.exe) { Rename-Item installer/lk.exe installer/livekit-cli.exe }
+        shell: pwsh
 
-      - name: Create sample config
+      - name: Create default config
         run: |
-          cat > dist/agent_config.json << 'CFGEOF'
+          @'
           {
-            "camera_id": "YOUR_CAMERA_ID_HERE",
+            "camera_id": "PASTE_YOUR_CAMERA_ID_HERE",
             "token_url": "https://livekit.realsecuritycamera.com/livekit-token",
             "livekit_url": "wss://livekit.realsecuritycamera.com",
             "device_name": "",
             "identity": ""
           }
-          CFGEOF
-        shell: bash
+          '@ | Out-File -Encoding utf8 installer/agent_config.json
+        shell: pwsh
 
-      - name: Create Windows installer
-        if: matrix.goos == 'windows'
+      - name: Create silent installer script
         run: |
-          cat > dist/install.bat << 'BATEOF'
+          @'
           @echo off
           echo ============================================
-          echo   RSC Camera Agent - One-Click Installer
+          echo   RSC Camera Agent - Installing...
           echo ============================================
-          echo.
-          
-          :: Check admin
+
           net session >nul 2>&1
           if %errorLevel% neq 0 (
-              echo ERROR: Please run as Administrator
-              echo Right-click this file and select "Run as administrator"
-              pause
-              exit /b 1
+              echo Requesting administrator access...
+              powershell -Command "Start-Process '%~f0' -Verb RunAs"
+              exit /b
           )
-          
-          :: Create install directory
+
           set INSTALL_DIR=%ProgramFiles%\RSCCameraAgent
           mkdir "%INSTALL_DIR%" 2>nul
-          
-          :: Copy files
-          copy /Y rsc-camera-agent.exe "%INSTALL_DIR%\"
-          copy /Y livekit-cli.exe "%INSTALL_DIR%\"
-          copy /Y agent_config.json "%INSTALL_DIR%\"
-          
-          :: Install as Windows service
-          "%INSTALL_DIR%\rsc-camera-agent.exe" -install
-          
-          :: Start the service
-          net start RSCCameraAgent
-          
-          echo.
-          echo ============================================
-          echo   Installation complete!
-          echo   Service: RSCCameraAgent (auto-start)
-          echo   Config:  %INSTALL_DIR%\agent_config.json
-          echo ============================================
-          echo.
-          echo IMPORTANT: Edit agent_config.json with your
-          echo camera_id before the agent can stream.
-          echo.
-          pause
-          BATEOF
-        shell: bash
 
-      - name: Create Windows uninstaller
-        if: matrix.goos == 'windows'
+          copy /Y "%~dp0rsc-camera-agent.exe" "%INSTALL_DIR%\"
+          copy /Y "%~dp0livekit-cli.exe" "%INSTALL_DIR%\"
+          copy /Y "%~dp0agent_config.json" "%INSTALL_DIR%\"
+
+          "%INSTALL_DIR%\rsc-camera-agent.exe" -install
+          net start RSCCameraAgent
+
+          msg * "RSC Camera Agent installed successfully! The agent is now running as a background service."
+
+          exit /b 0
+          '@ | Out-File -Encoding ascii installer/install.bat
+        shell: pwsh
+
+      - name: Create uninstaller
         run: |
-          cat > dist/uninstall.bat << 'BATEOF'
+          @'
           @echo off
-          echo Stopping RSC Camera Agent...
+          net session >nul 2>&1
+          if %errorLevel% neq 0 (
+              powershell -Command "Start-Process '%~f0' -Verb RunAs"
+              exit /b
+          )
           net stop RSCCameraAgent 2>nul
           "%ProgramFiles%\RSCCameraAgent\rsc-camera-agent.exe" -uninstall
           rmdir /S /Q "%ProgramFiles%\RSCCameraAgent" 2>nul
-          echo RSC Camera Agent removed.
-          pause
-          BATEOF
-        shell: bash
+          msg * "RSC Camera Agent has been removed."
+          '@ | Out-File -Encoding ascii installer/uninstall.bat
+        shell: pwsh
 
-      - name: Package release
+      - name: Install NSIS
+        run: choco install nsis -y
+        shell: cmd
+
+      - name: Create NSIS installer script
         run: |
-          cd dist
-          if [ "${{ matrix.goos }}" = "windows" ]; then
-            7z a -tzip ../RSC-Camera-Agent-${{ matrix.goos }}-${{ matrix.goarch }}.zip *
-          else
-            chmod +x rsc-camera-agent livekit-cli 2>/dev/null || true
-            tar -czf ../RSC-Camera-Agent-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz *
-          fi
-        shell: bash
+          @'
+          !include "MUI2.nsh"
+
+          Name "RSC Camera Agent"
+          OutFile "..\RSC-Camera-Agent-Setup.exe"
+          InstallDir "$PROGRAMFILES\RSCCameraAgent"
+          RequestExecutionLevel admin
+
+          !insertmacro MUI_PAGE_INSTFILES
+          !insertmacro MUI_LANGUAGE "English"
+
+          Section "Install"
+            SetOutPath $INSTDIR
+            File "rsc-camera-agent.exe"
+            File "livekit-cli.exe"
+            File "agent_config.json"
+            File "install.bat"
+            File "uninstall.bat"
+
+            nsExec::ExecToLog '"$INSTDIR\rsc-camera-agent.exe" -install'
+            nsExec::ExecToLog 'net start RSCCameraAgent'
+
+            WriteUninstaller "$INSTDIR\Uninstall.exe"
+
+            WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\RSCCameraAgent" "DisplayName" "RSC Camera Agent"
+            WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\RSCCameraAgent" "UninstallString" '"$INSTDIR\Uninstall.exe"'
+            WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\RSCCameraAgent" "Publisher" "Poken Holdings, Inc."
+
+            MessageBox MB_OK "RSC Camera Agent installed successfully!$\n$\nThe camera agent is now running as a background service.$\n$\nIMPORTANT: Edit agent_config.json in$\n$INSTDIR$\nwith your Camera ID from the dashboard."
+          SectionEnd
+
+          Section "Uninstall"
+            nsExec::ExecToLog 'net stop RSCCameraAgent'
+            nsExec::ExecToLog '"$INSTDIR\rsc-camera-agent.exe" -uninstall'
+
+            Delete "$INSTDIR\rsc-camera-agent.exe"
+            Delete "$INSTDIR\livekit-cli.exe"
+            Delete "$INSTDIR\agent_config.json"
+            Delete "$INSTDIR\install.bat"
+            Delete "$INSTDIR\uninstall.bat"
+            Delete "$INSTDIR\Uninstall.exe"
+            RMDir "$INSTDIR"
+
+            DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\RSCCameraAgent"
+          SectionEnd
+          '@ | Out-File -Encoding ascii installer/installer.nsi
+        shell: pwsh
+
+      - name: Build NSIS installer
+        run: |
+          & "C:\Program Files (x86)\NSIS\makensis.exe" installer\installer.nsi
+        shell: pwsh
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: RSC-Camera-Agent-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: RSC-Camera-Agent-*
+          name: RSC-Camera-Agent-Setup
+          path: RSC-Camera-Agent-Setup.exe
+
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Build RSC Camera Agent
+        working-directory: rsc-camera-agent
+        env:
+          GOOS: linux
+          GOARCH: amd64
+          CGO_ENABLED: 0
+        run: |
+          go mod tidy
+          go build -ldflags="-s -w" -o ../dist/rsc-camera-agent .
+
+      - name: Download livekit-cli
+        run: |
+          curl -L "https://github.com/livekit/livekit-cli/releases/download/v2.16.5/lk_2.16.5_linux_amd64.tar.gz" | tar -xz -C dist/
+          mv dist/lk dist/livekit-cli 2>/dev/null || true
+
+      - name: Create config
+        run: |
+          cat > dist/agent_config.json << 'EOF'
+          {
+            "camera_id": "PASTE_YOUR_CAMERA_ID_HERE",
+            "token_url": "https://livekit.realsecuritycamera.com/livekit-token",
+            "livekit_url": "wss://livekit.realsecuritycamera.com",
+            "device_name": "",
+            "identity": ""
+          }
+          EOF
+
+      - name: Package
+        run: |
+          chmod +x dist/rsc-camera-agent dist/livekit-cli
+          cd dist && tar -czf ../RSC-Camera-Agent-linux-amd64.tar.gz *
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RSC-Camera-Agent-linux
+          path: RSC-Camera-Agent-linux-amd64.tar.gz
 
   release:
-    needs: build
+    needs: [build-windows, build-linux]
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch'
-    
+
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -185,24 +232,12 @@ jobs:
           name: "RSC Camera Agent v${{ github.event.inputs.version }}"
           body: |
             ## RSC Camera Agent v${{ github.event.inputs.version }}
-            
-            Headless webcam publisher for Real Security Camera.
-            Runs as a Windows service or Linux daemon — no browser needed.
-            
-            ### Quick Install (Windows)
-            1. Download `RSC-Camera-Agent-windows-amd64.zip`
-            2. Extract all files
-            3. Edit `agent_config.json` with your camera ID
-            4. Right-click `install.bat` → Run as Administrator
-            
-            ### Quick Install (Linux)
-            1. Download `RSC-Camera-Agent-linux-amd64.tar.gz`
-            2. Extract: `tar -xzf RSC-Camera-Agent-linux-amd64.tar.gz`
-            3. Edit `agent_config.json` with your camera ID
-            4. Run: `sudo ./rsc-camera-agent -install`
+
+            **Windows:** Download `RSC-Camera-Agent-Setup.exe`, double-click, done.
+            **Linux:** Download the tar.gz, extract, edit config, run install.
           files: |
-            RSC-Camera-Agent-*.zip
-            RSC-Camera-Agent-*.tar.gz
+            RSC-Camera-Agent-Setup.exe
+            RSC-Camera-Agent-linux-amd64.tar.gz
           draft: false
           prerelease: false
         env:
