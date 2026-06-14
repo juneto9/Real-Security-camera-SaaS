@@ -13,11 +13,14 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/md5"
+	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -30,17 +33,20 @@ import (
 
 const (
 	AppName    = "RSCCameraAgent"
-	AppVersion = "2.0.0"
+	AppVersion = "2.1.0"
 	UserAgent  = "RSC-Camera-Agent/" + AppVersion
 )
 
 // Config loaded from agent_config.json
 type AgentConfig struct {
-	CameraID   string `json:"camera_id"`
-	TokenURL   string `json:"token_url"`
-	LiveKitURL string `json:"livekit_url"`
-	DeviceName string `json:"device_name"`
-	Identity   string `json:"identity"`
+	CameraID     string `json:"camera_id"`
+	Room         string `json:"room"`
+	TokenURL     string `json:"token_url"`
+	LiveKitURL   string `json:"livekit_url"`
+	Identity     string `json:"identity"`
+	DeviceName   string `json:"device_name"`
+	AppID        string `json:"app_id"`
+	ConfigServer string `json:"config_server"`
 }
 
 // TokenResponse from VPS token server
@@ -98,6 +104,17 @@ func runAgent(ctx context.Context) error {
 	cfg, err := loadConfig()
 	if err != nil {
 		return fmt.Errorf("config: %w", err)
+	}
+
+	// Self-register on first run if camera_id is "auto"
+	if cfg.CameraID == "auto" && cfg.ConfigServer != "" {
+		log.Println("[RSC] First run — auto-registering with server...")
+		newCfg, err := autoRegister(cfg)
+		if err != nil {
+			return fmt.Errorf("auto-register: %w", err)
+		}
+		cfg = newCfg
+		log.Printf("[RSC] ✓ Registered as camera %s", cfg.CameraID)
 	}
 
 	log.Printf("[RSC] Camera ID: %s", cfg.CameraID)
@@ -289,6 +306,9 @@ func loadConfig() (*AgentConfig, error) {
 	if cfg.DeviceName == "" {
 		hostname, _ := os.Hostname()
 		cfg.DeviceName = hostname
+	}
+	if cfg.Room == "" && cfg.CameraID != "" && cfg.CameraID != "auto" {
+		cfg.Room = cfg.CameraID
 	}
 
 	return &cfg, nil
