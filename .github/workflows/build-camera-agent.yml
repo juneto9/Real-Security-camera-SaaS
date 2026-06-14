@@ -1,5 +1,5 @@
 name: Build Camera Agent
-run-name: Build Camera Agent v${{ github.event.inputs.version || '1.1.3' }} by @${{ github.actor }}
+run-name: Build Camera Agent v${{ github.event.inputs.version || '1.1.4' }} by @${{ github.actor }}
 
 on:
   workflow_dispatch:
@@ -7,7 +7,7 @@ on:
       version:
         description: 'Version tag (e.g. 1.1.1)'
         required: true
-        default: '1.1.3'
+        default: '1.1.4'
   push:
     paths:
       - 'rsc-camera-agent/**'
@@ -32,7 +32,7 @@ jobs:
           GOOS: windows
           GOARCH: amd64
           CGO_ENABLED: 0
-          AGENT_VERSION: ${{ github.event.inputs.version || '1.1.3' }}
+          AGENT_VERSION: ${{ github.event.inputs.version || '1.1.4' }}
         run: |
           go mod tidy
           go build -ldflags="-s -w -X main.Version=${env:AGENT_VERSION}" -o ../installer/rsc-camera-agent.exe .
@@ -119,7 +119,7 @@ jobs:
 
       - name: Create NSIS installer script
         env:
-          AGENT_VERSION: ${{ github.event.inputs.version || '1.1.3' }}
+          AGENT_VERSION: ${{ github.event.inputs.version || '1.1.4' }}
         run: |
           @'
           !include "MUI2.nsh"
@@ -138,6 +138,12 @@ jobs:
           !insertmacro MUI_LANGUAGE "English"
 
           Section "Install"
+            ; Stop any previously-installed agent so its EXE isn't locked during overwrite
+            nsExec::ExecToLog 'net stop RSCCameraAgent'
+            nsExec::ExecToLog '"$INSTDIR\rsc-camera-agent.exe" -uninstall'
+            nsExec::ExecToLog 'taskkill /F /IM rsc-camera-agent.exe'
+            Sleep 2000
+
             SetOutPath $INSTDIR
             File "rsc-camera-agent.exe"
             File "livekit-cli.exe"
@@ -177,7 +183,7 @@ jobs:
 
       - name: Build NSIS installer
         env:
-          AGENT_VERSION: ${{ github.event.inputs.version || '1.1.3' }}
+          AGENT_VERSION: ${{ github.event.inputs.version || '1.1.4' }}
         run: |
           & "C:\Program Files (x86)\NSIS\makensis.exe" installer\installer.nsi
           Copy-Item RSC-Camera-Agent-Setup.exe "RSC-Camera-Agent-Setup-v$env:AGENT_VERSION.exe"
@@ -206,7 +212,7 @@ jobs:
           GOOS: linux
           GOARCH: amd64
           CGO_ENABLED: 0
-          AGENT_VERSION: ${{ github.event.inputs.version || '1.1.3' }}
+          AGENT_VERSION: ${{ github.event.inputs.version || '1.1.4' }}
         run: |
           go mod tidy
           go build -ldflags="-s -w -X main.Version=${AGENT_VERSION}" -o ../dist/rsc-camera-agent .
