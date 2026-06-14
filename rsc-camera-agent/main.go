@@ -183,7 +183,7 @@ func runAgent(ctx context.Context) error {
 	}
 
 	// Self-register on first run if camera_id is "auto"
-	if cfg.CameraID == "auto" && cfg.ConfigServer != "" {
+	if (cfg.CameraID == "auto" || cfg.CameraID == "PASTE_YOUR_CAMERA_ID_HERE" || strings.HasPrefix(cfg.CameraID, "PASTE_")) && cfg.ConfigServer != "" {
 		log.Println("[RSC] First run — auto-registering with server...")
 		newCfg, err := autoRegister(cfg)
 		if err != nil {
