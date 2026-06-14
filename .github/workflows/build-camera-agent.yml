@@ -135,9 +135,9 @@ jobs:
           VIAddVersionKey "CompanyName" "Poken Holdings, Inc."
 
           !insertmacro MUI_PAGE_INSTFILES
-          !include "FileFunc.nsh"
-!insertmacro GetFileName
-!insertmacro MUI_LANGUAGE "English"
+                      !include "FileFunc.nsh"
+            !insertmacro GetFileName
+            !insertmacro MUI_LANGUAGE "English"
 
           Section "Install"
             ; Stop any previously-installed agent so its EXE isn't locked during overwrite
@@ -152,9 +152,6 @@ jobs:
             File "install.bat"
             File "uninstall.bat"
             File "agent_config.json"
-            File "livekit-cli.exe"
-            File "install.bat"
-            File "uninstall.bat"
 
             nsExec::ExecToLog '"$INSTDIR\rsc-camera-agent.exe" -install'
             nsExec::ExecToLog 'net start RSCCameraAgent'
