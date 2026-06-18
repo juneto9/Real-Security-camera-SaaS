@@ -85,13 +85,13 @@ jobs:
             --platform android \
             --profile $PROFILE \
             --non-interactive \
-            --output ../rsc-mobile-android.apk
+            --output ../RSC-Real-Security-Cam.apk
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: rsc-mobile-android-${{ github.sha }}
-          path: rsc-mobile-android.apk
+          name: RSC-Real-Security-Cam-${{ github.sha }}
+          path: RSC-Real-Security-Cam.apk
           retention-days: 30
 
       - name: Create GitHub Release
@@ -99,7 +99,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: mobile-v${{ github.run_number }}
-          name: RSC Mobile Android v${{ github.run_number }}
+          name: RSC Real Security Cam Android v${{ github.run_number }}
           body: |
             ## RSC Mobile — Android APK
 
@@ -123,7 +123,7 @@ jobs:
 
             ### First run
             Accept all permission prompts — camera, microphone, location, and network access are all required.
-          files: rsc-mobile-android.apk
+          files: RSC-Real-Security-Cam.apk
           draft: false
           prerelease: true
         env:
