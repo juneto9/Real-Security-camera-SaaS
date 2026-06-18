@@ -202,4 +202,44 @@ router.post('/:id/retry', requireAuth, async (req,res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+
+// ── GET /api/liberation/gate-status ──────────────────────────────────────────
+// Returns whether this org needs to see the gate, and if so which tier.
+// Tier 1 = handled at onboarding (never shown here)
+// Tier 2 = first ever liberation attempt
+// Tier 3 = subsequent attempts (gate shows with "apply to all" checkbox)
+// Tier 0 = user already clicked "apply to all" — skip gate entirely
+router.get('/gate-status', requireAuth, async (req, res) => {
+  try {
+    const org = await queryOne('SELECT liberation_gate_accepted, liberation_gate_accepted_at FROM organizations WHERE id=$1', [req.orgId]);
+    const jobCount = await queryOne('SELECT COUNT(*) as n FROM liberation_jobs WHERE org_id=$1', [req.orgId]);
+    const count = parseInt(jobCount?.n || 0);
+
+    if (org?.liberation_gate_accepted) {
+      return res.json({ tier: 0, show: false, message: 'Gate permanently accepted' });
+    }
+    if (count === 0) {
+      return res.json({ tier: 2, show: true, isFirstEver: true, message: 'First liberation attempt' });
+    }
+    return res.json({ tier: 3, show: true, isFirstEver: false, message: 'Subsequent liberation' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── POST /api/liberation/gate-accept ─────────────────────────────────────────
+// Log gate acceptance. If applyToAll=true, set org flag so gate never shows again.
+router.post('/gate-accept', requireAuth, async (req, res) => {
+  try {
+    const { applyToAll, cameraId } = req.body;
+    if (applyToAll) {
+      await query(
+        'UPDATE organizations SET liberation_gate_accepted=true, liberation_gate_accepted_at=NOW() WHERE id=$1',
+        [req.orgId]
+      );
+    }
+    // Always log the acceptance
+    console.log('[Liberation Gate] Accepted by org:', req.orgId, '| camera:', cameraId, '| applyToAll:', applyToAll, '| time:', new Date().toISOString());
+    res.json({ ok: true, applyToAll: !!applyToAll });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 export default router;
