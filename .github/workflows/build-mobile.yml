@@ -62,22 +62,15 @@ jobs:
 
       - name: Download AI models from DO Spaces
         working-directory: mobile
-        env:
-          SPACES_KEY: ${{ secrets.SPACES_KEY }}
-          SPACES_SECRET: ${{ secrets.SPACES_SECRET }}
         run: |
           mkdir -p assets/models
-          # Download YOLOv8n TFLite models from DO Spaces
-          # Models are stored at: real-security-camera-recordings/ai-models/
-          curl -f "https://real-security-camera-recordings.nyc3.digitaloceanspaces.com/ai-models/yolov8n.tflite" \
-            -o assets/models/yolov8n.tflite || echo "Model not yet uploaded — build will use placeholder"
-          curl -f "https://real-security-camera-recordings.nyc3.digitaloceanspaces.com/ai-models/yolov8n_pose.tflite" \
-            -o assets/models/yolov8n_pose.tflite || echo "Pose model not yet uploaded"
-          curl -f "https://real-security-camera-recordings.nyc3.digitaloceanspaces.com/ai-models/blazeface.tflite" \
-            -o assets/models/blazeface.tflite || echo "BlazeFace not yet uploaded"
+          for model in yolov8n.tflite yolov8n_pose.tflite blazeface.tflite; do
+            curl -sf "https://real-security-camera-recordings.nyc3.digitaloceanspaces.com/ai-models/$model" \
+              -o "assets/models/$model" && echo "✅ $model" || echo "⚠️ $model not found — AI disabled for this build"
+          done
           ls -lh assets/models/
 
-      - name: Build Android APK (Preview)
+      - name: Build Android APK
         working-directory: mobile
         run: |
           PROFILE="${{ github.event.inputs.profile || 'preview' }}"
@@ -85,44 +78,87 @@ jobs:
             --platform android \
             --profile $PROFILE \
             --non-interactive \
-            --output ../RSC-Real-Security-Cam.apk
+            --json \
+            --output /tmp/build-result.json
+          cat /tmp/build-result.json
 
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: RSC-Real-Security-Cam-${{ github.sha }}
-          path: RSC-Real-Security-Cam.apk
-          retention-days: 30
+      - name: Download APK from EAS
+        run: |
+          BUILD_URL=$(cat /tmp/build-result.json | python3 -c "import sys,json; d=json.load(sys.stdin); print(d[0]['artifacts']['buildUrl'])" 2>/dev/null || \
+                      cat /tmp/build-result.json | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['artifacts']['buildUrl'])" 2>/dev/null)
+          echo "Build URL: $BUILD_URL"
+          curl -L "$BUILD_URL" -o RSC-Real-Security-Cam.apk
+          ls -lh RSC-Real-Security-Cam.apk
+
+      - name: Upload APK to DO Spaces (permanent storage)
+        env:
+          SPACES_KEY: ${{ secrets.SPACES_KEY }}
+          SPACES_SECRET: ${{ secrets.SPACES_SECRET }}
+        run: |
+          # Install AWS CLI (compatible with DO Spaces)
+          pip install awscli --quiet
+
+          # Configure for DO Spaces
+          aws configure set aws_access_key_id $SPACES_KEY
+          aws configure set aws_secret_access_key $SPACES_SECRET
+          aws configure set default.region nyc3
+
+          # Upload latest build (always overwrite latest)
+          aws s3 cp RSC-Real-Security-Cam.apk \
+            s3://real-security-camera-recordings/releases/android/RSC-Real-Security-Cam-latest.apk \
+            --endpoint-url https://nyc3.digitaloceanspaces.com \
+            --acl public-read
+
+          # Also upload versioned copy with build number
+          aws s3 cp RSC-Real-Security-Cam.apk \
+            s3://real-security-camera-recordings/releases/android/RSC-Real-Security-Cam-build${{ github.run_number }}.apk \
+            --endpoint-url https://nyc3.digitaloceanspaces.com \
+            --acl public-read
+
+          echo "✅ APK permanently stored at:"
+          echo "   https://real-security-camera-recordings.nyc3.digitaloceanspaces.com/releases/android/RSC-Real-Security-Cam-latest.apk"
+
+      - name: Update VPS download endpoint
+        env:
+          ADMIN_TOKEN: rsc-admin-exec-2026-poken
+        run: |
+          # Tell the VPS API the new build info so the dashboard can show it
+          curl -s -X POST https://api.realsecuritycamera.com/api/admin/exec \
+            -H "X-Admin-Token: $ADMIN_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"cmd\": \"echo '{\\\"version\\\":\\\"build-${{ github.run_number }}\\\",\\\"build_date\\\":\\\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\\\",\\\"apk_url\\\":\\\"https://real-security-camera-recordings.nyc3.digitaloceanspaces.com/releases/android/RSC-Real-Security-Cam-latest.apk\\\",\\\"commit\\\":\\\"${{ github.sha }}\\\"}' > /opt/rsc-api/mobile-release.json && echo UPDATED\"}"
 
       - name: Create GitHub Release
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: mobile-v${{ github.run_number }}
-          name: RSC Real Security Cam Android v${{ github.run_number }}
+          tag_name: mobile-build-${{ github.run_number }}
+          name: RSC Mobile Android — Build ${{ github.run_number }}
           body: |
-            ## RSC Mobile — Android APK
+            ## RSC Real Security Cam — Android APK
 
             **Build:** ${{ github.run_number }}
             **Commit:** ${{ github.sha }}
+            **Date:** ${{ github.event.head_commit.timestamp }}
+
+            ### 📥 Download (Permanent — hosted on RSC Cloud)
+            **[⬇️ RSC-Real-Security-Cam-latest.apk](https://real-security-camera-recordings.nyc3.digitaloceanspaces.com/releases/android/RSC-Real-Security-Cam-latest.apk)**
+
+            This link never expires. Hosted on RSC DO Spaces.
+
+            ### Install
+            1. Download the APK above
+            2. On Android: Settings → Security → Allow unknown sources
+            3. Open the APK and install
+            4. Login with your RSC account at realsecuritycamera.com
 
             ### What's in this build
             - Dual-stream PiP camera (front + rear via LiveKit)
             - YOLOv8n on-device AI (object detection, pose, face)
-            - Android ARP network discovery
-            - GPS geofence auto-arm
-            - Audio classification (glass break, alarm, dog bark)
-            - Cloud recording to DO Spaces
+            - Android ARP network discovery → fixes Discover tab unknowns
+            - GPS geofence auto-arm/disarm
+            - Audio classification (glass break, alarm, dog bark, shouting)
+            - Cloud recording to RSC DO Spaces
             - RSC branded UI (red/black/white)
-
-            ### Install
-            1. Download `RSC-Mobile-Android.apk`
-            2. On your Android phone: Settings → Security → Allow unknown sources
-            3. Open the APK and install
-            4. Login with your RSC account
-
-            ### First run
-            Accept all permission prompts — camera, microphone, location, and network access are all required.
           files: RSC-Real-Security-Cam.apk
           draft: false
           prerelease: true
@@ -130,7 +166,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build-ios:
-    name: Build iOS (Simulator)
+    name: Build iOS
     runs-on: macos-latest
     if: |
       github.event.inputs.platform == 'ios' ||
@@ -159,18 +195,38 @@ jobs:
         working-directory: mobile
         run: |
           mkdir -p assets/models
-          curl -f "https://real-security-camera-recordings.nyc3.digitaloceanspaces.com/ai-models/yolov8n.tflite" \
-            -o assets/models/yolov8n.tflite || echo "Model placeholder"
-          curl -f "https://real-security-camera-recordings.nyc3.digitaloceanspaces.com/ai-models/yolov8n_pose.tflite" \
-            -o assets/models/yolov8n_pose.tflite || echo "Pose placeholder"
-          curl -f "https://real-security-camera-recordings.nyc3.digitaloceanspaces.com/ai-models/blazeface.tflite" \
-            -o assets/models/blazeface.tflite || echo "BlazeFace placeholder"
+          for model in yolov8n.tflite yolov8n_pose.tflite blazeface.tflite; do
+            curl -sf "https://real-security-camera-recordings.nyc3.digitaloceanspaces.com/ai-models/$model" \
+              -o "assets/models/$model" || echo "⚠️ $model not found"
+          done
 
-      - name: Build iOS Simulator
+      - name: Build iOS
         working-directory: mobile
         run: |
           eas build \
             --platform ios \
-            --profile development \
-            --non-interactive
+            --profile preview \
+            --non-interactive \
+            --json \
+            --output /tmp/ios-build-result.json
 
+      - name: Upload IPA to DO Spaces
+        env:
+          SPACES_KEY: ${{ secrets.SPACES_KEY }}
+          SPACES_SECRET: ${{ secrets.SPACES_SECRET }}
+        run: |
+          IPA_URL=$(cat /tmp/ios-build-result.json | python3 -c "import sys,json; d=json.load(sys.stdin); print(d[0]['artifacts']['buildUrl'])" 2>/dev/null)
+          curl -L "$IPA_URL" -o RSC-Real-Security-Cam.ipa
+
+          pip install awscli --quiet
+          aws configure set aws_access_key_id $SPACES_KEY
+          aws configure set aws_secret_access_key $SPACES_SECRET
+          aws configure set default.region nyc3
+
+          aws s3 cp RSC-Real-Security-Cam.ipa \
+            s3://real-security-camera-recordings/releases/ios/RSC-Real-Security-Cam-latest.ipa \
+            --endpoint-url https://nyc3.digitaloceanspaces.com \
+            --acl public-read
+
+          echo "✅ IPA stored at:"
+          echo "   https://real-security-camera-recordings.nyc3.digitaloceanspaces.com/releases/ios/RSC-Real-Security-Cam-latest.ipa"
