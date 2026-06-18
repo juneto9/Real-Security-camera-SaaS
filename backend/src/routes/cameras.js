@@ -299,8 +299,10 @@ router.post('/presence', requireAuth, async (req, res) => {
       if (existing.length > 0) {
         const cam = existing[0];
         if (cam.is_dismissed) continue;
-        // Skip re-surfacing no-identity unknown devices — they'll be cleaned up
+        // Skip re-surfacing no-identity unknown devices
         if (!mac && !brand && cam.device_type === 'unknown' && !cam.is_enrolled && !cam.manufacturer) continue;
+        // Skip if this IP belongs to an enrolled device with a different MAC — don't create duplicates
+        if (cam.is_enrolled && mac && cam.mac_address && cam.mac_address !== mac.toLowerCase()) continue;
 
         const upd = { status: 'online', updated_at: now };
         if (ip && cam.ip_address !== ip) upd.ip_address = ip; // heal DHCP drift
@@ -319,6 +321,10 @@ router.post('/presence', requireAuth, async (req, res) => {
         updated++;
 
       } else {
+        // Don't insert if an enrolled device already owns this IP (different MAC = same machine, different adapter)
+        const enrolledAtIp = await query('SELECT id FROM cameras WHERE ip_address=$1 AND org_id=$2 AND is_enrolled=true LIMIT 1', [ip, req.orgId]);
+        if (enrolledAtIp.length > 0) continue;
+
         // New device — only insert if we have a MAC or a known brand
         // Pure IP-only hits with no identity are noise, skip them
         // Exception: if the entry has a known manufacturer passed in (e.g. SkyBell) keep it
