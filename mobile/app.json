@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Real Security Camera",
-    "slug": "rsc-mobile",
+    "slug": "secure-camera",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -99,8 +99,9 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "rsc-mobile"
+        "projectId": "9d90fdab-8c69-4cb3-9321-cd966274b8c0"
       }
-    }
+    },
+    "owner": "juneto9"
   }
 }
