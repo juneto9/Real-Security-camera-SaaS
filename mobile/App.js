@@ -10,6 +10,7 @@ import RegisterScreen from './screens/RegisterScreen';
 import DashboardScreen from './screens/DashboardScreen';
 import CameraScreen from './screens/CameraScreen';
 import SettingsScreen from './screens/SettingsScreen';
+import DiscoverScreen from './screens/DiscoverScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -32,13 +33,13 @@ function AppStack() {
         options={{ orientation: 'portrait', gestureEnabled: false }}
       />
       <Stack.Screen name="Settings" component={SettingsScreen} />
+      <Stack.Screen name="Discover" component={DiscoverScreen} />
     </Stack.Navigator>
   );
 }
 
 function RootNavigator() {
   const { token, ready } = useAuth();
-
   if (!ready) {
     return (
       <View style={{ flex: 1, backgroundColor: '#0a0a0a', justifyContent: 'center', alignItems: 'center' }}>
@@ -46,7 +47,6 @@ function RootNavigator() {
       </View>
     );
   }
-
   return token ? <AppStack /> : <AuthStack />;
 }
 
@@ -57,12 +57,9 @@ export default function App() {
         theme={{
           dark: true,
           colors: {
-            primary: '#E02020',
-            background: '#0a0a0a',
-            card: '#111',
-            text: '#fff',
-            border: '#1a1a1a',
-            notification: '#E02020',
+            primary: '#E02020', background: '#0a0a0a',
+            card: '#111', text: '#fff',
+            border: '#1a1a1a', notification: '#E02020',
           },
         }}
       >

@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
-  FlatList, RefreshControl, Alert,
+  FlatList, RefreshControl, Alert, Platform,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../AuthContext';
+import { startAutoDiscovery } from '../lib/discovery';
 import api from '../lib/api';
 
 export default function DashboardScreen({ navigation }) {
@@ -12,6 +13,7 @@ export default function DashboardScreen({ navigation }) {
   const [devices, setDevices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [discoveryStatus, setDiscoveryStatus] = useState('');
 
   const fetchDevices = async () => {
     try {
@@ -25,7 +27,23 @@ export default function DashboardScreen({ navigation }) {
     }
   };
 
-  useFocusEffect(useCallback(() => { fetchDevices(); }, []));
+  // Auto-discovery runs silently in background on login
+  useFocusEffect(useCallback(() => {
+    fetchDevices();
+    const cleanup = startAutoDiscovery({
+      onProgress: (msg) => setDiscoveryStatus(msg),
+      onComplete: ({ found, posted }) => {
+        if (posted > 0) {
+          setDiscoveryStatus(`📡 ${posted} new devices found`);
+          fetchDevices(); // refresh camera list
+          setTimeout(() => setDiscoveryStatus(''), 4000);
+        } else {
+          setDiscoveryStatus('');
+        }
+      },
+    });
+    return cleanup;
+  }, []));
 
   const handleLogout = () => {
     Alert.alert('Sign Out', 'Sign out of RSC?', [
@@ -48,6 +66,13 @@ export default function DashboardScreen({ navigation }) {
           <Text style={s.logoutText}>Sign Out</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Discovery status banner */}
+      {discoveryStatus ? (
+        <View style={s.discoBanner}>
+          <Text style={s.discoBannerText}>{discoveryStatus}</Text>
+        </View>
+      ) : null}
 
       {/* Launch Phone Camera Button */}
       <TouchableOpacity
@@ -79,7 +104,7 @@ export default function DashboardScreen({ navigation }) {
           !loading ? (
             <View style={s.empty}>
               <Text style={s.emptyText}>No cameras enrolled yet.</Text>
-              <Text style={s.emptySub}>Tap the button above to add this phone.</Text>
+              <Text style={s.emptySub}>Tap Discover to find cameras on your network.</Text>
             </View>
           ) : null
         }
@@ -90,6 +115,7 @@ export default function DashboardScreen({ navigation }) {
               <Text style={s.deviceName}>{item.name || item.device_name || 'Camera'}</Text>
               <Text style={s.deviceSub}>
                 {item.ip_address || 'No IP'} · {item.is_online ? 'Online' : 'Offline'}
+                {item.ssid_name ? ` · ${item.ssid_name}` : ''}
               </Text>
             </View>
             <TouchableOpacity
@@ -104,6 +130,10 @@ export default function DashboardScreen({ navigation }) {
 
       {/* Bottom Nav */}
       <View style={s.bottomNav}>
+        <TouchableOpacity style={s.navItem} onPress={() => navigation.navigate('Discover')}>
+          <Text style={s.navIcon}>📡</Text>
+          <Text style={s.navLabel}>Discover</Text>
+        </TouchableOpacity>
         <TouchableOpacity style={s.navItem} onPress={() => navigation.navigate('Settings')}>
           <Text style={s.navIcon}>⚙️</Text>
           <Text style={s.navLabel}>Settings</Text>
@@ -121,13 +151,22 @@ const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#0a0a0a' },
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: 20, paddingTop: 56, paddingBottom: 16,
+    paddingHorizontal: 20,
+    paddingTop: Platform.OS === 'ios' ? 56 : 36,
+    paddingBottom: 16,
     borderBottomWidth: 1, borderBottomColor: '#1a1a1a',
   },
   orgName: { color: '#fff', fontSize: 18, fontWeight: '700' },
   planBadge: { color: '#E02020', fontSize: 12, marginTop: 2 },
   logoutBtn: { padding: 8 },
   logoutText: { color: '#555', fontSize: 14 },
+
+  discoBanner: {
+    backgroundColor: 'rgba(34,197,94,0.1)',
+    paddingHorizontal: 16, paddingVertical: 7,
+    borderBottomWidth: 1, borderBottomColor: 'rgba(34,197,94,0.2)',
+  },
+  discoBannerText: { color: '#22c55e', fontSize: 12 },
 
   launchBtn: {
     flexDirection: 'row', alignItems: 'center',
@@ -138,17 +177,17 @@ const s = StyleSheet.create({
   launchTextWrap: { flex: 1 },
   launchTitle: { color: '#fff', fontWeight: '700', fontSize: 16 },
   launchSub: { color: 'rgba(255,255,255,0.75)', fontSize: 12, marginTop: 2 },
-  launchArrow: { color: '#fff', fontSize: 20, fontWeight: '300' },
+  launchArrow: { color: '#fff', fontSize: 20 },
 
   sectionTitle: {
     color: '#555', fontSize: 12, fontWeight: '600',
     paddingHorizontal: 20, paddingBottom: 8,
     letterSpacing: 0.8, textTransform: 'uppercase',
   },
-  list: { paddingHorizontal: 16, paddingBottom: 100 },
+  list: { paddingHorizontal: 16, paddingBottom: 120 },
   empty: { paddingTop: 40, alignItems: 'center' },
   emptyText: { color: '#555', fontSize: 15 },
-  emptySub: { color: '#333', fontSize: 13, marginTop: 6 },
+  emptySub: { color: '#333', fontSize: 13, marginTop: 6, textAlign: 'center' },
 
   deviceCard: {
     flexDirection: 'row', alignItems: 'center',
@@ -170,7 +209,7 @@ const s = StyleSheet.create({
     position: 'absolute', bottom: 0, left: 0, right: 0,
     flexDirection: 'row',
     backgroundColor: '#111', borderTopWidth: 1, borderTopColor: '#1a1a1a',
-    paddingBottom: 28, paddingTop: 10,
+    paddingBottom: Platform.OS === 'ios' ? 28 : 12, paddingTop: 10,
   },
   navItem: { flex: 1, alignItems: 'center', gap: 4 },
   navIcon: { fontSize: 22 },
