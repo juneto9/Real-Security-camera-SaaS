@@ -43,8 +43,5 @@
   "devDependencies": {
     "@babel/core": "^7.20.0"
   },
-  "private": true,
-  "overrides": {
-    "@livekit/react-native-webrtc": "125.0.12"
-  }
+  "private": true
 }
