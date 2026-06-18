@@ -24,6 +24,7 @@ const SCAN_INTERVAL_MS = 8 * 60 * 1000; // 8 minutes
 // ── OUI table v2.0 — 819 entries — Alarm.com, cameras, phones, tablets
 // Sources: IPVM, maclookup.app, netify.ai, IEEE (June 2026)
 const OUI = {
+  '68:f0:d0':'SkyBell',  'a0:2f:4c':'SkyBell',
   '00:1c:fa':'Alarm.com',  'b8:3a:9d':'Alarm.com',  '50:40:74':'Alarm.com',  '18:68:cb':'Hikvision',
   '4c:bd:8f':'Hikvision',  '94:e1:ac':'Hikvision',  'bc:ad:28':'Hikvision',  '14:a7:8b':'Dahua',
   '4c:11:bf':'Dahua',  'e0:50:8b':'Dahua',  '00:40:8c':'Axis',  '00:18:85':'Avigilon',

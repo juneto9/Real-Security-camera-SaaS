@@ -83,7 +83,8 @@ router.patch('/by-room/:roomId', async (req, res) => {
 // Implements the complete agentReport discovery logic from the original Base44 function
 
 const KNOWN_OUI = {
-  '00:1c:fa':'Alarm.com',  'b8:3a:9d':'Alarm.com',  '50:40:74':'Alarm.com',  '18:68:cb':'Hikvision',  '4c:bd:8f':'Hikvision',
+  '00:1c:fa':'Alarm.com',  'b8:3a:9d':'Alarm.com',  '50:40:74':'Alarm.com',
+  '68:f0:d0':'SkyBell',  'a0:2f:4c':'SkyBell',  '18:68:cb':'Hikvision',  '4c:bd:8f':'Hikvision',
   '94:e1:ac':'Hikvision',  'bc:ad:28':'Hikvision',  '14:a7:8b':'Dahua',  '4c:11:bf':'Dahua',  'e0:50:8b':'Dahua',
   '00:40:8c':'Axis',  '00:18:85':'Avigilon',  '00:01:31':'Bosch',  '00:10:17':'Bosch',  'e4:30:22':'Hanwha',
   '00:1b:d8':'FLIR',  '00:13:e2':'GeoVision',  '00:0a:13':'Honeywell',  '00:04:7d':'Pelco',  '00:03:c5':'Mobotix',
@@ -145,7 +146,7 @@ const KNOWN_OUI = {
 };
 
 const CAMERA_BRANDS = new Set([
-  'Alarm.com','Hikvision','Dahua','Reolink','Amcrest','Foscam','TP-Link','TP-Link Tapo',
+  'Alarm.com','SkyBell','Hikvision','Dahua','Reolink','Amcrest','Foscam','TP-Link','TP-Link Tapo',
   'Axis','Hanwha','Eufy','Ring','Nest','Arlo','Wyze','Blink','Avigilon','Bosch',
   'FLIR','GeoVision','Honeywell','Pelco','Mobotix','Sunell','Vivotek','Uniview',
   'Arecont','LTS','Ubiquiti','Swann','Lorex','Annke','Zosi','Ezviz','Xiaomi',
