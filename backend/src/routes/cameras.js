@@ -266,6 +266,8 @@ router.post('/presence', requireAuth, async (req, res) => {
       if (existing.length > 0) {
         const cam = existing[0];
         if (cam.is_dismissed) continue;
+        // Skip re-surfacing no-identity unknown devices — they'll be cleaned up
+        if (!mac && !brand && cam.device_type === 'unknown' && !cam.is_enrolled && !cam.manufacturer) continue;
 
         const upd = { status: 'online', updated_at: now };
         if (ip && cam.ip_address !== ip) upd.ip_address = ip; // heal DHCP drift
@@ -284,8 +286,11 @@ router.post('/presence', requireAuth, async (req, res) => {
         updated++;
 
       } else {
-        // New device
-        const name = displayName || ('Device ' + ip);
+        // New device — only insert if we have a MAC or a known brand
+        // Pure IP-only hits with no identity are noise, skip them
+        if (!mac && !brand) continue;
+
+        const name = displayName || (brand ? brand + ' – ' + ip : 'Device ' + ip);
         await query(
           `INSERT INTO cameras (org_id,name,ip_address,mac_address,port,manufacturer,device_type,status,is_enrolled,ssid_name)
            VALUES ($1,$2,$3,$4,$5,$6,$7,'online',false,$8) ON CONFLICT DO NOTHING`,
