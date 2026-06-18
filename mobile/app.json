@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "SecureCamera",
-    "slug": "secure-camera",
+    "name": "Real Security Camera",
+    "slug": "rsc-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -13,45 +13,52 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.securecamera.app",
+      "bundleIdentifier": "com.pokenholdingsinc.realsecuritycamera",
       "infoPlist": {
-        "NSCameraUsageDescription": "Required to use your phone as a security camera",
-        "NSMicrophoneUsageDescription": "Required for video recording with audio",
-        "NSPhotoLibraryUsageDescription": "Required to save recordings"
+        "NSCameraUsageDescription": "Real Security Camera uses your camera to record security footage and stream live video.",
+        "NSMicrophoneUsageDescription": "Real Security Camera records audio alongside video for complete security coverage.",
+        "NSPhotoLibraryUsageDescription": "Real Security Camera saves recordings to your photo library as a local backup.",
+        "NSPhotoLibraryAddUsageDescription": "Real Security Camera saves recordings to your photo library.",
+        "UIBackgroundModes": ["audio", "fetch", "processing"],
+        "BGTaskSchedulerPermittedIdentifiers": ["com.pokenholdingsinc.realsecuritycamera.upload"]
       }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#0a0a0a"
+        "backgroundColor": "#E02020"
       },
-      "package": "com.securecamera.app",
+      "package": "com.pokenholdingsinc.realsecuritycamera",
       "permissions": [
-        "CAMERA",
-        "RECORD_AUDIO",
-        "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE",
-        "FLASHLIGHT",
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO",
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.WRITE_EXTERNAL_STORAGE",
-        "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
-        "android.permission.READ_MEDIA_IMAGES",
         "android.permission.READ_MEDIA_VIDEO",
         "android.permission.READ_MEDIA_AUDIO",
-        "android.permission.MODIFY_AUDIO_SETTINGS"
+        "android.permission.FLASHLIGHT",
+        "android.permission.WAKE_LOCK",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_CAMERA",
+        "android.permission.FOREGROUND_SERVICE_MICROPHONE",
+        "android.permission.RECEIVE_BOOT_COMPLETED"
       ]
     },
     "plugins": [
       "expo-camera",
       "expo-media-library",
-      "expo-audio",
-      "expo-asset"
+      "expo-av",
+      [
+        "expo-background-fetch",
+        {
+          "startOnBoot": true
+        }
+      ],
+      "@livekit/react-native"
     ],
     "extra": {
       "eas": {
-        "projectId": "5a1612b4-1c33-4c08-9e9f-7a83011ad943"
+        "projectId": "rsc-mobile"
       }
     }
   }
