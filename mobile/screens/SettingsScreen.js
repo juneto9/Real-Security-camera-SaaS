@@ -2,12 +2,13 @@
  * RSC Settings Screen
  *
  * Permission model:
- *   AUTHENTICATED USER  — clip lengths, night vision default, audio alerts, geofence
+ *   AUTHENTICATED USER  — clip lengths, night vision, audio alerts, geofence,
+ *                         cloud storage toggle, AI detection toggle
  *   ORG ADMIN ONLY      — geofence radius, face matching, member management
- *   NO ONE              — cloud storage (always on), AI detection (always on),
- *                         API endpoints, storage destination
+ *   NO ONE              — API endpoints, storage destination URL, AI models,
+ *                         other org data
  *
- * Cloud is always on. AI is always on. These are not toggles.
+ * Defaults: cloud ON, AI ON. Users can toggle either off on their own device.
  */
 
 import React, { useState, useEffect } from 'react';
@@ -37,28 +38,78 @@ export default function SettingsScreen({ navigation }) {
   const { user, org, logout } = useAuth();
   const isAdmin = user?.role === 'admin' || user?.role === 'owner';
 
-  const [dashclip, setDashclip] = useState(60);
-  const [secclip, setSecclip] = useState(15);
-  const [nightDefault, setNightDefault] = useState(false);
-  const [audioAlerts, setAudioAlerts] = useState(true);
+  const [dashclip, setDashclip]             = useState(60);
+  const [secclip, setSecclip]               = useState(15);
+  const [nightDefault, setNightDefault]     = useState(false);
+  const [audioAlerts, setAudioAlerts]       = useState(true);
+  const [cloudEnabled, setCloudEnabled]     = useState(true);   // default ON
+  const [aiEnabled, setAiEnabled]           = useState(true);   // default ON
   const [geofenceEnabled, setGeofenceEnabled] = useState(false);
 
   useEffect(() => {
     (async () => {
       const keys = await AsyncStorage.multiGet([
-        'rsc_dashcam_clip', 'rsc_security_clip',
-        'rsc_night_default', 'rsc_audio_alerts', 'rsc_geofence_enabled',
+        'rsc_dashcam_clip', 'rsc_security_clip', 'rsc_night_default',
+        'rsc_audio_alerts', 'rsc_cloud_enabled', 'rsc_ai_enabled',
+        'rsc_geofence_enabled',
       ]);
-      const map = Object.fromEntries(keys.map(([k, v]) => [k, v]));
-      if (map.rsc_dashcam_clip)      setDashclip(parseInt(map.rsc_dashcam_clip, 10));
-      if (map.rsc_security_clip)     setSecclip(parseInt(map.rsc_security_clip, 10));
-      if (map.rsc_night_default)     setNightDefault(map.rsc_night_default === 'true');
-      if (map.rsc_audio_alerts)      setAudioAlerts(map.rsc_audio_alerts !== 'false');
-      if (map.rsc_geofence_enabled)  setGeofenceEnabled(map.rsc_geofence_enabled === 'true');
+      const m = Object.fromEntries(keys.map(([k, v]) => [k, v]));
+      if (m.rsc_dashcam_clip)     setDashclip(parseInt(m.rsc_dashcam_clip, 10));
+      if (m.rsc_security_clip)    setSecclip(parseInt(m.rsc_security_clip, 10));
+      if (m.rsc_night_default)    setNightDefault(m.rsc_night_default === 'true');
+      if (m.rsc_audio_alerts)     setAudioAlerts(m.rsc_audio_alerts !== 'false');
+      // Cloud and AI default to ON — only false if explicitly set to 'false'
+      if (m.rsc_cloud_enabled)    setCloudEnabled(m.rsc_cloud_enabled !== 'false');
+      if (m.rsc_ai_enabled)       setAiEnabled(m.rsc_ai_enabled !== 'false');
+      if (m.rsc_geofence_enabled) setGeofenceEnabled(m.rsc_geofence_enabled === 'true');
     })();
   }, []);
 
   const save = async (key, val) => AsyncStorage.setItem(key, String(val));
+
+  const toggleCloud = async (val) => {
+    if (!val) {
+      Alert.alert(
+        'Switch to Device Storage?',
+        'Recordings will save to this device only. You can still view your existing cloud clips from the web dashboard.',
+        [
+          { text: 'Keep Cloud On', style: 'cancel' },
+          {
+            text: 'Use Device Storage',
+            onPress: async () => {
+              setCloudEnabled(false);
+              await save('rsc_cloud_enabled', 'false');
+            },
+          },
+        ]
+      );
+    } else {
+      setCloudEnabled(true);
+      await save('rsc_cloud_enabled', 'true');
+    }
+  };
+
+  const toggleAI = async (val) => {
+    if (!val) {
+      Alert.alert(
+        'Disable AI Detection?',
+        'Object detection, pose analysis, and face detection will be paused. Motion and sound detection still work. You can turn AI back on anytime.',
+        [
+          { text: 'Keep AI On', style: 'cancel' },
+          {
+            text: 'Disable AI',
+            onPress: async () => {
+              setAiEnabled(false);
+              await save('rsc_ai_enabled', 'false');
+            },
+          },
+        ]
+      );
+    } else {
+      setAiEnabled(true);
+      await save('rsc_ai_enabled', 'true');
+    }
+  };
 
   const planLabel = org?.plan
     ? org.plan.charAt(0).toUpperCase() + org.plan.slice(1)
@@ -76,47 +127,75 @@ export default function SettingsScreen({ navigation }) {
       {/* Account */}
       <View style={s.section}>
         <Text style={s.sectionTitle}>Account</Text>
-        <Row label="Name"         value={user?.name || '—'} />
-        <Row label="Email"        value={user?.email || '—'} />
-        <Row label="Organization" value={org?.name || '—'} />
-        <Row label="Role"         value={user?.role || 'member'} highlight />
-        <Row label="Plan"         value={planLabel} accent />
+        <InfoRow label="Name"         value={user?.name || '—'} />
+        <InfoRow label="Email"        value={user?.email || '—'} />
+        <InfoRow label="Organization" value={org?.name || '—'} />
+        <InfoRow label="Role"         value={user?.role || 'member'} highlight />
+        <InfoRow label="Plan"         value={planLabel} accent />
       </View>
 
-      {/* Cloud Storage — informational only, not a toggle */}
+      {/* Storage */}
       <View style={s.section}>
         <Text style={s.sectionTitle}>Storage</Text>
-        <View style={s.infoCard}>
-          <Text style={s.infoCardIcon}>☁️</Text>
-          <View style={s.infoCardText}>
-            <Text style={s.infoCardTitle}>RSC Cloud · Always Active</Text>
-            <Text style={s.infoCardSub}>
-              All recordings upload to RSC Cloud automatically.
-              Clips are never auto-deleted. Storage grows as you record.
+        <View style={s.toggleRow}>
+          <View style={s.rowLeft}>
+            <Text style={s.rowLabel}>☁️ RSC Cloud Storage</Text>
+            <Text style={s.rowSub}>
+              {cloudEnabled
+                ? 'Clips upload to RSC Cloud automatically · Never deleted'
+                : 'Saving to this device only · Cloud clips still accessible on web'}
             </Text>
           </View>
+          <Switch
+            value={cloudEnabled}
+            onValueChange={toggleCloud}
+            trackColor={{ false: '#222', true: '#E02020' }}
+            thumbColor="#fff"
+          />
         </View>
+        {!cloudEnabled && (
+          <View style={s.warningCard}>
+            <Text style={s.warningText}>
+              ⚠️ Device storage fills up over time. Cloud storage is recommended for full access from any device.
+            </Text>
+          </View>
+        )}
       </View>
 
-      {/* AI — informational only, not a toggle */}
+      {/* AI Detection */}
       <View style={s.section}>
         <Text style={s.sectionTitle}>AI Detection</Text>
-        <View style={s.infoCard}>
-          <Text style={s.infoCardIcon}>🧠</Text>
-          <View style={s.infoCardText}>
-            <Text style={s.infoCardTitle}>On-Device AI · Always Active</Text>
-            <Text style={s.infoCardSub}>
-              YOLOv8 object detection, pose analysis, and face detection
-              run automatically on every recording. No configuration needed.
+        <View style={s.toggleRow}>
+          <View style={s.rowLeft}>
+            <Text style={s.rowLabel}>🧠 On-Device AI</Text>
+            <Text style={s.rowSub}>
+              {aiEnabled
+                ? 'YOLOv8 object detection, pose analysis, face detection · Active'
+                : 'AI paused · Motion and sound detection still active'}
             </Text>
           </View>
+          <Switch
+            value={aiEnabled}
+            onValueChange={toggleAI}
+            trackColor={{ false: '#222', true: '#E02020' }}
+            thumbColor="#fff"
+          />
         </View>
+        {aiEnabled && (
+          <View style={s.aiBadgeRow}>
+            {['👤 Person', '🚗 Vehicle', '🐕 Animal', '📦 Package', '🏃 Behavior', '👁️ Face'].map(label => (
+              <View key={label} style={s.aiBadge}>
+                <Text style={s.aiBadgeText}>{label}</Text>
+              </View>
+            ))}
+          </View>
+        )}
 
-        {/* Audio alerts IS a user toggle — they can silence notifications */}
-        <View style={s.row}>
+        {/* Audio alerts always user-controllable */}
+        <View style={s.toggleRow}>
           <View style={s.rowLeft}>
-            <Text style={s.rowLabel}>Audio Alert Notifications</Text>
-            <Text style={s.rowSub}>Glass break, shouting, alarm sounds</Text>
+            <Text style={s.rowLabel}>🔊 Audio Alert Notifications</Text>
+            <Text style={s.rowSub}>Glass break, shouting, alarms, dog barking</Text>
           </View>
           <Switch
             value={audioAlerts}
@@ -164,9 +243,9 @@ export default function SettingsScreen({ navigation }) {
       {/* Camera Defaults */}
       <View style={s.section}>
         <Text style={s.sectionTitle}>Camera Defaults</Text>
-        <View style={s.row}>
+        <View style={s.toggleRow}>
           <View style={s.rowLeft}>
-            <Text style={s.rowLabel}>Night Vision on Start</Text>
+            <Text style={s.rowLabel}>🌙 Night Vision on Start</Text>
             <Text style={s.rowSub}>Enable automatically when camera opens</Text>
           </View>
           <Switch
@@ -178,22 +257,19 @@ export default function SettingsScreen({ navigation }) {
         </View>
       </View>
 
-      {/* Geofence — user controls their own home */}
+      {/* Geofence */}
       <View style={s.section}>
         <Text style={s.sectionTitle}>📍 Auto-Arm Geofence</Text>
-        <View style={s.row}>
+        <View style={s.toggleRow}>
           <View style={s.rowLeft}>
             <Text style={s.rowLabel}>Auto-Arm When You Leave Home</Text>
             <Text style={s.rowSub}>
-              Cameras arm automatically when you leave, disarm when you return
+              Cameras arm when you leave, disarm when you return
             </Text>
           </View>
           <Switch
             value={geofenceEnabled}
-            onValueChange={async (v) => {
-              setGeofenceEnabled(v);
-              await save('rsc_geofence_enabled', v);
-            }}
+            onValueChange={async (v) => { setGeofenceEnabled(v); await save('rsc_geofence_enabled', v); }}
             trackColor={{ false: '#222', true: '#E02020' }}
             thumbColor="#fff"
           />
@@ -203,10 +279,10 @@ export default function SettingsScreen({ navigation }) {
             style={s.setHomeBtn}
             onPress={() => Alert.alert(
               'Set Home Location',
-              'This will save your current GPS position as your home. Cameras will arm when you travel more than 150m away.',
+              'Save your current GPS position as home. Cameras arm when you travel more than 150m away.',
               [
                 { text: 'Cancel', style: 'cancel' },
-                { text: 'Set Home Here', onPress: () => {} }, // wired to geoFence.setHomeLocation()
+                { text: 'Set Home Here', onPress: () => {} },
               ]
             )}
           >
@@ -215,13 +291,13 @@ export default function SettingsScreen({ navigation }) {
         )}
       </View>
 
-      {/* Admin-only section */}
+      {/* Admin redirect */}
       {isAdmin && (
         <View style={s.section}>
           <Text style={s.sectionTitle}>⚙️ Admin Controls</Text>
           <Text style={s.adminNote}>
-            Camera enrollment, member management, Subject configuration,
-            and billing are managed from the web dashboard at realsecuritycamera.com
+            Camera enrollment, member management, Subject configuration, and billing
+            are managed at realsecuritycamera.com
           </Text>
         </View>
       )}
@@ -242,9 +318,9 @@ export default function SettingsScreen({ navigation }) {
   );
 }
 
-function Row({ label, value, highlight, accent }) {
+function InfoRow({ label, value, highlight, accent }) {
   return (
-    <View style={s.row}>
+    <View style={s.infoRow}>
       <Text style={s.rowLabel}>{label}</Text>
       <Text style={[
         s.rowVal,
@@ -278,25 +354,35 @@ const s = StyleSheet.create({
     letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 14,
   },
 
-  infoCard: {
-    flexDirection: 'row', alignItems: 'flex-start',
-    backgroundColor: '#111', borderRadius: 12,
-    padding: 14, gap: 12, marginBottom: 12,
-    borderWidth: 1, borderColor: '#1a1a1a',
+  infoRow: {
+    flexDirection: 'row', justifyContent: 'space-between',
+    alignItems: 'center', paddingVertical: 9,
   },
-  infoCardIcon: { fontSize: 22, marginTop: 2 },
-  infoCardText: { flex: 1 },
-  infoCardTitle: { color: '#fff', fontWeight: '700', fontSize: 14 },
-  infoCardSub: { color: '#555', fontSize: 12, lineHeight: 18, marginTop: 3 },
-
-  row: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingVertical: 10,
+  toggleRow: {
+    flexDirection: 'row', justifyContent: 'space-between',
+    alignItems: 'center', paddingVertical: 10,
   },
   rowLeft: { flex: 1, paddingRight: 12 },
   rowLabel: { color: '#ccc', fontSize: 15 },
-  rowSub: { color: '#555', fontSize: 12, marginTop: 2 },
+  rowSub: { color: '#555', fontSize: 12, marginTop: 2, lineHeight: 17 },
   rowVal: { color: '#888', fontSize: 14 },
+
+  warningCard: {
+    backgroundColor: 'rgba(234,88,12,0.1)',
+    borderRadius: 10, padding: 12, marginTop: 4,
+    borderWidth: 1, borderColor: 'rgba(234,88,12,0.3)',
+  },
+  warningText: { color: '#f97316', fontSize: 12, lineHeight: 18 },
+
+  aiBadgeRow: {
+    flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4, marginBottom: 12,
+  },
+  aiBadge: {
+    backgroundColor: 'rgba(224,32,32,0.12)',
+    borderRadius: 12, paddingHorizontal: 10, paddingVertical: 4,
+    borderWidth: 1, borderColor: 'rgba(224,32,32,0.25)',
+  },
+  aiBadgeText: { color: '#E02020', fontSize: 11, fontWeight: '600' },
 
   radioRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, gap: 12 },
   radio: {
@@ -319,7 +405,6 @@ const s = StyleSheet.create({
     color: '#444', fontSize: 13, lineHeight: 20,
     backgroundColor: '#111', borderRadius: 10, padding: 12,
   },
-
   signOutBtn: {
     borderRadius: 10, paddingVertical: 14, alignItems: 'center',
     borderWidth: 1, borderColor: '#2a2a2a',
