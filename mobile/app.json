@@ -20,9 +20,21 @@
         "NSPhotoLibraryUsageDescription": "Real Security Camera saves recordings to your photo library.",
         "NSPhotoLibraryAddUsageDescription": "Real Security Camera saves recordings to your photo library.",
         "NSLocalNetworkUsageDescription": "Real Security Camera scans your local network to discover and identify security cameras.",
-        "NSBonjourServices": ["_onvif._tcp", "_rtsp._tcp", "_http._tcp"],
-        "UIBackgroundModes": ["audio", "fetch", "processing"],
-        "BGTaskSchedulerPermittedIdentifiers": ["com.pokenholdingsinc.realsecuritycamera.discovery"]
+        "NSBonjourServices": [
+          "_onvif._tcp",
+          "_rtsp._tcp",
+          "_http._tcp"
+        ],
+        "UIBackgroundModes": [
+          "audio",
+          "fetch",
+          "processing"
+        ],
+        "BGTaskSchedulerPermittedIdentifiers": [
+          "com.pokenholdingsinc.realsecuritycamera.discovery"
+        ],
+        "NSLocationWhenInUseUsageDescription": "Real Security Camera uses your location to automatically arm cameras when you leave home.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Real Security Camera monitors your location in the background to auto-arm security cameras."
       }
     },
     "android": {
@@ -50,7 +62,8 @@
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.INTERNET",
-        "android.permission.READ_PHONE_STATE"
+        "android.permission.READ_PHONE_STATE",
+        "android.permission.ACCESS_BACKGROUND_LOCATION"
       ]
     },
     "plugins": [
@@ -63,7 +76,14 @@
         {
           "addAndroidPermissions": true
         }
-      ]
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "RSC uses location for auto-arm geofencing."
+        }
+      ],
+      "react-native-vision-camera"
     ],
     "extra": {
       "eas": {
