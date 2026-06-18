@@ -80,6 +80,7 @@
         "projectId": "5a1612b4-1c33-4c08-9e9f-7a83011ad943"
       }
     },
-    "owner": "juneto9"
+    "owner": "juneto9",
+    "sdkVersion": "52.0.0"
   }
 }
