@@ -28,13 +28,15 @@
         "UIBackgroundModes": [
           "audio",
           "fetch",
-          "processing"
+          "processing",
+          "location"
         ],
         "BGTaskSchedulerPermittedIdentifiers": [
           "com.pokenholdingsinc.realsecuritycamera.discovery"
         ],
         "NSLocationWhenInUseUsageDescription": "Real Security Camera uses your location to automatically arm cameras when you leave home.",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "Real Security Camera monitors your location in the background to auto-arm security cameras."
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Real Security Camera monitors your location in the background to auto-arm security cameras.",
+        "NSUserNotificationUsageDescription": "Real Security Camera sends alerts when motion, sound, or known faces are detected."
       }
     },
     "android": {
@@ -63,7 +65,9 @@
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.INTERNET",
         "android.permission.READ_PHONE_STATE",
-        "android.permission.ACCESS_BACKGROUND_LOCATION"
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.VIBRATE"
       ]
     },
     "plugins": [
@@ -83,7 +87,15 @@
           "locationAlwaysAndWhenInUsePermission": "RSC uses location for auto-arm geofencing."
         }
       ],
-      "react-native-vision-camera"
+      "react-native-vision-camera",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#E02020",
+          "sounds": []
+        }
+      ]
     ],
     "extra": {
       "eas": {
