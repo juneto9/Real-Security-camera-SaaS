@@ -75,11 +75,7 @@
       "expo-media-library",
       "expo-av"
     ],
-    "extra": {
-      "eas": {
-        "projectId": "9d90fdab-8c69-4cb3-9321-cd966274b8c0"
-      }
-    },
+    "extra": {},
     "owner": "juneto9"
   }
 }
