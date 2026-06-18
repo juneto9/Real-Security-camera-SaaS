@@ -288,7 +288,10 @@ router.post('/presence', requireAuth, async (req, res) => {
       } else {
         // New device — only insert if we have a MAC or a known brand
         // Pure IP-only hits with no identity are noise, skip them
-        if (!mac && !brand) continue;
+        // Exception: if the entry has a known manufacturer passed in (e.g. SkyBell) keep it
+        const passedMfr = entry.manufacturer || entry.vendor || '';
+        if (!mac && !brand && !passedMfr) continue;
+        if (!brand && passedMfr) brand = passedMfr;
 
         const name = displayName || (brand ? brand + ' – ' + ip : 'Device ' + ip);
         await query(
