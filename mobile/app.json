@@ -73,27 +73,7 @@
     "plugins": [
       "expo-camera",
       "expo-media-library",
-      "expo-av",
-      [
-        "@react-native-community/netinfo",
-        {
-          "addAndroidPermissions": true
-        }
-      ],
-      [
-        "expo-location",
-        {
-          "locationAlwaysAndWhenInUsePermission": "RSC uses location for auto-arm geofencing."
-        }
-      ],
-      [
-        "expo-notifications",
-        {
-          "icon": "./assets/icon.png",
-          "color": "#E02020",
-          "sounds": []
-        }
-      ]
+      "expo-av"
     ],
     "extra": {
       "eas": {
