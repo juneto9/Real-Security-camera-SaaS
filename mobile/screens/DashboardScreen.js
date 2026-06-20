@@ -138,6 +138,10 @@ export default function DashboardScreen({ navigation }) {
           <Text style={s.navIcon}>⚙️</Text>
           <Text style={s.navLabel}>Settings</Text>
         </TouchableOpacity>
+        <TouchableOpacity style={s.navItem} onPress={() => navigation.navigate('Store')}>
+          <Text style={s.navIcon}>🛒</Text>
+          <Text style={s.navLabel}>Store</Text>
+        </TouchableOpacity>
         <TouchableOpacity style={s.navItem} onPress={() => navigation.navigate('Recordings')}>
           <Text style={s.navIcon}>🎬</Text>
           <Text style={s.navLabel}>Recordings</Text>
