@@ -10,7 +10,7 @@ import {
   Image, ActivityIndicator, Linking, Platform, Dimensions,
 } from 'react-native';
 
-const CDN = 'https://real-security-camera-recordings.nyc3.cdn.digitaloceanspaces.com/products';
+const CDN = 'https://real-security-camera-recordings.nyc3.digitaloceanspaces.com/products';
 const { width: SW } = Dimensions.get('window');
 const CARD_W = (SW - 36) / 2; // 2 columns with padding
 
