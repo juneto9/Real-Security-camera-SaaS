@@ -346,63 +346,78 @@ export async function runDiscovery({ onProgress, onComplete, quickMode = false }
 
     let probed = [];
     if (!quickMode) {
-      // Step 2: Scan subnet to populate ARP cache with devices not yet seen
+      // Step 2: Scan subnet in batches, posting each batch to VPS as we go.
+      // This way partial results are saved even if the app backgrounds mid-scan.
       onProgress?.('Scanning subnet...');
-      const aliveIps = await scanSubnet(baseIp, onProgress);
-      onProgress?.(`Subnet scan: ${aliveIps.length} hosts responded`);
+      const parts2 = baseIp.split('.');
+      const base = parts2.slice(0, 3).join('.');
+      let totalFound = 0;
 
-      // Re-read ARP after scan — new devices now appear
-      const arpAfterScan = await readArpTable();
-      probed = arpAfterScan;
+      for (let start = 1; start <= 254; start += BATCH_SIZE) {
+        const batch = [];
+        for (let i = start; i < start + BATCH_SIZE && i <= 254; i++) {
+          const ip = `${base}.${i}`;
+          batch.push(
+            probeIp(ip).then(alive => alive ? ip : null).catch(() => null)
+          );
+        }
+        const batchIps = (await Promise.all(batch)).filter(Boolean);
+        totalFound += batchIps.length;
+        onProgress?.(`Scanned ${base}.${start}-${Math.min(start+BATCH_SIZE-1,254)} — ${totalFound} found`);
+
+        if (batchIps.length > 0) {
+          // Read ARP for this batch to get MACs, then post immediately
+          const arpNow = await readArpTable();
+          const batchDevices = batchIps.map(ip => {
+            const arpEntry = arpNow.find(a => a.ip === ip);
+            return { ip, mac: arpEntry?.mac || null, manufacturer: ouiLookup(arpEntry?.mac) || null, source: 'mobile_scan_v2' };
+          });
+          // Fire-and-forget POST — don't await, scan keeps going
+          api.post('/api/cameras/presence', {
+            ips: batchDevices, ssid_name: net.ssid, subnet, source: 'mobile_scan_v2', is_self: false
+          }).catch(() => {});
+        }
+      }
+
+      // Final ARP read after full scan
+      probed = await readArpTable();
+      onProgress?.(`Subnet scan complete — ${probed.length} devices in ARP`);
     } else {
       probed = arpEntries;
     }
 
     if (probed.length === 0) {
-      onProgress?.('No devices found');
+      onProgress?.('No devices found on network');
       onComplete?.({ found: 0, posted: 0 });
       return;
     }
 
-    // Step 3: Enrich with OUI lookup
-    // Deep probe every device on the phone (LAN access) before posting to VPS
-    const enriched = [];
-    let probeIdx = 0;
-    for (const { ip, mac } of probed) {
-      probeIdx++;
-      onProgress?.(`Identifying ${probeIdx}/${probed.length}: ${ip}...`);
-      const ouiMfr = ouiLookup(mac);
-      const deep = await deepProbe(ip);
-      enriched.push({
-        ip,
-        mac: mac || null,
-        manufacturer: deep.manufacturer || ouiMfr || null,
-        device_type: deep.device_type || null,
-        name: deep.name || null,
-        hostname: deep.hostname || null,
-        banner: deep.banner || null,
-        service: deep.service || null,
-        os_hint: deep.os_hint || null,
-        port: deep.port || null,
-        source: 'android_arp',
-      });
-    }
+    // Step 3: OUI lookup only (instant — no network calls)
+    // VPS will request deep probes back through the Socket.io tunnel
+    const enriched = probed.map(({ ip, mac }) => ({
+      ip,
+      mac: mac || null,
+      manufacturer: ouiLookup(mac) || null,
+      source: 'mobile_scan_v2',
+    }));
 
-    onProgress?.(`Posting ${enriched.length} devices to RSC cloud...`);
+    onProgress?.(`Found ${enriched.length} devices — posting to RSC...`);
 
-    // Step 5: POST to VPS presence endpoint
+    // Step 4: POST immediately to VPS — does NOT wait for deep probes.
+    // VPS will send probe_request back through the socket tunnel for each
+    // unknown device. Phone handles those in App.js socket listener.
     const payload = {
       ips: enriched,
       ssid_name: net.ssid,
       subnet,
-      source: 'android_phone',
+      source: 'mobile_scan_v2',
       is_self: false,
     };
 
     const res = await api.post('/api/cameras/presence', payload);
-    const { updated = 0, created = 0 } = res.data;
+    const { updated = 0, created = 0 } = res.data || {};
 
-    onProgress?.(`Done — ${created} new, ${updated} updated`);
+    onProgress?.(`Synced — ${enriched.length} devices sent to RSC cloud`);
     onComplete?.({ found: enriched.length, posted: updated + created });
 
   } catch (err) {
