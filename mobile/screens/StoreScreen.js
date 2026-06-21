@@ -1,58 +1,39 @@
 /**
  * RSC Store Screen - Mobile
- * Fast-loading product images: low-res placeholder first, full image lazy loads behind it.
- * Images served from DO Spaces CDN with Cache-Control headers.
+ * Fetches live product data from API (same source as web store)
+ * Native horizontal filter tabs by category
+ * Progressive image loading with spinner
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, FlatList,
-  Image, ActivityIndicator, Linking, Platform, Dimensions,
+  View, Text, StyleSheet, TouchableOpacity, FlatList, ScrollView,
+  Image, ActivityIndicator, Linking, Platform, Dimensions, RefreshControl,
 } from 'react-native';
+import api from '../lib/api';
 
-const CDN = 'https://real-security-camera-recordings.nyc3.digitaloceanspaces.com/products';
 const { width: SW } = Dimensions.get('window');
-const CARD_W = (SW - 36) / 2; // 2 columns with padding
+const CARD_W = (SW - 36) / 2;
 
-// Products with CDN image URLs
-const PRODUCTS = [
-  { id: 'liberation-kit',        name: 'Liberation Kit',            price: '$19.99', tag: 'BEST VALUE',   tagColor: '#22c55e', img: CDN + '/Liberation_Kit.png' },
-  { id: 'liberation-single',     name: 'Liberation Pack',           price: '$4.99',  tag: null,           tagColor: null,      img: CDN + '/Liberation-Packs.png' },
-  { id: 'liberation-credits-3',  name: '3-Camera Pack',             price: '$9.99',  tag: 'SAVE 33%',     tagColor: '#ffd700', img: CDN + '/Liberation-Packs.png' },
-  { id: 'property-liberation',   name: 'Whole Property Pack',       price: '$49.99', tag: 'WHOLE HOME',   tagColor: '#00aaff', img: CDN + '/Liberation-Packs.png' },
-  { id: 'analog-adapter-single', name: 'BNC WiFi Adapter',          price: '$34.99', tag: 'CUT THE COAX', tagColor: '#E02020', img: CDN + '/single-bnc-coax.png' },
-  { id: 'analog-adapter-4ch',    name: 'BNC Hub 4-Channel',         price: '$99.99', tag: 'MOST POPULAR', tagColor: '#ffd700', img: CDN + '/4port-bnc-hub.png' },
-  { id: 'analog-adapter-8ch',    name: 'BNC Bundle 8-Channel',      price: '$179.99',tag: 'BUSINESS',     tagColor: '#ff6600', img: CDN + '/8port-bnc-hub.png' },
-  { id: 'cam-budget',            name: 'RSC Indoor Cam 1080p',      price: '$24.99', tag: 'BEST ENTRY',   tagColor: '#22c55e', img: CDN + '/1080p-cam.png' },
-  { id: 'cam-reolink-e1',        name: 'RSC/ADC-Reolink 5MP',       price: '$49.99', tag: null,           tagColor: null,      img: CDN + '/5mp-cam.png' },
-  { id: 'cam-reolink-4k',        name: 'RSC/ADC-Reolink 4K Pro',    price: '$89.99', tag: 'TOP OF LINE',  tagColor: '#00aaff', img: CDN + '/4k-cam.png' },
-  { id: 'tshirt-liberated',      name: '"Liberated" Tee — Unisex',  price: '$24.99', tag: null,           tagColor: null,      img: CDN + '/red-premium-unisex.png' },
-  { id: 'hoodie',                name: 'RSC Tactical Hoodie',        price: '$54.99', tag: 'BEST SELLER',  tagColor: '#E02020', img: CDN + '/black-premium-pullover-hoodie-flat.png' },
-  { id: 'hat-red',               name: 'Liberation Cap',             price: '$29.99', tag: null,           tagColor: null,      img: CDN + '/Richardson-112-snapback-trucker.png' },
-  { id: 'stickers',              name: 'Sticker Pack (5)',           price: '$9.99',  tag: 'FAN FAV',      tagColor: '#22c55e', img: CDN + '/stickers.png' },
-  { id: 'mug',                   name: '"Liberated" Mug',            price: '$17.99', tag: null,           tagColor: null,      img: CDN + '/coffee-mugs.png' },
-  { id: 'tote-bag',              name: 'Liberation Tote',            price: '$16.99', tag: null,           tagColor: null,      img: CDN + '/tote-bags.png' },
-];
-
-// Preload image URIs for faster display
-const IMAGE_PREFETCH = PRODUCTS.slice(0, 6).map(p => Image.prefetch(p.img));
+const CATEGORIES = ['All', 'Hardware', 'Apparel', 'Headwear', 'Accessories', 'Stickers'];
 
 function ProductCard({ item }) {
   const [loaded, setLoaded] = useState(false);
   const [errored, setErrored] = useState(false);
+  const isBackorder = item.backorder || item.preorder;
 
   return (
     <View style={[s.card, { width: CARD_W }]}>
-      {/* Image area */}
+      {/* Image */}
       <View style={s.imgWrap}>
         {!loaded && !errored && (
           <View style={s.imgPlaceholder}>
             <ActivityIndicator color="#E02020" size="small" />
           </View>
         )}
-        {!errored && (
+        {!errored && item.image_url ? (
           <Image
-            source={{ uri: item.img, cache: 'force-cache' }}
+            source={{ uri: item.image_url, cache: 'force-cache' }}
             style={[s.img, { opacity: loaded ? 1 : 0 }]}
             resizeMode="cover"
             onLoad={() => setLoaded(true)}
@@ -60,17 +41,16 @@ function ProductCard({ item }) {
             progressiveRenderingEnabled={true}
             fadeDuration={200}
           />
-        )}
+        ) : null}
         {errored && (
           <View style={s.imgPlaceholder}>
             <Text style={{ fontSize: 28 }}>📦</Text>
           </View>
         )}
-        {item.tag && (
-          <View style={[s.tag, { backgroundColor: item.tagColor }]}>
-            <Text style={[s.tagText, { color: item.tagColor === '#ffd700' || item.tagColor === '#22c55e' ? '#000' : '#fff' }]}>
-              {item.tag}
-            </Text>
+        {/* Backorder badge */}
+        {isBackorder && (
+          <View style={s.backorderBadge}>
+            <Text style={s.backorderText}>BACKORDER</Text>
           </View>
         )}
       </View>
@@ -78,34 +58,110 @@ function ProductCard({ item }) {
       {/* Info */}
       <View style={s.info}>
         <Text style={s.name} numberOfLines={2}>{item.name}</Text>
-        <View style={s.row}>
-          <Text style={s.price}>{item.price}</Text>
-          <TouchableOpacity
-            style={s.btn}
-            onPress={() => Linking.openURL('https://realsecuritycamera.com/app?tab=store')}
-          >
-            <Text style={s.btnText}>Shop</Text>
-          </TouchableOpacity>
+        <View style={s.priceRow}>
+          <View>
+            <Text style={s.price}>${typeof item.price === 'number' ? item.price.toFixed(2) : item.price}</Text>
+            {item.compare_at ? (
+              <Text style={s.compareAt}>${item.compare_at.toFixed(2)}</Text>
+            ) : null}
+          </View>
+          {isBackorder ? (
+            <View style={s.reserveBtn}>
+              <Text style={s.reserveText}>Reserve</Text>
+            </View>
+          ) : (
+            <TouchableOpacity
+              style={s.buyBtn}
+              onPress={() => Linking.openURL('https://realsecuritycamera.com/app?tab=store')}
+            >
+              <Text style={s.buyText}>Buy</Text>
+            </TouchableOpacity>
+          )}
         </View>
+        {isBackorder && item.lead_time ? (
+          <Text style={s.leadTime}>Ships in {item.lead_time}</Text>
+        ) : null}
       </View>
     </View>
   );
 }
 
 export default function StoreScreen() {
+  const [products, setProducts] = useState([]);
+  const [filtered, setFiltered] = useState([]);
+  const [activeTab, setActiveTab] = useState('All');
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const fetchProducts = useCallback(async () => {
+    try {
+      const res = await api.get('/api/store/products');
+      const data = res.data?.data || res.data || [];
+      setProducts(data);
+      setFiltered(data);
+    } catch (e) {
+      console.warn('[StoreScreen] fetch error:', e.message);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchProducts(); }, [fetchProducts]);
+
+  const selectTab = useCallback((cat) => {
+    setActiveTab(cat);
+    if (cat === 'All') {
+      setFiltered(products);
+    } else {
+      setFiltered(products.filter(p => p.category?.toLowerCase() === cat.toLowerCase()));
+    }
+  }, [products]);
+
   const renderItem = useCallback(({ item }) => <ProductCard item={item} />, []);
   const keyExtractor = useCallback((item) => item.id, []);
+
+  if (loading) {
+    return (
+      <View style={[s.root, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator color="#E02020" size="large" />
+        <Text style={{ color: '#555', marginTop: 12, fontSize: 13 }}>Loading store...</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={s.root}>
       {/* Header */}
       <View style={s.header}>
         <Text style={s.title}>RSC Store</Text>
-        <Text style={s.sub}>Liberation Kits · Cameras · Swag</Text>
+        <Text style={s.sub}>Liberate Your Home · No Contracts</Text>
       </View>
 
+      {/* Filter tabs — horizontal scroll */}
+      <View style={s.tabBar}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={s.tabScroll}
+        >
+          {CATEGORIES.map(cat => (
+            <TouchableOpacity
+              key={cat}
+              style={[s.tab, activeTab === cat && s.tabActive]}
+              onPress={() => selectTab(cat)}
+            >
+              <Text style={[s.tabText, activeTab === cat && s.tabTextActive]}>
+                {cat}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+
+      {/* Product grid */}
       <FlatList
-        data={PRODUCTS}
+        data={filtered}
         renderItem={renderItem}
         keyExtractor={keyExtractor}
         numColumns={2}
@@ -115,11 +171,19 @@ export default function StoreScreen() {
         maxToRenderPerBatch={4}
         windowSize={5}
         removeClippedSubviews={true}
-        getItemLayout={(_, index) => ({
-          length: CARD_W + 16,
-          offset: (CARD_W + 16) * Math.floor(index / 2),
-          index,
-        })}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => { setRefreshing(true); fetchProducts(); }}
+            tintColor="#E02020"
+          />
+        }
+        ListEmptyComponent={
+          <View style={s.empty}>
+            <Text style={s.emptyIcon}>📦</Text>
+            <Text style={s.emptyText}>No products in this category</Text>
+          </View>
+        }
         ListFooterComponent={
           <TouchableOpacity
             style={s.fullStoreBtn}
@@ -135,50 +199,72 @@ export default function StoreScreen() {
 
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#0a0a0a' },
+
   header: {
     paddingTop: Platform.OS === 'ios' ? 56 : 36,
-    paddingHorizontal: 16, paddingBottom: 14,
+    paddingHorizontal: 16, paddingBottom: 12,
     borderBottomWidth: 1, borderBottomColor: '#1a1a1a',
   },
   title: { color: '#fff', fontSize: 20, fontWeight: '800' },
   sub:   { color: '#555', fontSize: 12, marginTop: 2 },
 
+  tabBar: {
+    borderBottomWidth: 1, borderBottomColor: '#1a1a1a',
+    backgroundColor: '#0a0a0a',
+  },
+  tabScroll: { paddingHorizontal: 12, paddingVertical: 10, gap: 8, flexDirection: 'row' },
+  tab: {
+    paddingHorizontal: 14, paddingVertical: 6,
+    borderRadius: 20, borderWidth: 1, borderColor: '#1e1e1e',
+    backgroundColor: '#111',
+  },
+  tabActive: { backgroundColor: '#E02020', borderColor: '#E02020' },
+  tabText:       { color: '#666', fontSize: 12, fontWeight: '700' },
+  tabTextActive: { color: '#fff', fontSize: 12, fontWeight: '700' },
+
   list:  { padding: 12, paddingBottom: 40 },
   row2:  { justifyContent: 'space-between', marginBottom: 12 },
 
   card: {
-    backgroundColor: '#111',
-    borderRadius: 12, overflow: 'hidden',
-    borderWidth: 1, borderColor: '#1e1e1e',
+    backgroundColor: '#111', borderRadius: 12,
+    overflow: 'hidden', borderWidth: 1, borderColor: '#1e1e1e',
   },
-
-  imgWrap: { width: '100%', height: CARD_W * 0.75, backgroundColor: '#0d0d0d' },
-  img: {
-    position: 'absolute', top: 0, left: 0,
-    width: '100%', height: '100%',
-  },
+  imgWrap: { width: '100%', height: CARD_W * 0.8, backgroundColor: '#0d0d0d' },
+  img: { position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' },
   imgPlaceholder: {
     position: 'absolute', top: 0, left: 0,
     width: '100%', height: '100%',
     alignItems: 'center', justifyContent: 'center',
-    backgroundColor: '#0d0d0d',
   },
-  tag: {
+  backorderBadge: {
     position: 'absolute', top: 6, left: 6,
-    borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2,
+    backgroundColor: '#7a6000', borderRadius: 4,
+    paddingHorizontal: 6, paddingVertical: 2,
   },
-  tagText: { fontSize: 8, fontWeight: '800', letterSpacing: 0.5 },
+  backorderText: { color: '#ffd700', fontSize: 8, fontWeight: '800' },
 
   info: { padding: 10 },
-  name: { color: '#fff', fontSize: 12, fontWeight: '700', marginBottom: 8, lineHeight: 16 },
-  row:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  price: { color: '#E02020', fontSize: 15, fontWeight: '900' },
-  btn: {
-    backgroundColor: '#1a1a1a', borderRadius: 6,
+  name: { color: '#fff', fontSize: 12, fontWeight: '700', marginBottom: 6, lineHeight: 16 },
+  priceRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  price:     { color: '#E02020', fontSize: 14, fontWeight: '900' },
+  compareAt: { color: '#444', fontSize: 10, textDecorationLine: 'line-through' },
+  leadTime:  { color: '#7a6000', fontSize: 9, fontWeight: '700', marginTop: 4 },
+
+  buyBtn: {
+    backgroundColor: '#E02020', borderRadius: 6,
     paddingHorizontal: 10, paddingVertical: 5,
-    borderWidth: 1, borderColor: '#2a2a2a',
   },
-  btnText: { color: '#E02020', fontSize: 11, fontWeight: '700' },
+  buyText: { color: '#fff', fontSize: 11, fontWeight: '800' },
+
+  reserveBtn: {
+    backgroundColor: '#7a6000', borderRadius: 6,
+    paddingHorizontal: 8, paddingVertical: 5,
+  },
+  reserveText: { color: '#ffd700', fontSize: 11, fontWeight: '800' },
+
+  empty: { alignItems: 'center', paddingTop: 60 },
+  emptyIcon: { fontSize: 40, marginBottom: 10 },
+  emptyText: { color: '#444', fontSize: 14 },
 
   fullStoreBtn: {
     margin: 16, backgroundColor: '#E02020',
