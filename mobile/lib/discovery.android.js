@@ -180,6 +180,108 @@ async function probeIp(ip) {
   }
 }
 
+
+/** Deep probe a single IP for UPnP, Roku, Chromecast, and HTTP banner.
+ *  Phone runs this locally on the LAN before posting to VPS. */
+async function deepProbe(ip) {
+  const r = { device_type: null, manufacturer: null, name: null, hostname: null, banner: null, service: null, os_hint: null, port: null };
+
+  // Roku port 8060
+  try {
+    const ctrl = new AbortController(); setTimeout(() => ctrl.abort(), 1200);
+    const res = await fetch(`http://${ip}:8060/query/device-info`, { signal: ctrl.signal });
+    const txt = await res.text();
+    if (txt && txt.toLowerCase().includes('roku')) {
+      const fn = txt.match(/<friendly-device-name>([^<]+)<\/friendly-device-name>/i)?.[1]?.trim();
+      const model = txt.match(/<model-name>([^<]+)<\/model-name>/i)?.[1]?.trim();
+      r.manufacturer = 'Roku'; r.device_type = 'streaming'; r.port = 8060;
+      r.name = fn || (model ? 'Roku ' + model : 'Roku Streaming Device');
+      return r;
+    }
+  } catch(_) {}
+
+  // UPnP device description
+  const paths = ['/device.xml','/rootDesc.xml','/description.xml','/upnp/description.xml','/ssdp/device-desc.xml','/xml/device_description.xml'];
+  for (const path of paths) {
+    try {
+      const ctrl = new AbortController(); setTimeout(() => ctrl.abort(), 1000);
+      const res = await fetch(`http://${ip}${path}`, { signal: ctrl.signal });
+      if (!res.ok) continue;
+      const xml = await res.text();
+      if (!xml || xml.length < 50) continue;
+      const low = xml.toLowerCase();
+      const fn    = xml.match(/<friendlyName>([^<]{1,80})<\/friendlyName>/i)?.[1]?.trim();
+      const mfr   = xml.match(/<manufacturer>([^<]{1,60})<\/manufacturer>/i)?.[1]?.trim();
+      const model = xml.match(/<modelName>([^<]{1,60})<\/modelName>/i)?.[1]?.trim();
+      r.port = 80;
+      if (mfr) r.manufacturer = mfr;
+      if (model) r.banner = model;
+      if (fn) r.hostname = fn;
+      if (low.includes('roku'))                                          { r.manufacturer='Roku';    r.device_type='streaming'; r.name=fn||(model?'Roku '+model:'Roku Streaming Device'); }
+      else if (low.includes('amazon')||low.includes('fire tv'))         { r.manufacturer='Amazon';  r.device_type='streaming'; r.name=fn||'Amazon Fire TV'; }
+      else if (low.includes('firetv')||low.includes('kindle'))         { r.manufacturer='Amazon';  r.device_type='streaming'; r.name=fn||'Amazon Fire TV'; }
+      else if (low.includes('chromecast')||low.includes('google cast')) { r.manufacturer='Google';  r.device_type='streaming'; r.name=fn||'Google Chromecast'; }
+      else if (low.includes('sonos'))                                   { r.manufacturer='Sonos';   r.device_type='smart_home'; r.name=fn||(model?'Sonos '+model:'Sonos Speaker'); }
+      else if (low.includes('apple tv')||low.includes('appletv'))      { r.manufacturer='Apple';   r.device_type='streaming'; r.name=fn||'Apple TV'; }
+      else if (low.includes('samsung')&&(low.includes(' tv')||low.includes('smarttv'))) { r.manufacturer='Samsung'; r.device_type='streaming'; r.name=fn||'Samsung Smart TV'; }
+      else if (low.includes('lg electronics')&&low.includes('tv'))     { r.manufacturer='LG';      r.device_type='streaming'; r.name=fn||'LG Smart TV'; }
+      else if (low.includes('vizio'))                                   { r.manufacturer='Vizio';   r.device_type='streaming'; r.name=fn||'Vizio Smart TV'; }
+      else if (low.includes('nvidia')||low.includes('shield'))         { r.manufacturer='Nvidia';  r.device_type='streaming'; r.name=fn||'Nvidia Shield'; }
+      else if (low.includes('ring'))                                    { r.manufacturer='Ring';    r.device_type='ip_camera'; r.name=fn||'Ring Device'; }
+      else if (low.includes('nest'))                                    { r.manufacturer='Nest';    r.device_type='ip_camera'; r.name=fn||'Nest Camera'; }
+      else if (low.includes('wemo')||low.includes('belkin'))           { r.manufacturer='Belkin';  r.device_type='smart_home'; r.name=fn||'Belkin WeMo'; }
+      else if (low.includes('philips')&&low.includes('hue'))           { r.manufacturer='Philips'; r.device_type='smart_home'; r.name=fn||'Philips Hue Bridge'; }
+      else if (low.includes('netgear'))                                 { r.manufacturer='Netgear'; r.device_type='router'; r.name=fn||(model?'Netgear '+model:'Netgear Router'); }
+      else if (low.includes('eero'))                                    { r.manufacturer='Amazon';  r.device_type='router'; r.name=fn||'Amazon Eero'; }
+      else if (low.includes('linksys'))                                 { r.manufacturer='Linksys'; r.device_type='router'; r.name=fn||'Linksys Router'; }
+      else if (fn) { r.name = fn; }
+      if (r.name) return r;
+    } catch(_) {}
+  }
+
+  // Chromecast port 8008
+  try {
+    const ctrl = new AbortController(); setTimeout(() => ctrl.abort(), 800);
+    const res = await fetch(`http://${ip}:8008/ssdp/device-desc.xml`, { signal: ctrl.signal });
+    const xml = await res.text();
+    if (xml && xml.toLowerCase().includes('google')) {
+      const fn = xml.match(/<friendlyName>([^<]+)<\/friendlyName>/i)?.[1]?.trim();
+      r.manufacturer = 'Google'; r.device_type = 'streaming'; r.port = 8008;
+      r.name = fn || 'Google Chromecast';
+      return r;
+    }
+  } catch(_) {}
+
+  // Plex port 32400
+  try {
+    const ctrl = new AbortController(); setTimeout(() => ctrl.abort(), 800);
+    const res = await fetch(`http://${ip}:32400/identity`, { signal: ctrl.signal });
+    if (res.ok) { r.device_type = 'computer'; r.service = 'Plex'; r.port = 32400; r.name = 'Plex Media Server (' + ip + ')'; return r; }
+  } catch(_) {}
+
+  // HTTP banner from port 80
+  try {
+    const ctrl = new AbortController(); setTimeout(() => ctrl.abort(), 1000);
+    const res = await fetch(`http://${ip}/`, { signal: ctrl.signal });
+    const server = res.headers.get('server') || '';
+    const auth = res.headers.get('www-authenticate') || '';
+    const combined = (server + ' ' + auth).toLowerCase();
+    if (server) r.banner = server.slice(0, 100);
+    r.port = 80;
+    if (combined.includes('hikvision')||combined.includes('h264dvr')) { r.manufacturer='Hikvision'; r.device_type='ip_camera'; r.name='Hikvision Camera'; r.service='HTTP'; }
+    else if (combined.includes('dahua'))    { r.manufacturer='Dahua';    r.device_type='ip_camera'; r.name='Dahua Camera'; }
+    else if (combined.includes('axis'))     { r.manufacturer='Axis';     r.device_type='ip_camera'; r.name='Axis Camera'; }
+    else if (combined.includes('reolink'))  { r.manufacturer='Reolink';  r.device_type='ip_camera'; r.name='Reolink Camera'; }
+    else if (combined.includes('netgear'))  { r.manufacturer='Netgear';  r.device_type='router';    r.name='Netgear Router'; }
+    else if (combined.includes('synology')) { r.manufacturer='Synology'; r.device_type='nas';       r.name='Synology NAS'; }
+    else if (combined.includes('nginx'))    { r.device_type='computer';  r.service='HTTP'; r.name='Web Server (' + ip + ')'; }
+    else if (combined.includes('apache'))   { r.device_type='computer';  r.service='HTTP'; r.name='Web Server (' + ip + ')'; }
+    else if (combined.includes('iis'))      { r.device_type='computer';  r.os_hint='Windows'; r.service='IIS'; r.name='Windows Server (' + ip + ')'; }
+  } catch(_) {}
+
+  return r;
+}
+
 /** Probe an entire /24 subnet in batches */
 async function scanSubnet(baseIp, onProgress) {
   const parts = baseIp.split('.');
@@ -263,29 +365,27 @@ export async function runDiscovery({ onProgress, onComplete, quickMode = false }
     }
 
     // Step 3: Enrich with OUI lookup
-    const enriched = probed.map(({ ip, mac }) => {
-      const manufacturer = ouiLookup(mac);
-      const isCameraLikely = CAMERA_BRANDS.has(manufacturer || '');
-      return {
+    // Deep probe every device on the phone (LAN access) before posting to VPS
+    const enriched = [];
+    let probeIdx = 0;
+    for (const { ip, mac } of probed) {
+      probeIdx++;
+      onProgress?.(`Identifying ${probeIdx}/${probed.length}: ${ip}...`);
+      const ouiMfr = ouiLookup(mac);
+      const deep = await deepProbe(ip);
+      enriched.push({
         ip,
-        mac,
-        manufacturer: manufacturer || null,
-        is_camera_likely: isCameraLikely,
-        open_ports: [],        // populated below for camera-likely devices
+        mac: mac || null,
+        manufacturer: deep.manufacturer || ouiMfr || null,
+        device_type: deep.device_type || null,
+        name: deep.name || null,
+        hostname: deep.hostname || null,
+        banner: deep.banner || null,
+        service: deep.service || null,
+        os_hint: deep.os_hint || null,
+        port: deep.port || null,
         source: 'android_arp',
-      };
-    });
-
-    // Step 4: Quick HTTP port probe on camera-likely devices to confirm ports
-    onProgress?.('Checking camera ports...');
-    const cameraCandidates = enriched.filter(d => d.is_camera_likely);
-    for (const device of cameraCandidates) {
-      const ports = [];
-      for (const port of [80, 8080, 554, 443]) {
-        const up = await probeIp(`${device.ip}:${port}`).catch(() => false);
-        if (up) ports.push(port);
-      }
-      device.open_ports = ports;
+      });
     }
 
     onProgress?.(`Posting ${enriched.length} devices to RSC cloud...`);
