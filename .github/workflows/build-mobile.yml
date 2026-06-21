@@ -1,11 +1,6 @@
 name: Build RSC Mobile
 
 on:
-  push:
-    paths:
-      - 'mobile/**'
-    branches:
-      - main
   workflow_dispatch:
     inputs:
       platform:
