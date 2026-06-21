@@ -1642,6 +1642,99 @@ function App() {
     s.on('camera:online',  ({deviceId,deviceName})=>{ console.log('📷 Camera online:', deviceName); });
     s.on('camera:offline', ({deviceId})=>{ console.log('📷 Camera offline:', deviceId); });
     s.on('disconnect', ()=>{ console.log('📡 Socket disconnected'); });
+
+    // ── LAN Tunnel: VPS asks phone to probe a local IP ────────────────────
+    // Phone is on local network, VPS is not. This lets VPS enrich devices
+    // via the phone as a transparent LAN proxy.
+    s.on('probe_request', async ({ requestId, ip }) => {
+      console.log('[tunnel] probe_request for', ip);
+      try {
+        const result = { device_type: null, manufacturer: null, name: null, hostname: null, banner: null, service: null, os_hint: null, port: null };
+
+        // Roku port 8060
+        try {
+          const ctrl = new AbortController(); setTimeout(() => ctrl.abort(), 1200);
+          const res = await fetch(`http://${ip}:8060/query/device-info`, { signal: ctrl.signal });
+          const txt = await res.text();
+          if (txt && txt.toLowerCase().includes('roku')) {
+            const fn = txt.match(/<friendly-device-name>([^<]+)<\/friendly-device-name>/i)?.[1]?.trim();
+            const model = txt.match(/<model-name>([^<]+)<\/model-name>/i)?.[1]?.trim();
+            result.manufacturer = 'Roku'; result.device_type = 'streaming'; result.port = 8060;
+            result.name = fn || (model ? 'Roku ' + model : 'Roku Streaming Device');
+            s.emit('probe_result', { requestId, result });
+            return;
+          }
+        } catch(_) {}
+
+        // UPnP device description
+        for (const path of ['/device.xml','/rootDesc.xml','/description.xml','/upnp/description.xml','/ssdp/device-desc.xml']) {
+          try {
+            const ctrl = new AbortController(); setTimeout(() => ctrl.abort(), 1000);
+            const res = await fetch(`http://${ip}${path}`, { signal: ctrl.signal });
+            if (!res.ok) continue;
+            const xml = await res.text();
+            if (!xml || xml.length < 50) continue;
+            const low = xml.toLowerCase();
+            const fn    = xml.match(/<friendlyName>([^<]{1,80})<\/friendlyName>/i)?.[1]?.trim();
+            const mfr   = xml.match(/<manufacturer>([^<]{1,60})<\/manufacturer>/i)?.[1]?.trim();
+            const model = xml.match(/<modelName>([^<]{1,60})<\/modelName>/i)?.[1]?.trim();
+            if (mfr) result.manufacturer = mfr;
+            if (model) result.banner = model;
+            if (fn) result.hostname = fn;
+            result.port = 80;
+            if (low.includes('roku'))                                        { result.manufacturer='Roku';    result.device_type='streaming'; result.name=fn||(model?'Roku '+model:'Roku Streaming Device'); }
+            else if (low.includes('amazon')||low.includes('fire tv')||low.includes('firetv')) { result.manufacturer='Amazon'; result.device_type='streaming'; result.name=fn||'Amazon Fire TV'; }
+            else if (low.includes('chromecast')||low.includes('google cast')){ result.manufacturer='Google';  result.device_type='streaming'; result.name=fn||'Google Chromecast'; }
+            else if (low.includes('sonos'))                                  { result.manufacturer='Sonos';   result.device_type='smart_home'; result.name=fn||(model?'Sonos '+model:'Sonos Speaker'); }
+            else if (low.includes('apple tv'))                               { result.manufacturer='Apple';   result.device_type='streaming'; result.name=fn||'Apple TV'; }
+            else if (low.includes('samsung')&&low.includes(' tv'))          { result.manufacturer='Samsung'; result.device_type='streaming'; result.name=fn||'Samsung Smart TV'; }
+            else if (low.includes('vizio'))                                  { result.manufacturer='Vizio';   result.device_type='streaming'; result.name=fn||'Vizio Smart TV'; }
+            else if (low.includes('netgear'))                                { result.manufacturer='Netgear'; result.device_type='router';    result.name=fn||(model?'Netgear '+model:'Netgear Router'); }
+            else if (low.includes('ring'))                                   { result.manufacturer='Ring';    result.device_type='ip_camera'; result.name=fn||'Ring Device'; }
+            else if (low.includes('nest'))                                   { result.manufacturer='Nest';    result.device_type='ip_camera'; result.name=fn||'Nest Camera'; }
+            else if (low.includes('eero'))                                   { result.manufacturer='Amazon';  result.device_type='router';    result.name=fn||'Amazon Eero'; }
+            else if (fn) { result.name = fn; }
+            if (result.name) { s.emit('probe_result', { requestId, result }); return; }
+          } catch(_) {}
+        }
+
+        // Chromecast port 8008
+        try {
+          const ctrl = new AbortController(); setTimeout(() => ctrl.abort(), 800);
+          const res = await fetch(`http://${ip}:8008/ssdp/device-desc.xml`, { signal: ctrl.signal });
+          const xml = await res.text();
+          if (xml && xml.toLowerCase().includes('google')) {
+            const fn = xml.match(/<friendlyName>([^<]+)<\/friendly-device-name>/i)?.[1]?.trim();
+            result.manufacturer = 'Google'; result.device_type = 'streaming'; result.port = 8008;
+            result.name = fn || 'Google Chromecast';
+            s.emit('probe_result', { requestId, result }); return;
+          }
+        } catch(_) {}
+
+        // HTTP banner port 80
+        try {
+          const ctrl = new AbortController(); setTimeout(() => ctrl.abort(), 1000);
+          const res = await fetch(`http://${ip}/`, { signal: ctrl.signal });
+          const server = res.headers.get('server') || '';
+          const auth = res.headers.get('www-authenticate') || '';
+          const combined = (server + ' ' + auth).toLowerCase();
+          if (server) result.banner = server.slice(0, 100);
+          result.port = 80;
+          if (combined.includes('hikvision'))   { result.manufacturer='Hikvision'; result.device_type='ip_camera'; result.name='Hikvision Camera'; }
+          else if (combined.includes('dahua'))  { result.manufacturer='Dahua';     result.device_type='ip_camera'; result.name='Dahua Camera'; }
+          else if (combined.includes('reolink')){ result.manufacturer='Reolink';   result.device_type='ip_camera'; result.name='Reolink Camera'; }
+          else if (combined.includes('netgear')){ result.manufacturer='Netgear';   result.device_type='router';    result.name='Netgear Router'; }
+          else if (combined.includes('nginx'))  { result.device_type='computer';   result.service='HTTP'; result.name='Web Server ('+ip+')'; }
+          else if (combined.includes('apache')) { result.device_type='computer';   result.service='HTTP'; result.name='Web Server ('+ip+')'; }
+        } catch(_) {}
+
+        console.log('[tunnel] probe_result:', JSON.stringify(result));
+        s.emit('probe_result', { requestId, result });
+      } catch(e) {
+        console.warn('[tunnel] probe error:', e.message);
+        s.emit('probe_result', { requestId, result: {} });
+      }
+    });
     socketRef.current = s;
     setSocket(s);
     return ()=>{ s.disconnect(); socketRef.current=null; };
