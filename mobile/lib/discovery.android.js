@@ -13,7 +13,7 @@
  *   5. Repeat every 8 minutes while app is active, or on manual trigger
  */
 
-import { NativeModules, Platform } from 'react-native';
+import { NativeModules, NativeEventEmitter, Platform } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import api from './api';
 

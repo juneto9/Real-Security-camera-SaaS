@@ -15,6 +15,10 @@
   <uses-permission android:name="android.permission.WAKE_LOCK"/>
   <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
   <uses-permission android:name="android.permission.WRITE_SETTINGS"/>
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
   <queries>
     <intent>
       <action android:name="android.intent.action.VIEW"/>
@@ -32,5 +36,13 @@
         <category android:name="android.intent.category.LAUNCHER"/>
       </intent-filter>
     </activity>
+    <service
+        android:name=".ScanService"
+        android:foregroundServiceType="connectedDevice"
+        android:exported="false" />
+    <service
+        android:name=".ScanService"
+        android:foregroundServiceType="connectedDevice"
+        android:exported="false" />
   </application>
 </manifest>
