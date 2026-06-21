@@ -10,7 +10,7 @@ import axios from 'axios';
 
 enableScreens();
 
-const API_URL = 'https://whale-app-hxokg.ondigitalocean.app';
+const API_URL = 'https://api.realsecuritycamera.com';
 const api = axios.create({ baseURL: API_URL, timeout: 10000 });
 api.interceptors.request.use(async (config) => {
   const token = await AsyncStorage.getItem('accessToken');
