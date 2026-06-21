@@ -259,7 +259,16 @@ function RecordingBanner({ recording, armed, formatTime, recordingTime, clipCoun
 // ─── Subscription Screen ─────────────────────────────────────────
 function SubscriptionScreen({ navigation }) {
   const [current, setCurrent] = useState('free');
-  useEffect(()=>{ AsyncStorage.getItem(SUB_KEY).then(v=>{ if(v) setCurrent(v); }); },[]);
+  const [billingUrl, setBillingUrl] = useState(null);
+  useEffect(()=>{
+    // Load real plan from VPS
+    api.get('/api/billing/status').then(r=>{
+      const plan = r.data?.plan || r.data?.tier || 'free';
+      setCurrent(plan.toLowerCase());
+    }).catch(()=>{ AsyncStorage.getItem(SUB_KEY).then(v=>{ if(v) setCurrent(v); }); });
+    // Pre-fetch billing portal URL
+    api.post('/api/billing/portal').then(r=>{ if(r.data?.url) setBillingUrl(r.data.url); }).catch(()=>{});
+  },[]);
 
   const subscribe = async (tier) => {
     if (tier === 'free') {
@@ -284,7 +293,12 @@ function SubscriptionScreen({ navigation }) {
 
   return (
     <View style={sub.container}>
-      <View style={sub.header}>
+      {billingUrl && (
+          <TouchableOpacity style={sub.billingBtn} onPress={()=>require('react-native').Linking.openURL(billingUrl)}>
+            <Text style={sub.billingBtnTxt}>💳 Manage Billing & Invoices</Text>
+          </TouchableOpacity>
+        )}
+        <View style={sub.header}>
         <TouchableOpacity onPress={()=>navigation.goBack()} style={sub.backBtn}>
           <Text style={sub.backTxt}>← Back</Text>
         </TouchableOpacity>
@@ -622,8 +636,9 @@ function LoginScreen({ navigation, setToken }) {
     setLoading(true);
     try {
       const res = await api.post('/api/auth/login',{email,password});
-      await AsyncStorage.setItem('accessToken',res.data.data.accessToken);
-      await setToken(res.data.data.accessToken);
+      const _tok = res.data.token || res.data.data?.accessToken;
+      await AsyncStorage.setItem('accessToken', _tok);
+      await setToken(_tok);
     } catch(e) { Alert.alert('Login Failed',e.response?.data?.message||'Check credentials'); }
     setLoading(false);
   };
@@ -646,8 +661,9 @@ function RegisterScreen({ navigation, setToken }) {
     setLoading(true);
     try {
       const res = await api.post('/api/auth/register',form);
-      await AsyncStorage.setItem('accessToken',res.data.data.accessToken);
-      await setToken(res.data.data.accessToken);
+      const _tok = res.data.token || res.data.data?.accessToken;
+      await AsyncStorage.setItem('accessToken', _tok);
+      await setToken(_tok);
     } catch(e) { Alert.alert('Failed',e.response?.data?.message||'Try again'); }
     setLoading(false);
   };
@@ -1953,6 +1969,8 @@ const sub = StyleSheet.create({
   backTxt:        {color:'#00ff88',fontSize:15,fontWeight:'600'},
   title:          {color:'#fff',fontSize:18,fontWeight:'bold',flex:1,textAlign:'center'},
   tagline:        {color:'#666',fontSize:14,textAlign:'center',marginBottom:20,marginTop:8},
+  billingBtn: {margin:16,marginBottom:0,backgroundColor:'#111',borderWidth:1,borderColor:'#333',borderRadius:10,padding:14,alignItems:'center'},
+  billingBtnTxt: {color:'#00ff88',fontSize:14,fontWeight:'600'},
   tierCard:       {backgroundColor:'#1a1a1a',borderRadius:12,padding:16,marginBottom:16,borderWidth:1,borderColor:'#333'},
   tierHeader:     {flexDirection:'row',justifyContent:'space-between',alignItems:'flex-start',marginBottom:12},
   tierName:       {fontSize:20,fontWeight:'bold'},

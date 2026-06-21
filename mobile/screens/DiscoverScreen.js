@@ -17,6 +17,14 @@ import { useFocusEffect } from '@react-navigation/native';
 import { runDiscovery } from '../lib/discovery';
 import api from '../lib/api';
 
+
+function cleanLabel(d) {
+  const raw = d.name || d.hostname || '';
+  // Strip raw protocol banners that leaked into name field
+  if (/^(RTSP|HTTP|SMB|FTP)\/[\d\.]+\s+\d{3}/.test(raw)) return d.manufacturer || d.hostname || 'Network Device';
+  if (raw.startsWith('Device ') && raw.match(/Device \d+/)) return d.manufacturer || 'Unknown Device';
+  return raw || d.manufacturer || 'Network Device';
+}
 // ── Category helpers ──────────────────────────────────────────────────────────
 function categoryFromDevice(d) {
   const dtype = (d.device_type || '').toLowerCase();
@@ -87,6 +95,8 @@ function reasonText(d) {
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function DiscoverScreen() {
   const [devices, setDevices]     = useState([]);
+  const [ssidName, setSsidName]   = useState('');
+
   const [scanning, setScanning]   = useState(false);
   const [statusMsg, setStatusMsg] = useState('');
   const [lastScan, setLastScan]   = useState(null);
@@ -94,11 +104,31 @@ export default function DiscoverScreen() {
   const appStateRef    = useRef(AppState.currentState);
   const autoTimerRef   = useRef(null);
 
+  const loadSsid = useCallback(async () => {
+    try {
+      const r = await api.get('/api/cameras/network-info');
+      if (r.data?.ssid) setSsidName(r.data.ssid);
+    } catch(e) {}
+  }, []);
+
   const loadFromVPS = useCallback(async () => {
     try {
       const res = await api.get('/api/cameras?enrolled=false&dismissed=false');
       const data = Array.isArray(res.data) ? res.data : (res.data?.cameras || []);
-      setDevices(data.filter(d => d.ip_address && !d.ip_address.endsWith('.1') && !d.is_enrolled && !d.is_dismissed));
+      // Dedup by IP — keep most recently updated record per IP
+      const byIP = {};
+      data.filter(d => d.ip_address && !d.ip_address.endsWith('.1') && !d.is_dismissed).forEach(d => {
+        const key = d.ip_address;
+        if (!byIP[key] || new Date(d.updated_at) > new Date(byIP[key].updated_at)) byIP[key] = d;
+      });
+      // Also dedup by name — if same hostname appears on two IPs, keep most recent
+      const byName = {};
+      Object.values(byIP).forEach(d => {
+        const key = (d.name || d.hostname || '').toLowerCase().trim();
+        if (!key) { byName[d.ip_address] = d; return; }
+        if (!byName[key] || new Date(d.updated_at) > new Date(byName[key].updated_at)) byName[key] = d;
+      });
+      setDevices(Object.values(byName).filter(d => !d.is_enrolled));
     } catch(e) { console.warn('[Discover] VPS load:', e.message); }
   }, []);
 
@@ -179,7 +209,7 @@ export default function DiscoverScreen() {
         <View style={s.headerLeft}>
           <Text style={s.title}>Network Assets</Text>
           <Text style={s.sub}>
-            {Platform.OS === 'android' ? '🤖 ARP' : '🍎 HTTP'} · {devices.length} devices
+            {ssidName ? '📶 ' + ssidName + ' · ' : ''}{Platform.OS === 'android' ? '🤖 ARP' : '🍎 HTTP'} · {devices.length} devices
             {cameraCount > 0 ? ' · 📷 ' + cameraCount : ''}
           </Text>
         </View>
@@ -215,9 +245,11 @@ export default function DiscoverScreen() {
           ) : null
         }
         renderItem={({ item }) => {
-          const { cat, icon, color, label } = categoryFromDevice(item);
+          const { cat, icon, color, label: _rawLabel } = categoryFromDevice(item);
+          const label = cleanLabel(item) !== 'Network Device' ? cleanLabel(item) : _rawLabel;
           const conf   = confidenceScore(item, cat);
-          const reason = reasonText(item);
+          const _reason = reasonText(item);
+          const reason = _reason.replace(/RTSP\/[\d.]+\s+\d+[^,]*/g,'').replace(/HTTP\/[\d.]+\s+\d+[^,]*/g,'').trim().replace(/^[·,\s]+/,'').replace(/[·,\s]+$/,'');
           const isCamera = cat === 'camera';
 
           return (

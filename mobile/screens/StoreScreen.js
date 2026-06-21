@@ -141,6 +141,8 @@ export default function StoreScreen() {
       {/* Filter tabs — horizontal scroll */}
       <View style={s.tabBar}>
         <ScrollView
+          showsHorizontalScrollIndicator={false}
+          bounces={true}
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={s.tabScroll}
@@ -209,6 +211,11 @@ const s = StyleSheet.create({
   sub:   { color: '#555', fontSize: 12, marginTop: 2 },
 
   tabBar: {
+    position: 'relative',
+    zIndex: 10,
+    backgroundColor: '#0a0a0a',
+    borderBottomWidth: 1,
+    borderBottomColor: '#1a1a1a',
     borderBottomWidth: 1, borderBottomColor: '#1a1a1a',
     backgroundColor: '#0a0a0a',
   },

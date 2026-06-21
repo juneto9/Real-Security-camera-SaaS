@@ -35,7 +35,7 @@ export function AuthProvider({ children }) {
 
   const login = async (email, password) => {
     const res = await api.post('/api/auth/login', { email, password });
-    const { accessToken, user: userData } = res.data.data;
+    const accessToken = res.data.token || res.data.data?.accessToken; const userData = res.data.user || res.data.data?.user;
     await AsyncStorage.multiSet([
       ['accessToken', accessToken],
       ['user', JSON.stringify(userData)],
@@ -60,7 +60,7 @@ export function AuthProvider({ children }) {
 
   const register = async (formData) => {
     const res = await api.post('/api/auth/register', formData);
-    const { accessToken, user: userData } = res.data.data;
+    const accessToken = res.data.token || res.data.data?.accessToken; const userData = res.data.user || res.data.data?.user;
     await AsyncStorage.multiSet([
       ['accessToken', accessToken],
       ['user', JSON.stringify(userData)],
