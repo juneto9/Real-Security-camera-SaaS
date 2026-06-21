@@ -186,6 +186,53 @@ async function probeIp(ip) {
 async function deepProbe(ip) {
   const r = { device_type: null, manufacturer: null, name: null, hostname: null, banner: null, service: null, os_hint: null, port: null };
 
+  // ── mDNS / DNS-SD reverse lookup ─────────────────────────────────────────
+  // Devices announce themselves via mDNS as <name>.local on the LAN.
+  // fetch() to port 5353 won't work but we can try reverse DNS and common
+  // mDNS service paths that devices serve over HTTP on port 80.
+  try {
+    const ctrl = new AbortController(); setTimeout(() => ctrl.abort(), 800);
+    // Try to fetch the mDNS device description — many smart home devices
+    // expose their friendly name at /_api/info or /api/info
+    for (const path of ['/_api/info', '/api/info', '/info', '/api/v1/info']) {
+      try {
+        const ctrl2 = new AbortController(); setTimeout(() => ctrl2.abort(), 600);
+        const res = await fetch(`http://${ip}${path}`, { signal: ctrl2.signal });
+        if (res.ok) {
+          const txt = await res.text();
+          const low = txt.toLowerCase();
+          // Amazon Echo/Alexa
+          if (low.includes('amazon') || low.includes('alexa') || low.includes('echo')) {
+            const name = txt.match(/"device_name"\s*:\s*"([^"]+)"/i)?.[1]
+                      || txt.match(/"friendly_name"\s*:\s*"([^"]+)"/i)?.[1];
+            r.manufacturer = 'Amazon'; r.device_type = 'smart_home';
+            r.name = name || 'Amazon Echo'; return r;
+          }
+          // Google Home / Nest
+          if (low.includes('google') || low.includes('chromecast') || low.includes('nest')) {
+            const name = txt.match(/"name"\s*:\s*"([^"]+)"/i)?.[1]
+                      || txt.match(/"friendly_name"\s*:\s*"([^"]+)"/i)?.[1];
+            r.manufacturer = 'Google'; r.device_type = 'smart_home';
+            r.name = name || 'Google Home Device'; return r;
+          }
+        }
+      } catch(_) {}
+    }
+  } catch(_) {}
+
+  // ── SSDP unicast — ask device directly for its identity ──────────────────
+  // Some devices respond to a direct unicast M-SEARCH even without multicast
+  try {
+    const ctrl = new AbortController(); setTimeout(() => ctrl.abort(), 800);
+    const res = await fetch(`http://${ip}:1900/`, { signal: ctrl.signal });
+    const txt = await res.text();
+    if (txt && txt.length > 10) {
+      const low = txt.toLowerCase();
+      if (low.includes('amazon') || low.includes('fire')) { r.manufacturer='Amazon'; r.device_type='streaming'; r.name='Amazon Fire TV'; return r; }
+      if (low.includes('roku')) { r.manufacturer='Roku'; r.device_type='streaming'; r.name='Roku Device'; return r; }
+    }
+  } catch(_) {}
+
   // Roku port 8060
   try {
     const ctrl = new AbortController(); setTimeout(() => ctrl.abort(), 1200);
@@ -392,20 +439,57 @@ export async function runDiscovery({ onProgress, onComplete, quickMode = false }
       return;
     }
 
-    // Step 3: OUI lookup only (instant — no network calls)
-    // VPS will request deep probes back through the Socket.io tunnel
-    const enriched = probed.map(({ ip, mac }) => ({
-      ip,
-      mac: mac || null,
-      manufacturer: ouiLookup(mac) || null,
-      source: 'mobile_scan_v2',
+    // Step 3: Deep probe ALL live devices in parallel for UPnP/Roku/HTTP identity
+    // Runs on the phone which has LAN access — fast because parallel not sequential
+    onProgress?.('Identifying devices...');
+    const enriched = await Promise.all(probed.map(async ({ ip, mac }) => {
+      const ouiMfr = ouiLookup(mac);
+      try {
+        const deep = await deepProbe(ip);
+        // If deepProbe found no name but OUI gives us a manufacturer,
+        // build a human-readable fallback name from the manufacturer
+        let fallbackName = deep.name;
+        if (!fallbackName && ouiMfr) {
+          const m = ouiMfr.toLowerCase();
+          if (m.includes('amazon') || m.includes('kindle')) fallbackName = 'Amazon Device (' + ip + ')';
+          else if (m.includes('apple')) fallbackName = 'Apple Device (' + ip + ')';
+          else if (m.includes('google')) fallbackName = 'Google Device (' + ip + ')';
+          else if (m.includes('samsung')) fallbackName = 'Samsung Device (' + ip + ')';
+          else if (m.includes('nest')) fallbackName = 'Nest Device (' + ip + ')';
+          else if (m.includes('ring')) fallbackName = 'Ring Device (' + ip + ')';
+          else if (m.includes('roku')) fallbackName = 'Roku Device (' + ip + ')';
+          else if (m.includes('hikvision')) fallbackName = 'Hikvision Camera (' + ip + ')';
+          else if (m.includes('dahua')) fallbackName = 'Dahua Camera (' + ip + ')';
+          else if (m.includes('axis')) fallbackName = 'Axis Camera (' + ip + ')';
+          else if (m.includes('reolink')) fallbackName = 'Reolink Camera (' + ip + ')';
+          else if (m.includes('alarm.com')) fallbackName = 'Alarm.com Camera (' + ip + ')';
+          else if (m.includes('netgear')) fallbackName = 'Netgear Router (' + ip + ')';
+          else if (m.includes('tp-link')) fallbackName = 'TP-Link Device (' + ip + ')';
+          else if (m.includes('ubiquiti')) fallbackName = 'Ubiquiti Device (' + ip + ')';
+          else if (m.includes('sonos')) fallbackName = 'Sonos Speaker (' + ip + ')';
+          else if (m.includes('eero')) fallbackName = 'Amazon Eero (' + ip + ')';
+          else fallbackName = ouiMfr + ' Device (' + ip + ')';
+        }
+        return {
+          ip,
+          mac: mac || null,
+          manufacturer: deep.manufacturer || ouiMfr || null,
+          device_type: deep.device_type || null,
+          name: fallbackName || null,
+          hostname: deep.hostname || null,
+          banner: deep.banner || null,
+          service: deep.service || null,
+          os_hint: deep.os_hint || null,
+          port: deep.port || null,
+          source: 'mobile_scan_v2',
+        };
+      } catch(_) {
+        return { ip, mac: mac || null, manufacturer: ouiMfr || null, source: 'mobile_scan_v2' };
+      }
     }));
 
-    onProgress?.(`Found ${enriched.length} devices — posting to RSC...`);
+    onProgress?.(`Identified ${enriched.filter(d => d.name).length}/${enriched.length} devices`);
 
-    // Step 4: POST immediately to VPS — does NOT wait for deep probes.
-    // VPS will send probe_request back through the socket tunnel for each
-    // unknown device. Phone handles those in App.js socket listener.
     const payload = {
       ips: enriched,
       ssid_name: net.ssid,
