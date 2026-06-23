@@ -176,7 +176,8 @@ function Toggle({ value, onChange, color='#00ff88' }) {
 }
 
 // ─── Camera Settings Panel ────────────────────────────────────────
-function CameraSettingsPanel({ device, settings, onChange, onClose, onDeviceUpdated }) {
+function CameraSettingsPanel({ device, settings, onChange, onClose, onDeviceUpdated, orgPlan = 'free' }) {
+  const hasAI = ['pro','business','enterprise'].includes((orgPlan||'').toLowerCase());
   const [s, setS] = useState(settings || {
     camMode: 'security',
     loopForever: false,
@@ -186,7 +187,7 @@ function CameraSettingsPanel({ device, settings, onChange, onClose, onDeviceUpda
     soundEnabled: true,
     nightVision: false,
     nightVisionPro: false,
-    cloudUpload: true,   // default ON — uploads already happening
+    cloudUpload: true,
   });
   const [devName,     setDevName]     = useState(device.name?.trim() || device.device_name?.trim() || '');
   const [devLocation, setDevLocation] = useState(device.location?.trim() || '');
@@ -1121,6 +1122,8 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
   const loopTimerRef     = useRef(null);
   const recTimerRef      = useRef(null);
   const alertActiveRef   = useRef(false);
+  const lastAlertTimeRef = useRef(0);
+  const MIN_ALERT_INTERVAL = 30000; // 30s minimum between triggers
   const isArmedRef       = useRef(false);
   const isRecordingRef   = useRef(false);
   const canvasCleanupRef  = useRef(null);
@@ -1367,7 +1370,10 @@ function USBCameraPage({ socket, devices, userId, organizationId, onEvent, onUsb
   };
 
   const triggerAlert = (type) => {
+    const now = Date.now();
     if (alertActiveRef.current) return;
+    if (now - lastAlertTimeRef.current < MIN_ALERT_INTERVAL) return;
+    lastAlertTimeRef.current = now;
     alertActiveRef.current = true;
     const now = new Date();
     const event = {
@@ -3751,6 +3757,45 @@ export default function App() {
           {adminSubTab==='settings'     && <SettingsPage currentTheme={theme} onThemeChange={applyTheme} user={user} onViewSubscription={()=>setAdminSubTab('subscription')}/>}
           {adminSubTab==='subscription' && <SubscriptionPage/>}
         </div>
+
+        {/* Subjects section — below cameras, same as mobile */}
+        {tab==='cameras' && (
+          <div style={{...st.card, marginTop:16, marginBottom:24}}>
+            <div style={{fontWeight:'bold', color:C.text, fontSize:16, marginBottom:4}}>
+              🎯 Subjects
+            </div>
+            <div style={{color:C.sub, fontSize:12, marginBottom:16}}>
+              Track people, vehicles and objects across your cameras · AWS Rekognition
+            </div>
+            {!['pro','business','enterprise'].includes((user?.org?.plan||'').toLowerCase()) ? (
+              <div style={{backgroundColor:C.gold+'15', border:`1px solid ${C.gold}40`, borderRadius:8, padding:'10px 14px', color:C.gold, fontSize:13}}>
+                🔒 Upgrade to Pro to enable AI Subject Detection
+              </div>
+            ) : (
+              <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))', gap:10}}>
+                {[
+                  {icon:'👤', label:'People',   color:'#00aaff', desc:'Face + person detection'},
+                  {icon:'🚗', label:'Vehicles',  color:'#22c55e', desc:'Cars, trucks, bikes'},
+                  {icon:'🐾', label:'Pets',      color:'#f5a623', desc:'Dogs, cats, animals'},
+                  {icon:'📦', label:'Packages',  color:'#a78bfa', desc:'Deliveries + parcels'},
+                ].map(s=>(
+                  <div key={s.label} style={{
+                    display:'flex', alignItems:'center', gap:10,
+                    backgroundColor:C.card, padding:12, borderRadius:8,
+                    border:`1px solid ${s.color}40`
+                  }}>
+                    <span style={{fontSize:24}}>{s.icon}</span>
+                    <div>
+                      <div style={{color:C.text, fontWeight:'bold', fontSize:13}}>{s.label}</div>
+                      <div style={{color:C.sub, fontSize:11, marginTop:2}}>{s.desc}</div>
+                    </div>
+                    <div style={{marginLeft:'auto', width:10, height:10, borderRadius:5, backgroundColor:'#00ff88'}}/>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </main>
 
       {showAdd && <AddDeviceModal onClose={()=>setShowAdd(false)} onAdded={()=>{ loadDevices(); showToast('Camera added!'); }}/>}
@@ -3769,6 +3814,7 @@ export default function App() {
           settings={deviceSettings[settingsFor.id]}
           onChange={s=>setDeviceSettings(p=>({...p,[settingsFor.id]:s}))}
           onClose={()=>setSettingsFor(null)}
+          orgPlan={user?.org?.plan || 'free'}
           onDeviceUpdated={(updated)=>{ if(updated===null){setDevices(prev=>prev.filter(d=>d.id!==settingsFor.id)); setSettingsFor(null);} else setDevices(prev=>prev.map(d=>d.id===updated.id?{...d,...updated}:d)); }}
         />
       )}
