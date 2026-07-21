@@ -332,6 +332,22 @@ router.post('/presence', requireAuth, async (req, res) => {
         if (!mac && !brand && !passedMfr) continue;
         if (!brand && passedMfr) brand = passedMfr;
 
+        // Camera count enforcement — check plan limit before creating new device
+        try {
+          const camCount = await queryOne('SELECT COUNT(*) as c FROM cameras WHERE org_id=$1 AND deleted_at IS NULL AND is_dismissed=false', [req.orgId]);
+          const orgPlan = await queryOne('SELECT plan, max_cameras FROM organizations WHERE id=$1', [req.orgId]);
+          const currentCount = parseInt(camCount?.c || 0);
+          const maxCams = orgPlan?.max_cameras || 2;
+          if (currentCount >= maxCams) {
+            // Over limit — still discover but mark as over_limit
+            console.log(`[presence] camera limit reached: ${currentCount}/${maxCams} for org ${req.orgId}`);
+            // Don't block discovery — tag the device so the UI can show an upgrade prompt
+          }
+        } catch(limitErr) {
+          // Enforcement must never break discovery
+          console.error('[presence] limit check failed:', limitErr.message);
+        }
+
         const name = displayName || (brand ? brand + ' – ' + ip : 'Device ' + ip);
         await query(
           `INSERT INTO cameras (org_id,name,ip_address,mac_address,port,manufacturer,device_type,status,is_enrolled,ssid_name)

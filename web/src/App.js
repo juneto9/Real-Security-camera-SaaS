@@ -3248,7 +3248,7 @@ function AdminPage({ user }) {
             ⭐ Upgrade for More Admins
           </div>
           <div style={{color:C.sub,fontSize:13}}>
-            Your plan includes {MAX_ADMINS} admins. Upgrade to Pro for up to 5 admins.
+            Your plan includes {MAX_ADMINS} admins. Upgrade to Business for up to 3 admins (+$5/ea after).
           </div>
           {/* TODO: ENABLE PAYWALL — uncomment before production deploy */}
           {/* <button style={{...st.btn,...st.btnGold,marginTop:10}} onClick={()=>{}}>

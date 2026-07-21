@@ -12,8 +12,8 @@ const PLANS = {
     price: 0,
     cameras: 2,
     ssids: 1,
-    retention_days: 7,
-    storage_gb: 5,
+    retention_days: 5,
+    storage_gb: 2,
     storage_hard_cap_gb: 25,
     ai_intelligence: false,
     liberations_per_month: 0,
@@ -26,59 +26,60 @@ const PLANS = {
   },
   pro: {
     name: 'Pro',
-    price: 1999,                  // $19.99/mo
+    price: 2200,                  // $22/mo
     cameras: 10,
     ssids: 3,
-    retention_days: 60,
-    storage_gb: 50,
+    retention_days: 15,
+    storage_gb: 250,
     storage_soft_cap_gb: 500,
     ai_intelligence: true,
     ai_features: ['person_detection', 'pet_detection', 'smart_notifications'],
     liberations_per_month: 3,
     liberation_price: 499,        // $4.99 one-time after included
-    admins: 2,
+    admins: 1,
     stripe_price_id: process.env.STRIPE_PRO_PRICE_ID,
     overage_camera_price: null,   // hard block on base plan
     overage_ssid_price: 299,      // $2.99/SSID/mo
     overage_storage_price: 49,    // $0.49/GB (billed in 5GB chunks)
+    overage_admin_price: 500,     // $5.00/admin/mo
   },
   business: {
     name: 'Business',
-    price: 4999,                  // $49.99/mo
-    cameras: 25,
-    ssids: 10,
-    retention_days: 180,
-    storage_gb: 250,
+    price: 5000,                  // $50/mo
+    cameras: 15,
+    ssids: 5,
+    retention_days: 30,
+    storage_gb: 1000,             // 1TB
     storage_soft_cap_gb: 2048,    // 2TB
     ai_intelligence: true,
     ai_features: ['person_detection', 'pet_detection', 'smart_notifications', 'facial_recognition', 'schedule_awareness'],
     liberations_per_month: 10,
     liberation_price: 299,        // $2.99 one-time after included
-    admins: 5,
+    admins: 3,
     stripe_price_id: process.env.STRIPE_BUSINESS_PRICE_ID,
-    overage_camera_price: 299,    // $2.99/camera/mo
+    overage_camera_price: 200,    // $2.00/camera/mo
     overage_ssid_price: 199,      // $1.99/SSID/mo
     overage_storage_price: 39,    // $0.39/GB (billed in 5GB chunks)
-    overage_admin_price: 499,     // $4.99/admin/mo
+    overage_admin_price: 500,     // $5.00/admin/mo
   },
   enterprise: {
     name: 'Enterprise',
-    price: 9999,                  // $99.99/mo
-    cameras: 50,
-    ssids: 50,
-    retention_days: 365,
-    storage_gb: 1024,             // 1TB
+    price: 14900,                 // $149/mo
+    cameras: 9999,                // unlimited
+    ssids: 999,                   // unlimited locations
+    retention_days: 60,
+    storage_gb: 2000,             // 2TB
     storage_soft_cap_gb: null,    // no hard cap
     ai_intelligence: true,
     ai_features: ['person_detection', 'pet_detection', 'smart_notifications', 'facial_recognition', 'schedule_awareness', 'custom_model_training'],
     liberations_per_month: -1,    // unlimited
     liberation_price: 0,          // included
-    admins: 10,
+    admins: 99,                   // unlimited
     stripe_price_id: process.env.STRIPE_ENTERPRISE_PRICE_ID,
-    overage_camera_price: 199,    // $1.99/camera/mo
+    overage_camera_price: 200,    // $2.00/camera/mo
     overage_ssid_price: 99,       // $0.99/SSID/mo
     overage_storage_price: 33,    // $0.33/GB (billed in 5GB chunks)
-    overage_admin_price: 399,     // $3.99/admin/mo
+    overage_admin_price: null,    // unlimited admins — no overage
     white_label_price: 19999,     // $199.99/mo add-on
   },
 };

@@ -4,7 +4,7 @@ import path from 'path';
 import fs from 'fs';
 import { broadcast } from '../server.js';
 import { Router } from 'express';
-import { query } from '../db.js';
+import { query, queryOne } from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
 const router = Router();
 
@@ -136,6 +136,23 @@ async function generateThumbnail(videoPath, orgId, videoFilename) {
 router.post('/upload', requireAuth, upload.single('file'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No file' });
+
+    // Storage enforcement — check plan limit before uploading
+    const org = await queryOne('SELECT storage_gb FROM organizations WHERE id=$1', [req.orgId]);
+    const storageRow = await queryOne('SELECT COALESCE(SUM(file_size_mb)/1024.0, 0) as gb FROM clips WHERE org_id=$1 AND deleted_at IS NULL', [req.orgId]);
+    const usedGb = parseFloat(storageRow?.gb || 0);
+    const limitGb = org?.storage_gb || 2;
+    if (usedGb >= limitGb) {
+      // Hard cap — reject upload
+      fs.unlink(req.file.path, () => {});
+      return res.status(402).json({
+        error: 'Storage limit exceeded',
+        used_gb: usedGb.toFixed(2),
+        limit_gb: limitGb,
+        message: `You've used ${usedGb.toFixed(1)} GB of your ${limitGb} GB limit. Upgrade your plan or delete old clips.`
+      });
+    }
+
     const fileUrl = 'https://api.realsecuritycamera.com/api/clips/file/' + req.file.filename;
     const spacesKey = `clips/${req.orgId}/${req.file.filename}`;
     try {
